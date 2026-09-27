@@ -5,10 +5,10 @@
 `scripts/package.ps1` builds one file, `artifacts/installer/PlainViewer-Setup-<version>-x64.exe`, plus a `.sha256` file beside it.
 
 - Installs for the current user only, without administrator rights, into `%LOCALAPPDATA%\Programs\Plain Viewer`. Windows 11, x64.
-- Contains everything needed offline: the app and its worker with the .NET 10 runtime included, PDF.js, and a trimmed LibreOffice 26.2.6 for Word and PowerPoint files. It does not contain the Microsoft Edge WebView2 Runtime, which Windows 11 includes; setup warns if it is missing (see open decision D9 in DECISIONS.md).
+- Contains everything needed offline: the app and its worker with the .NET 10 runtime included, PDF.js, and a trimmed LibreOffice 26.2.6 for Word and PowerPoint files. It does not contain the Microsoft Edge WebView2 Runtime, which Windows 11 normally includes (a clean Windows Sandbox does not); setup warns if it is missing, and the app then opens only text, CSV and Markdown files, explaining why for the others (see open decision D9 in DECISIONS.md).
 - Adds a Start menu entry, an uninstaller in Settings > Apps, and (optional, on by default) "Open with" entries for .pdf, .docx, .xlsx, .pptx, .csv, .txt, .md and .markdown. It never changes the user's default apps; Windows lets the user pick Plain Viewer as the default in Settings > Default apps.
 - Runs `PlainViewer.exe --prepare-converter` at the end, which builds LibreOffice's private profile so the first Word or PowerPoint file opens in seconds.
-- Uninstalling removes the app and its private data in `%LOCALAPPDATA%\PlainViewer` (converter profile, temporary work folders, page-view cache). It never touches the user's documents.
+- Uninstalling removes the app, its private data in `%LOCALAPPDATA%\PlainViewer` (the document view's WebView2 data) and `%USERPROFILE%\AppData\LocalLow\PlainViewer` (converter profile, temporary work folders), and the firewall rules if they were added. It never touches the user's documents.
 
 ## One-time setup on a build PC
 
@@ -25,8 +25,8 @@ Everything lives under `.tools` (not in Git):
 
 1. Change `<Version>` in `Directory.Build.props` (for example 0.1.0 → 0.1.1 for fixes and security updates, 0.2.0 for new features). The version appears in About, in the installer's name and in Settings > Apps.
 2. Update bundled components if needed (next section).
-3. Run `.\scripts\package.ps1`. It runs the build, core tests, Markdown tests, smoke test and security smoke test, then publishes and builds the installer. It stops at the first failure.
-4. Test the installer before publishing it, ideally on a clean Windows 11 PC or virtual machine. On the build PC:
+3. Run `.\scripts\package.ps1`. It runs the build, core tests, Markdown tests, Office safety tests, smoke test and security smoke test, then publishes and builds the installer. It stops at the first failure.
+4. Test the installer on a clean PC before publishing it: `.\scripts\sandbox-test.ps1` (needs the Windows Sandbox feature; takes about 5 minutes). It installs the newest installer in a throwaway Windows 11 with networking off, checks the converter profile, firewall rules and "Open with", opens and refuses the test files, checks keyboard use and high contrast, uninstalls and checks that nothing is left; results are in `artifacts\sandbox-test\<run>\results`. Windows Sandbox has no WebView2 Runtime, so the PDF, Word, PowerPoint and Excel views are reported as not tested unless Microsoft's offline "Evergreen Standalone Installer" is passed with `-WebView2Installer <file>`. A quicker check on the build PC itself:
 
        $setup = '.\artifacts\installer\PlainViewer-Setup-<version>-x64.exe'
        $dir = "$env:LOCALAPPDATA\PlainViewerInstallTest"
@@ -74,5 +74,4 @@ Steps once a certificate exists: sign `PlainViewer.exe` and `PlainViewer.Worker.
 - **Inno Setup commercial licence.** Inno Setup's licence allows commercial use for free, but since 2025 its authors ask commercial users with annual revenue above USD 5,000 to buy a licence (Single User, Team 2–5 users, Enterprise; one-time payment with two years of updates; price shown at checkout). They state it is not strictly required.
 - **Where to publish.** GitHub Releases (this repository is private, so users could not download from it; a public repository or another host is needed), your own website, winget (needs a public download link) or the Microsoft Store (not tested with LibreOffice inside).
 - **WebView2** (DECISIONS.md D9): bundle Microsoft's offline WebView2 installer or keep the warning.
-- **LibreOffice network boundary** (DECISIONS.md gate 1): must be decided before any public release.
 - **ARM64 installer:** needs the ARM64 LibreOffice build and ARM64 runtime packs (downloads).

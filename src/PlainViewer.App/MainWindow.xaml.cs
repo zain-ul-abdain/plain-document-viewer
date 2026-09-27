@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     private Dictionary<int, RowStore> sheetStores = [];   // large spreadsheet sheets, by sheet position
     private string? rowStoreFolder;
     private StoreSearch? storeSearch;
+    // Shown when opening fails in a way the app has no specific message for (the smoke test treats it as a failure).
+    private const string UnexpectedError = "The document could not be opened because of an unexpected problem. Try again, or try another copy of the file.";
     private int storeMatch = -1;
     private double zoom = 1;
     private string lastQuery = "";
@@ -58,7 +60,7 @@ public partial class MainWindow : Window
         { WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show(); }
         currentPath = path; await LoadCurrent();
         if (document is not null) throw new InvalidOperationException($"Expected {Path.GetFileName(path)} to be refused, but it opened.");
-        if (string.IsNullOrWhiteSpace(Status.Text) || Status.Text.StartsWith("The document could not open", StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(Status.Text) || Status.Text == UnexpectedError)
             throw new InvalidOperationException($"{Path.GetFileName(path)} was refused without a specific message: {Status.Text}");
         if (WebPane.BlockedRequests != 0) throw new InvalidOperationException($"The document view attempted {WebPane.BlockedRequests} blocked request(s).");
         return Status.Text;
@@ -200,7 +202,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (loading != operation) return;
-            Status.Text = ex is DocumentException ? ex.Message : "The document could not open. Check the local SDK and worker build, then try again.";
+            Status.Text = ex is DocumentException ? ex.Message : UnexpectedError;
         }
         finally
         {

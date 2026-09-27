@@ -1,8 +1,11 @@
 # Tests the installer on a clean, throwaway Windows 11 (Windows Sandbox) with networking switched off:
 # install with "Open with" and firewall rules, open every smoke fixture, refuse the hostile/broken ones, uninstall,
-# and check that nothing is left. Needs the Windows Sandbox feature (Containers-DisposableClientVM).
-# The sandbox closes itself when done; results are printed and kept in artifacts\sandbox-test\results.
-param([string]$Installer, [int]$TimeoutMinutes = 20)
+# and check that nothing is left; also keyboard-only use and high-contrast captures. Needs the Windows Sandbox feature
+# (Containers-DisposableClientVM). Windows Sandbox has no WebView2 Runtime: pass Microsoft's offline "Evergreen
+# Standalone Installer" (MicrosoftEdgeWebView2RuntimeInstallerX64.exe) as -WebView2Installer to test the PDF, Word,
+# PowerPoint and Excel views too; without it they are reported as not tested.
+# The sandbox closes itself when done; results are printed and kept in artifacts\sandbox-test\<run>\results.
+param([string]$Installer, [string]$WebView2Installer, [int]$TimeoutMinutes = 30)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if (-not $Installer) {
@@ -15,13 +18,24 @@ if (-not (Test-Path -LiteralPath $sandbox)) {
   throw 'Windows Sandbox is not enabled. As administrator: Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All, then restart.'
 }
 
-$work = Join-Path $repoRoot 'artifacts\sandbox-test'
-if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+# One folder per run: Windows keeps a closed sandbox's shared folders locked for a while.
+$runs = Join-Path $repoRoot 'artifacts\sandbox-test'
+Get-ChildItem -LiteralPath $runs -Directory -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+$work = Join-Path $runs (Get-Date -Format 'yyyyMMdd-HHmmss')
 $inputs = New-Item -ItemType Directory -Force -Path (Join-Path $work 'input')
 $results = New-Item -ItemType Directory -Force -Path (Join-Path $work 'results')
 Copy-Item -LiteralPath $Installer -Destination $inputs
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'sandbox-inner.ps1') -Destination $inputs
-Copy-Item -LiteralPath (Join-Path $repoRoot 'tests\corpus') -Destination (Join-Path $inputs 'corpus') -Recurse
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'sandbox-inner.ps1'), (Join-Path $PSScriptRoot 'keyboard-check.ps1'), (Join-Path $PSScriptRoot 'high-contrast-capture.ps1') -Destination $inputs
+# The small fixtures only: not the large generated files or the generator's packages.
+& robocopy (Join-Path $repoRoot 'tests\corpus') (Join-Path $inputs 'corpus') /E /XD generated node_modules generate /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw 'Copying the test files failed.' }
+
+# (Copying this PC's installed WebView2 Runtime into the sandbox and pointing WebView2 at it does not work: the
+# loader still reports no runtime, tried 28 Sep 2026 with both the variable and the policy override.)
+if ($WebView2Installer) {
+  if (-not (Test-Path -LiteralPath $WebView2Installer)) { throw "WebView2 installer not found: $WebView2Installer" }
+  Copy-Item -LiteralPath $WebView2Installer -Destination (Join-Path $inputs 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
+}
 
 $config = Join-Path $work 'test.wsb'
 @"
@@ -41,5 +55,11 @@ $done = Join-Path $results.FullName 'done.txt'
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 while (-not (Test-Path -LiteralPath $done) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 5 }
 Get-Content -LiteralPath (Join-Path $results.FullName 'results.txt') -ErrorAction SilentlyContinue
-if (-not (Test-Path -LiteralPath $done)) { throw "The sandbox test did not finish within $TimeoutMinutes minutes; see $($results.FullName)." }
+if (-not (Test-Path -LiteralPath $done)) {
+  # Close the throwaway sandbox this script started; nothing in it is kept.
+  Get-Process -Name 'WindowsSandboxRemoteSession', 'WindowsSandboxServer', 'WindowsSandboxClient', 'WindowsSandbox' -ErrorAction SilentlyContinue | Stop-Process -Force
+  throw "The sandbox test did not finish within $TimeoutMinutes minutes; see $($results.FullName)."
+}
 if ((Get-Content -LiteralPath $done -Raw).Trim() -ne 'PASS') { throw 'The sandbox test failed; see the results above.' }
+Write-Output "Sandbox test passed. Results: $($results.FullName)"
+exit 0 # otherwise robocopy's exit code 1 ("files copied") would be reported

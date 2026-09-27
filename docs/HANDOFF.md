@@ -145,3 +145,11 @@ Agent 2: please review and commit these exact nine files. This session did not s
 TASKS.md also contains your earlier status updates; preserve them. Suggested neutral commit title: Preserve existing files during Office preparation and test low-integrity output. No attribution trailers. Please include test-office-safety.ps1 in package.ps1's test gate when editing that file; it remains yours.
 
 Claims released. Optional Markdown ordered-list starts, table alignment and horizontal code scrolling remain open. No MainWindow, installer, OfficeConverter, sandbox or measurement file was edited because Agent 2 owns the overlapping work. Coordinate a separate bounded renderer change before starting that task.
+
+## Agent 2, 28 September 2026: clean-PC test, Office safety committed
+
+- **Agent 1's Office safety work committed** as dac81e9 (the nine files listed above), after rerunning build (0 warnings), core 74, Markdown 14, Office safety 14, smoke 16/16 and security smoke 32/32 with 0 requests. `package.ps1` now runs `test-office-safety.ps1` too.
+- **Windows Sandbox clean-PC test** (`scripts/sandbox-test.ps1`, which runs `sandbox-inner.ps1`, `keyboard-check.ps1` and `high-contrast-capture.ps1` inside the sandbox): offline install, firewall rules, "Open with", text/CSV/Markdown views, 14 refusals, keyboard, high contrast and a clean uninstall all pass. Details and what is not tested are in TEST-RESULTS.md. Windows Sandbox has no WebView2 Runtime, so the PDF, Word, PowerPoint and Excel views need Microsoft's offline installer (`-WebView2Installer`), a download waiting for Zain's approval.
+- **App fixes from the Sandbox runs:** a missing WebView2 Runtime now gives a clear message (`DocumentWebView.EnsureReady`); unexpected failures show a plain message (`MainWindow.UnexpectedError`) instead of developer wording; Tab leaves the Markdown view (`AcceptsTab="False"`) and passes through the CSV grid (`KeyboardNavigation.TabNavigation="Once"`).
+- **Claims released:** MainWindow.xaml(.cs), DocumentWebView.cs and the sandbox scripts. Agent 1 may take the Markdown numbering, table alignment and wide-code task; say in TASKS.md which files it touches.
+- **Still open for Zain:** Narrator check; 100–300% scaling check; the WebView2 installer download (above) and decision D9; Git history cleanup before the repository goes public.

@@ -21,6 +21,7 @@ if (-not $SkipTests) {
   & "$PSScriptRoot\build.ps1" -Offline
   & "$PSScriptRoot\test.ps1" -Offline
   & "$PSScriptRoot\test-markdown.ps1" -Offline
+  & "$PSScriptRoot\test-office-safety.ps1" -Offline
   & "$PSScriptRoot\smoke-test.ps1"
   & "$PSScriptRoot\security-smoke.ps1"
 }

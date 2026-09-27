@@ -55,7 +55,12 @@ internal sealed class DocumentWebView : Border
     private async Task EnsureReady()
     {
         if (web.CoreWebView2 is not null) return;
-        await web.EnsureCoreWebView2Async(await SharedEnvironment());
+        try { await web.EnsureCoreWebView2Async(await SharedEnvironment()); }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            throw new DocumentException("PDF, Word, Excel and PowerPoint files need the Microsoft Edge WebView2 Runtime, which is not installed on this PC. " +
+                "Text, CSV and Markdown files still open. Install the WebView2 Runtime from Microsoft (or ask your administrator), then open the file again.");
+        }
         var core = web.CoreWebView2 ?? throw new DocumentException("The document view could not start. Check that Microsoft Edge WebView2 Runtime is installed.");
         var settings = core.Settings;
         settings.AreDevToolsEnabled = false;

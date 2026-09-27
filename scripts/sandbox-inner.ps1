@@ -33,16 +33,41 @@ try {
   }
   Expect (Test-Path 'HKCU:\Software\Classes\PlainViewer.docx') '"Open with" registered'
 
-  $open = @('simple.txt', 'complex.txt', 'simple.csv', 'complex.csv', 'simple.md', 'complex.markdown', 'pdf\simple.pdf', 'pdf\complex.pdf',
-    'pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\simple.xlsx', 'xlsx\complex.xlsx', 'docx\simple.docx', 'docx\complex-20-pages.docx',
-    'docx\attack-remote-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx', 'pptx\simple.pptx', 'pptx\complex.pptx',
-    'pptx\attack-remote-image.pptx') | ForEach-Object { Join-Path $corpus $_ }
+  # Without a WebView2 Runtime a PDF must be refused with a clear explanation (text formats are tested below).
+  $code = Run $app @('--smoke-test', ('!' + (Join-Path $corpus 'pdf\simple.pdf'))) (Join-Path $results 'no-webview2.txt')
+  $message = Get-Content (Join-Path $results 'no-webview2.txt') -Raw
+  Expect ($code -eq 0 -and $message -match 'WebView2 Runtime') "without WebView2 a PDF is refused with a clear message"
+  # Windows Sandbox has no WebView2 Runtime. With Microsoft's offline installer (sandbox-test.ps1 -WebView2Installer)
+  # it is installed here and the PDF, Word, PowerPoint and Excel views are tested too; otherwise they are reported untested.
+  $webViews = $false
+  $webView2Setup = Get-ChildItem 'C:\Test\input' -Filter 'MicrosoftEdgeWebView2RuntimeInstaller*.exe' | Select-Object -First 1
+  if ($webView2Setup) {
+    $setupRun = Start-Process -FilePath $webView2Setup.FullName -ArgumentList '/silent', '/install' -Wait -PassThru
+    $version = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue).pv
+    $webViews = [bool]$version
+    Expect $webViews "WebView2 Runtime installed offline from Microsoft's installer (exit $($setupRun.ExitCode), version $version)"
+  }
+  else { Log 'NOT TESTED: PDF, Word, PowerPoint and Excel views (no WebView2 Runtime in Windows Sandbox; run sandbox-test.ps1 -WebView2Installer <file>)' }
+  $native = 'simple.txt', 'complex.txt', 'simple.csv', 'complex.csv', 'simple.md', 'complex.markdown'
+  $web = 'pdf\simple.pdf', 'pdf\complex.pdf', 'pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\simple.xlsx', 'xlsx\complex.xlsx',
+    'docx\simple.docx', 'docx\complex-20-pages.docx', 'docx\attack-remote-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx',
+    'pptx\simple.pptx', 'pptx\complex.pptx', 'pptx\attack-remote-image.pptx'
+  $open = @(@($native) + $(if ($webViews) { @($web) } else { @() }) | ForEach-Object { Join-Path $corpus $_ })
   $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx', 'xlsx\macro.xlsm',
     'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\damaged-truncated.docx', 'docx\macro.docm',
     'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx', 'pptx\macro.pptm') | ForEach-Object { '!' + (Join-Path $corpus $_) }
   $code = Run $app (@('--smoke-test') + $open + $refuse) (Join-Path $results 'smoke.txt')
   Get-Content (Join-Path $results 'smoke.txt') | ForEach-Object { Log "  $_" }
   Expect ($code -eq 0) "smoke test in the installed app: $($open.Count) opened, $($refuse.Count) refused (exit $code)"
+
+  # Keyboard-only use (sends keystrokes, which is why it runs only here).
+  # @(...) keeps it an array: splatting the bare string '-NoWeb' to powershell.exe makes the child exit with code 5.
+  $webSwitch = @(if (-not $webViews) { '-NoWeb' })
+  $output = (& powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\Test\input\keyboard-check.ps1' -App $app -Corpus $corpus -Log $log @webSwitch 2>&1 | Out-String).Trim()
+  if ($output) { Log "  $output" }
+  Expect ($LASTEXITCODE -eq 0) "keyboard: every toolbar control and the document are reachable with Tab, and Tab leaves the document (exit $LASTEXITCODE)"
+  # High contrast (switches the sandbox's theme): images for review in results\high-contrast.
+  Log (& powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\Test\input\high-contrast-capture.ps1' -App $app -Corpus $corpus -Out (Join-Path $results 'high-contrast') @webSwitch 2>&1 | Out-String).Trim()
 
   $uninstall = Start-Process -FilePath (Join-Path $dir 'unins000.exe') -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
   Start-Sleep -Seconds 3
