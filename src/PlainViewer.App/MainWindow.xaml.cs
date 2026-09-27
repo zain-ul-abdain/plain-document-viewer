@@ -119,6 +119,34 @@ public partial class MainWindow : Window
         ChangeZoom(1.2);
         if (document.Kind == "markdown") { SourceToggle.IsChecked = true; if (TextView.Text != document.Text) throw new InvalidOperationException("Source view mismatch."); }
     }
+    // Timing mode for scripts/measure.ps1: shows the window off-screen, opens the file, and reports milliseconds from
+    // process start until the window is drawn, and from the start of opening until the first content is drawn
+    // (for PDF, Word and PowerPoint: the first page; for workbooks: the first sheet), plus peak memory in MB.
+    internal async Task<Dictionary<string, object?>> MeasureAsync(string? path, DateTime processStart)
+    {
+        var result = new Dictionary<string, object?>();
+        WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false;
+        var drawn = new TaskCompletionSource(); ContentRendered += (_, _) => drawn.TrySetResult();
+        Show(); await drawn.Task;
+        result["windowReadyMs"] = Math.Round((DateTime.Now - processStart).TotalMilliseconds);
+        if (path is not null)
+        {
+            var firstPage = new TaskCompletionSource();
+            WebPane.Rendered += () => firstPage.TrySetResult();
+            var clock = Stopwatch.StartNew();
+            currentPath = path; await LoadCurrent();
+            if (document is null) { result["error"] = Status.Text; return result; }
+            if (InWebPane) { if (await Task.WhenAny(firstPage.Task, Task.Delay(120_000)) != firstPage.Task) result["error"] = "No page was drawn within two minutes."; }
+            else await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);   // after layout and drawing
+            result["firstContentMs"] = Math.Round(clock.Elapsed.TotalMilliseconds);
+        }
+        const double MB = 1024 * 1024;
+        result["appPeakMb"] = Math.Round(Process.GetCurrentProcess().PeakWorkingSet64 / MB);
+        result["workerPeakMb"] = Math.Round(WorkerJob.LastPeakBytes / MB);
+        result["converterPeakMb"] = Math.Round(OfficeConverter.LastPeakBytes / MB);
+        result["webViewPeakMb"] = Math.Round(ProcessTree.PeakBytesOfDescendants(Environment.ProcessId) / MB);
+        return result;
+    }
     private void OpenClicked(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.pdf;*.docx;*.xlsx;*.pptx;*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
@@ -409,22 +437,13 @@ public partial class MainWindow : Window
     private void NextPage(object s, RoutedEventArgs e) => WebPane.Step(1);
     private async Task<DocumentView> LoadOffice(string path, CancellationToken cancellation)
     {
-        // The worker checks the package and writes a private copy without outside references; LibreOffice converts that copy.
-        string work = OfficeConverter.NewWorkFolder();
-        try
-        {
-            string copy = Path.Combine(work, "in", "document" + Path.GetExtension(path).ToLowerInvariant());
-            var prepared = await WorkerClient.PrepareOffice(path, copy, cancellation);
-            Status.Text = "Preparing the document for viewing…";
-            var pdf = await OfficeConverter.ToPdf(copy, work, cancellation);
-            Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
-            WebPane.Visibility = Visibility.Visible;
-            bool slides = prepared.Kind == "slides";
-            await WebPane.LoadPdf(pdf, IsDarkTheme(), cancellation, slides);
-            if (slides) prepared.Notice = (prepared.Notice + " Slides are shown as still pictures: animations, transitions, audio and video do not play.").Trim();
-            return prepared;
-        }
-        finally { OfficeConverter.Delete(work); }
+        var (prepared, pdf) = await OfficeConverter.Convert(path, cancellation, () => Status.Text = "Preparing the document for viewing…");
+        Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
+        WebPane.Visibility = Visibility.Visible;
+        bool slides = prepared.Kind == "slides";
+        await WebPane.LoadPdf(pdf, IsDarkTheme(), cancellation, slides);
+        if (slides) prepared.Notice = (prepared.Notice + " Slides are shown as still pictures: animations, transitions, audio and video do not play.").Trim();
+        return prepared;
     }
     private void PageBoxKeyDown(object s, KeyEventArgs e)
     {

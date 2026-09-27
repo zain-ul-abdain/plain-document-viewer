@@ -14,6 +14,29 @@ public partial class App : Application
             Shutdown(await PrewarmConverter() ? 0 : 1);
             return;
         }
+        // Test aid for scripts/compare-office.ps1: "--export-pdf <Word or PowerPoint file> <output.pdf>" converts the file
+        // through the viewer's own checks and converter and saves the PDF it would show.
+        if (e.Args.FirstOrDefault() == "--export-pdf" && e.Args.Length == 3)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            try
+            {
+                var (_, pdf) = await OfficeConverter.Convert(e.Args[1], CancellationToken.None);
+                await System.IO.File.WriteAllBytesAsync(e.Args[2], pdf);
+                Shutdown(0);
+            }
+            catch (Exception ex) { Console.Error.WriteLine(ex.Message); Shutdown(1); }
+            return;
+        }
+        // Timing and memory for scripts/measure.ps1: "--measure [file]" prints one JSON line.
+        if (e.Args.FirstOrDefault() == "--measure")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var result = await new MainWindow().MeasureAsync(e.Args.ElementAtOrDefault(1), System.Diagnostics.Process.GetCurrentProcess().StartTime);
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
+            Shutdown(result.ContainsKey("error") ? 1 : 0);
+            return;
+        }
         if (e.Args.FirstOrDefault() == "--smoke-test")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

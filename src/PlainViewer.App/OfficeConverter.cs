@@ -67,17 +67,38 @@ internal static class OfficeConverter
         }
     }
 
+    // The whole Word/PowerPoint path: the worker checks the package and writes a private copy without outside
+    // references, then LibreOffice converts that copy. `converting` runs between the two steps (status text).
+    public static async Task<(DocumentView Prepared, byte[] Pdf)> Convert(string path, CancellationToken cancellation, Action? converting = null)
+    {
+        string work = NewWorkFolder();
+        try
+        {
+            string copy = Path.Combine(work, "in", "document" + Path.GetExtension(path).ToLowerInvariant());
+            var prepared = await WorkerClient.PrepareOffice(path, copy, cancellation);
+            converting?.Invoke();
+            return (prepared, await ToPdf(copy, work, cancellation));
+        }
+        finally { Delete(work); }
+    }
+
     public static async Task<byte[]> ToPdf(string input, string work, CancellationToken cancellation)
     {
         string soffice = FindLibreOffice() ?? throw new DocumentException("Word and PowerPoint viewing needs the document converter, which is not installed. Reinstall Plain Viewer to add it.");
         string output = Path.Combine(work, "out"), temp = Path.Combine(work, "tmp");
         Directory.CreateDirectory(output); Directory.CreateDirectory(temp);
         using var gate = await Acquire(cancellation);
-        PrepareProfile();
-        int exit = await Task.Run(() => RunLimited(soffice, $"{CommonArguments} --convert-to pdf --outdir \"{output}\" \"{input}\"", temp, cancellation), cancellation);
         string pdf = Path.Combine(output, Path.GetFileNameWithoutExtension(input) + ".pdf");
-        if (exit != 0 || !File.Exists(pdf) || new FileInfo(pdf).Length == 0)
+        for (int attempt = 1; ; attempt++)
+        {
+            PrepareProfile(soffice);
+            int exit = await Task.Run(() => RunLimited(soffice, $"{CommonArguments} --convert-to pdf --outdir \"{output}\" \"{input}\"", temp, cancellation), cancellation);
+            if (exit == 0 && File.Exists(pdf) && new FileInfo(pdf).Length > 0) break;
+            // A profile LibreOffice never finished building (no ready marker) can make it quit without converting:
+            // start again from a new profile, once.
+            if (attempt == 1 && !IsReady(soffice)) { try { Directory.Delete(Profile, true); } catch (DirectoryNotFoundException) { } continue; }
             throw new DocumentException("This document could not be prepared for viewing. It may be damaged or use features this viewer cannot show. Try another copy of the file.");
+        }
         MarkReady(soffice);
         return await File.ReadAllBytesAsync(pdf, cancellation);
     }
@@ -100,7 +121,7 @@ internal static class OfficeConverter
         try
         {
             Directory.CreateDirectory(output); Directory.CreateDirectory(temp);
-            PrepareProfile();
+            PrepareProfile(soffice);
             string[] names = ["prewarm-word.docx", "prewarm-slides.pptx"];
             string inputs = string.Join(' ', names.Select(name => $"\"{Path.Combine(samples, name)}\""));
             int exit = await Task.Run(() => RunLimited(soffice, $"{CommonArguments} --convert-to pdf --outdir \"{output}\" {inputs}", temp, cancellation), cancellation);
@@ -131,12 +152,10 @@ internal static class OfficeConverter
     }
 
     // The LibreOffice build and folder the profile was made with; a different LibreOffice gets a fresh profile.
-    private static string Stamp(string soffice)
-    {
-        string program = Path.GetDirectoryName(soffice)!;
-        string build = File.ReadLines(Path.Combine(program, "version.ini")).FirstOrDefault(line => line.StartsWith("buildid=", StringComparison.Ordinal)) ?? "";
-        return build + "\n" + program;
-    }
+    private static string Stamp(string soffice) => "buildid=" + BuildId(soffice) + "\n" + Path.GetDirectoryName(soffice);
+
+    private static string BuildId(string soffice) =>
+        File.ReadLines(Path.Combine(Path.GetDirectoryName(soffice)!, "version.ini")).FirstOrDefault(line => line.StartsWith("buildid=", StringComparison.Ordinal))?["buildid=".Length..] ?? "";
 
     private static bool IsReady(string soffice)
     {
@@ -152,18 +171,21 @@ internal static class OfficeConverter
 
     private static string FileUrl(string path) => "file:///" + path.Replace('\\', '/');
 
-    private static void PrepareProfile()
+    private static void PrepareProfile(string soffice)
     {
         string user = Path.Combine(Profile, "user");
         Directory.CreateDirectory(user);
         // Rewritten before every run: restores the hardened settings and clears LibreOffice's history.
-        File.WriteAllText(Path.Combine(user, "registrymodifications.xcu"), HardenedSettings(), new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(user, "registrymodifications.xcu"), HardenedSettings(IsReady(soffice) ? BuildId(soffice) : null), new UTF8Encoding(false));
         foreach (var leftover in new[] { "backup", "temp" })
             try { Directory.Delete(Path.Combine(user, leftover), true); } catch (DirectoryNotFoundException) { } catch (IOException) { }
     }
 
     // Values checked against LibreOffice's configuration schema (see DECISIONS.md). "Never" is 2 for Writer and 1 for Calc.
-    private static string HardenedSettings()
+    // readyBuild: once the profile is built, LibreOffice's own record that set-up and its extension check are done for
+    // this build. Without it every run repeats that check and may restart LibreOffice, which reset some of these
+    // settings to their defaults (found by the Office comparison tests).
+    private static string HardenedSettings(string? readyBuild)
     {
         var items = new List<(string Path, string Name, string Value)>
         {
@@ -175,10 +197,9 @@ internal static class OfficeConverter
             ("/org.openoffice.Office.Calc/Content/Update", "Link", "1"),
             ("/org.openoffice.Office.Calc/Formula/Load", "OOXMLRecalcMode", "1"),
             ("/org.openoffice.Office.Calc/Formula/Load", "ODFRecalcMode", "1"),
-            ("/org.openoffice.Office.Common/Load", "UseDocumentOOoLockFile", "false"),
-            ("/org.openoffice.Office.Common/Load", "UseDocumentSystemFileLocking", "false"),
+            ("/org.openoffice.Office.Common/Misc", "UseDocumentOOoLockFile", "false"),
+            ("/org.openoffice.Office.Common/Misc", "UseDocumentSystemFileLocking", "false"),
             ("/org.openoffice.Office.Common/Misc", "CrashReport", "false"),
-            ("/org.openoffice.Office.Jobs/Jobs/org.openoffice.Office.Jobs:Job['UpdateCheck']/Arguments", "AutoCheckEnabled", "false"),
         };
         // Extra layer: send any web request LibreOffice makes to a closed local port. Tests switch this off so the
         // request listener can observe LibreOffice directly.
@@ -189,10 +210,55 @@ internal static class OfficeConverter
                 ("/org.openoffice.Inet/Settings", "ooInetHTTPSProxyName", "127.0.0.1"), ("/org.openoffice.Inet/Settings", "ooInetHTTPSProxyPort", "9"),
                 ("/org.openoffice.Inet/Settings", "ooInetFTPProxyName", "127.0.0.1"), ("/org.openoffice.Inet/Settings", "ooInetFTPProxyPort", "9"),
                 ("/org.openoffice.Inet/Settings", "ooInetNoProxy", "")]);
+        if (readyBuild is { Length: > 0 })
+            items.AddRange([("/org.openoffice.Setup/Office", "ooSetupInstCompleted", "true"), ("/org.openoffice.Setup/Office", "LastCompatibilityCheckID", System.Security.SecurityElement.Escape(readyBuild))]);
+        var replacements = FontReplacements();
+        items.Add(("/org.openoffice.Office.Common/Font/Substitution", "Replacement", replacements.Count > 0 ? "true" : "false"));
         var xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<oor:items xmlns:oor=\"http://openoffice.org/2001/registry\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n");
         foreach (var (path, name, value) in items)
             xml.Append($"<item oor:path=\"{path.Replace("'", "&apos;")}\"><prop oor:name=\"{name}\" oor:op=\"fuse\"><value>{value}</value></prop></item>\n");
+        for (int i = 0; i < replacements.Count; i++)
+            xml.Append($"<item oor:path=\"/org.openoffice.Office.Common/Font/Substitution/FontPairs\"><node oor:name=\"_{i}\" oor:op=\"replace\">")
+               .Append("<prop oor:name=\"Always\" oor:op=\"fuse\"><value>true</value></prop><prop oor:name=\"OnScreenOnly\" oor:op=\"fuse\"><value>false</value></prop>")
+               .Append($"<prop oor:name=\"ReplaceFont\" oor:op=\"fuse\"><value>{System.Security.SecurityElement.Escape(replacements[i].Missing)}</value></prop>")
+               .Append($"<prop oor:name=\"SubstituteFont\" oor:op=\"fuse\"><value>{System.Security.SecurityElement.Escape(replacements[i].Use)}</value></prop></node></item>\n");
+        // A property added to an extensible group needs its type. Without it LibreOffice rejected this entry and ignored
+        // every entry after it (found in September 2026; the update check had stayed on). Written last as a precaution.
+        xml.Append("<item oor:path=\"/org.openoffice.Office.Jobs/Jobs/org.openoffice.Office.Jobs:Job[&apos;UpdateCheck&apos;]/Arguments\">")
+           .Append("<prop oor:name=\"AutoCheckEnabled\" oor:op=\"fuse\" oor:type=\"xs:boolean\"><value>false</value></prop></item>\n");
         return xml.Append("</oor:items>\n").ToString();
+    }
+
+    // Fonts that Office documents often use but many Windows PCs lack. Left to itself, LibreOffice may pick a much wider
+    // font (for Arabic it chose Arial Black), which pushes text onto extra pages. A rule is written only for a font that
+    // is not installed, so an installed font is always used. PLAINVIEWER_FONT_REPLACEMENTS ("Font=Font;...") replaces
+    // the list, for comparison tests.
+    private static readonly (string Missing, string Use)[] DefaultReplacements =
+    [
+        ("Simplified Arabic", "Arial"), ("Simplified Arabic Fixed", "Courier New"), ("Traditional Arabic", "Times New Roman"),
+        ("Arabic Typesetting", "Times New Roman"), ("Sakkal Majalla", "Arial"), ("Andalus", "Arial"),
+        ("SimHei", "Microsoft YaHei"), ("黑体", "Microsoft YaHei"), ("DengXian", "Microsoft YaHei"), ("等线", "Microsoft YaHei"),
+    ];
+
+    private static List<(string Missing, string Use)> FontReplacements()
+    {
+        var pairs = Environment.GetEnvironmentVariable("PLAINVIEWER_FONT_REPLACEMENTS") is { Length: > 0 } configured
+            ? configured.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(pair => pair.Split('=', 2)).Where(p => p.Length == 2).Select(p => (p[0].Trim(), p[1].Trim())).ToArray()
+            : DefaultReplacements;
+        var installed = Installed.Value;
+        return pairs.Where(pair => !installed.Contains(pair.Item1) && installed.Contains(pair.Item2)).ToList();
+    }
+
+    private static readonly Lazy<HashSet<string>> Installed = new(InstalledFonts);
+    private static HashSet<string> InstalledFonts()
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var family in System.Windows.Media.Fonts.SystemFontFamilies)
+            foreach (var name in family.FamilyNames.Values) names.Add(name);
+        // Fonts installed for the current user only are not always in SystemFontFamilies.
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows NT\CurrentVersion\Fonts");
+        foreach (var name in key?.GetValueNames() ?? []) names.Add(System.Text.RegularExpressions.Regex.Replace(name, @" \(.*\)$", ""));
+        return names;
     }
 
     private static int RunLimited(string exe, string arguments, string temp, CancellationToken cancellation)
@@ -249,8 +315,17 @@ internal static class OfficeConverter
             }
             finally { CloseHandle(process.Thread); CloseHandle(process.Process); }
         }
-        finally { CloseHandle(job); }   // kill-on-close ends LibreOffice and anything it started
+        finally
+        {
+            var usage = new ExtendedLimits();
+            if (QueryInformationJobObject(job, 9, ref usage, (uint)Marshal.SizeOf<ExtendedLimits>(), IntPtr.Zero)) LastPeakBytes = (long)usage.PeakJobMemory;
+            CloseHandle(job);   // kill-on-close ends LibreOffice and anything it started
+        }
     }
+
+    // Peak memory of the most recent LibreOffice run (all its processes together), for scripts/measure.ps1.
+    public static long LastPeakBytes { get; private set; }
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(IntPtr job, int infoClass, ref ExtendedLimits info, uint size, IntPtr returned);
 
     private static uint ActiveProcesses(IntPtr job)
     {

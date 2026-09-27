@@ -1,0 +1,543 @@
+[
+  {
+    "id": "ccew-ie-report-rp",
+    "kind": "docx",
+    "publisher": "Charity Commission for England and Wales (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "report template",
+      "tables",
+      "numbered lists",
+      "header/footer (3 variants)",
+      "logo image"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/5be2c8a3e5274a0847c448d8/Independent_examiner_s_report_template_R_P_accounts_Oct_2018.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/5be2c88be5274a083b51f944/Independent_examiner_s_report_template_R_P_accounts_Oct_2018.pdf",
+    "officeFile": "ccew-ie-report-rp.docx",
+    "pdfFile": "ccew-ie-report-rp.pdf",
+    "officeSha256": "1e80983047b04abda15bdb35985b7246e033a05015209f7b774f8c06e5a662e2",
+    "pdfSha256": "30e9c7bf5b95ac5f8db15cadb6ebf37624b7868bc2860e11cf5454b925b956e6",
+    "officePages": 2,
+    "pdfPages": 2,
+    "pdfProducer": "Microsoft® Word 2013"
+  },
+  {
+    "id": "dbt-flexible-working-form",
+    "kind": "docx",
+    "publisher": "Department for Business and Trade (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "plain form (Form FW(A))",
+      "headings",
+      "list",
+      "minimal formatting baseline"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/65f1a247981227a772f6136e/request-flexible-working-docx-form.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/65f3256afa18510011011779/request-flexible-working-pdf-form.pdf",
+    "officeFile": "dbt-flexible-working-form.docx",
+    "pdfFile": "dbt-flexible-working-form.pdf",
+    "officeSha256": "055fe6227daa62d63d0764158214c9a7bdac55427b37cd27229118efa65bc673",
+    "pdfSha256": "df1831adb9582bb2a504d929eefabf95a3782f10088682d740026d61e46ab59e",
+    "officePages": 3,
+    "pdfPages": 3,
+    "pdfProducer": "Microsoft® Word for Microsoft 365"
+  },
+  {
+    "id": "fc-woodland-plan",
+    "kind": "docx",
+    "publisher": "Forestry Commission (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "forms-like template",
+      "legacy form fields (w:ffData, ~640)",
+      "checkboxes",
+      "21 tables",
+      "3 sections",
+      "header/footer",
+      "images"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/65c4e2d5cc433b0011a90a80/220921_SmallWoodlandManagement_PlanTemplate_v1.2.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/65c4eaa2cc433b000ca90ab0/220921_SmallWoodlandManagement_PlanTemplate_v1.2.pdf",
+    "officeFile": "fc-woodland-plan.docx",
+    "pdfFile": "fc-woodland-plan.pdf",
+    "officeSha256": "5ab53154db1b91306bc6c00b254e756162517fa2c273140088d93d8409e26f3b",
+    "pdfSha256": "ab54c118fea4382c4eb849c966c74676b231822b0c7060034c419573031152c7",
+    "officePages": 6,
+    "pdfPages": 6,
+    "pdfProducer": "Microsoft® Word for Microsoft 365",
+    "notes": "Attached template is ClassicFormControls.dotm but the .docx itself has no VBA part. PDF exported 2024-02-08 from the file last saved 2022-09-21; text overlap 0.99."
+  },
+  {
+    "id": "ho-asylum-support-asf1",
+    "kind": "docx",
+    "publisher": "UK Visas and Immigration / Home Office (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "36-page form",
+      "49 tables",
+      "~380 text boxes",
+      "DrawingML + VML shapes",
+      "multi-column sections (up to 3)",
+      "37 sections",
+      "lists",
+      "footer"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/653122780b53920013a929ea/Asylum_Support_Application_Form_ASF1.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/652e5016d86b1b00143a50c2/Asylum_Support_Application_Form_ASF1.pdf",
+    "officeFile": "ho-asylum-support-asf1.docx",
+    "pdfFile": "ho-asylum-support-asf1.pdf",
+    "officeSha256": "c775f2e040772b3dd9e86b339a65d70e03a6469f62803c02432338e5d1555654",
+    "pdfSha256": "1f90e24ddddd5c47dcfdb35e83fc458447b2c22ab97f45f2bffe3cba0d8838bd",
+    "officePages": 36,
+    "pdfPages": 36,
+    "pdfProducer": "Microsoft® Word for Microsoft 365",
+    "notes": "GOV.UK labels the Word file \"to be completed online\" and the PDF \"to be printed\"; same content (text overlap 0.99), PDF created 2 minutes before the final .docx save."
+  },
+  {
+    "id": "ofsted-ey-health",
+    "kind": "docx",
+    "publisher": "Ofsted (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "16-page form",
+      "7 tables",
+      "content controls",
+      "footnote",
+      "header/footer",
+      "logo image"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/664781a0993111924d9d3790/EY_Health_Declaration_Form.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/664749b1bd01f5ed32793dde/EY_Health_Declaration_Form.pdf",
+    "officeFile": "ofsted-ey-health.docx",
+    "pdfFile": "ofsted-ey-health.pdf",
+    "officeSha256": "415c668fc355dbbc415bdd65ff0e0761f661ce656666586ca566b47e6f93036e",
+    "pdfSha256": "4bb7aabcfcc78c61cc4f0b081cc4e91a884452f3023036f5cc1065dcff2a0bec",
+    "officePages": 16,
+    "pdfPages": 16,
+    "pdfProducer": "Microsoft® Word for Microsoft 365",
+    "notes": "PDF created 2024-05-08; .docx is a 2024-05-17 save (revision 1); text overlap 0.995."
+  },
+  {
+    "id": "ofsted-sc-health",
+    "kind": "docx",
+    "publisher": "Ofsted (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "8-page form",
+      "checkbox content controls",
+      "4 tables",
+      "footnote",
+      "header/footer"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/664781c5ae748c43d3793e1e/SC_Health_declaration_form.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/664749c7bd01f5ed32793ddf/SC_Health_declaration_form.pdf",
+    "officeFile": "ofsted-sc-health.docx",
+    "pdfFile": "ofsted-sc-health.pdf",
+    "officeSha256": "fd2fa0295b928c7fde30cbd5d7742aabae4b211e45cf0bae08f357e408af5da0",
+    "pdfSha256": "75515a564536dfd5d613e3ad6ca126a99768173f6d2b6581c303810f70662739",
+    "officePages": 8,
+    "pdfPages": 8,
+    "pdfProducer": "Microsoft® Word for Microsoft 365",
+    "notes": "PDF created 2024-05-13; .docx is a 2024-05-17 save; text overlap 0.99."
+  },
+  {
+    "id": "ofsted-stats-reporting-changes",
+    "kind": "docx",
+    "publisher": "Ofsted (GOV.UK, official statistics)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "statistics report",
+      "figures (8 drawings/images)",
+      "table",
+      "bulleted lists",
+      "header/footer",
+      "Word 2013 export"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/5b30d702e5274a55c1d7dc90/Changes_to_Ofsteds_statistical_reporting_of_school_inspections_June_2018.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/5b30d70240f0b67f700184ac/Changes_to_Ofsteds_statistical_reporting_of_school_inspections_June_2018.pdf",
+    "officeFile": "ofsted-stats-reporting-changes.docx",
+    "pdfFile": "ofsted-stats-reporting-changes.pdf",
+    "officeSha256": "f621b6fb2d4f342e268d3320bb262d96b2ff0c74c16f1f7dbd9672675d87a46f",
+    "pdfSha256": "d1b1abb969d4824675d38b4d693f3eee0c14d546edb37d47fbfd26f841b3848a",
+    "officePages": 14,
+    "pdfPages": 14,
+    "pdfProducer": "Microsoft® Word 2013"
+  },
+  {
+    "id": "ofsted-jtai-consultation-response",
+    "kind": "docx",
+    "publisher": "Ofsted with HMIC, HMI Probation and CQC (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "report",
+      "14 tables",
+      "5 footnotes",
+      "10 images",
+      "multiple header/footer sets (4 sections)",
+      "Word 2010 export"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/5a81622540f0b62305b8ea81/CONSULTATION_RESPONSE_JTAI.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/5a80dda6ed915d74e6230e4b/CONSULTATION_RESPONSE_JTAI.pdf",
+    "officeFile": "ofsted-jtai-consultation-response.docx",
+    "pdfFile": "ofsted-jtai-consultation-response.pdf",
+    "officeSha256": "8537a7b1ad340ed11270f26cafcc5583a2c614ac610d7fd908e07d240c7d2636",
+    "pdfSha256": "2f3fec93c92dded65771985353eec69294231f0ab39146df53ab2c2cf487d98f",
+    "officePages": 16,
+    "pdfPages": 16,
+    "pdfProducer": "Microsoft® Word 2010"
+  },
+  {
+    "id": "ukhsa-tetanus-form",
+    "kind": "docx",
+    "publisher": "UK Health Security Agency (GOV.UK)",
+    "licence": {
+      "name": "Open Government Licence v3.0 (GOV.UK terms: all content under OGL v3 unless otherwise stated)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.gov.uk/help/terms-conditions"
+    },
+    "features": [
+      "surveillance questionnaire",
+      "32 text boxes",
+      "VML/DrawingML shapes",
+      "tables",
+      "checkbox glyphs",
+      "footer"
+    ],
+    "officeUrl": "https://assets.publishing.service.gov.uk/media/64db7922c8dee400127f1c9a/Tetanus_enhanced_surveillance_form_2023.docx",
+    "pdfUrl": "https://assets.publishing.service.gov.uk/media/64db792cc8dee400127f1c9b/Tetanus_enhanced_surveillance_form_2023.pdf",
+    "officeFile": "ukhsa-tetanus-form.docx",
+    "pdfFile": "ukhsa-tetanus-form.pdf",
+    "officeSha256": "fe2a5b533b2570e854dfeacbea7100c281d3c61220b7f8666a133e5d3924541e",
+    "pdfSha256": "e55471d565044691bb4bdf216e1f99e097190d7eeaeccf9cb780bb2f9c714cc0",
+    "officePages": 3,
+    "pdfPages": 3,
+    "pdfProducer": "Microsoft® Word for Microsoft 365",
+    "notes": "PDF created 2023-08-15 12:17Z; the .docx was saved about 50 minutes later (revision 2); text overlap 0.99."
+  },
+  {
+    "id": "doh-au-registered-supporters-guide",
+    "kind": "docx",
+    "publisher": "Australian Government Department of Health, Disability and Ageing",
+    "licence": {
+      "name": "Commonwealth of Australia copyright; health.gov.au copyright terms (reproduction in unaltered form for personal/non-commercial use; CC BY 4.0 only where a publication states it - these two carry no CC notice)",
+      "url": "https://www.health.gov.au/using-our-websites/copyright",
+      "termsPage": "https://www.health.gov.au/using-our-websites/copyright"
+    },
+    "features": [
+      "quick-reference guide",
+      "table",
+      "lists",
+      "header/footer",
+      "banner image"
+    ],
+    "officeUrl": "https://www.health.gov.au/sites/default/files/2025-10/quick-reference-guide-for-aged-care-workers-working-with-registered-supporters.docx",
+    "pdfUrl": "https://www.health.gov.au/sites/default/files/2025-10/quick-reference-guide-for-aged-care-workers-working-with-registered-supporters.pdf",
+    "officeFile": "doh-au-registered-supporters-guide.docx",
+    "pdfFile": "doh-au-registered-supporters-guide.pdf",
+    "officeSha256": "32a71c2b6d1bf524e3fde74ca720dbe2d48daa86d621b5bc142e3fc3327702f7",
+    "pdfSha256": "4a26de85ff379250fdc587938219a0d17cc8c15331fd7e30131a70d5e032af79",
+    "officePages": 3,
+    "pdfPages": 3,
+    "pdfProducer": "Microsoft® Word for Microsoft 365"
+  },
+  {
+    "id": "doh-au-cultural-safety-checklist",
+    "kind": "docx",
+    "publisher": "Australian Government Department of Health, Disability and Ageing",
+    "licence": {
+      "name": "Commonwealth of Australia copyright; health.gov.au copyright terms (reproduction in unaltered form for personal/non-commercial use; CC BY 4.0 only where a publication states it - these two carry no CC notice)",
+      "url": "https://www.health.gov.au/using-our-websites/copyright",
+      "termsPage": "https://www.health.gov.au/using-our-websites/copyright"
+    },
+    "features": [
+      "checklist",
+      "35 checkbox content controls",
+      "12 tables",
+      "bulleted lists",
+      "images",
+      "header/footer"
+    ],
+    "officeUrl": "https://www.health.gov.au/sites/default/files/2025-10/everyday-practice-checklist-on-cultural-safety-for-aged-care-workers.docx",
+    "pdfUrl": "https://www.health.gov.au/sites/default/files/2025-10/everyday-practice-checklist-on-cultural-safety-for-aged-care-workers.pdf",
+    "officeFile": "doh-au-cultural-safety-checklist.docx",
+    "pdfFile": "doh-au-cultural-safety-checklist.pdf",
+    "officeSha256": "aa573e8bf23fe97fd17095b1186cb1423d6992e2bb969e9f8bd3df589ad4ecd7",
+    "pdfSha256": "8fdc822be5dbc0204380979833cdff034fa514d8782315716dcb26d7590679a2",
+    "officePages": 6,
+    "pdfPages": 6,
+    "pdfProducer": "Microsoft® Word for Microsoft 365"
+  },
+  {
+    "id": "un-a-res-78-1-arabic",
+    "kind": "docx",
+    "publisher": "United Nations (Official Document System) - General Assembly resolution A/RES/78/1, Arabic",
+    "licence": {
+      "name": "United Nations Terms of Use (UN official document)",
+      "url": "https://www.un.org/en/about-us/terms-of-use",
+      "termsPage": "https://www.un.org/en/about-us/terms-of-use"
+    },
+    "features": [
+      "Arabic",
+      "right-to-left (bidi)",
+      "footnotes",
+      "first/odd/even headers and footers",
+      "UN emblem + barcode/QR images",
+      "comments part present"
+    ],
+    "officeUrl": "https://documents.un.org/doc/UNDOC/GEN/N23/306/63/DOC/N2330663.DOC",
+    "pdfUrl": "https://documents.un.org/doc/UNDOC/GEN/N23/306/63/PDF/N2330663.PDF",
+    "officeFile": "un-a-res-78-1-arabic.docx",
+    "pdfFile": "un-a-res-78-1-arabic.pdf",
+    "officeSha256": "f09c29ecbe9a223b1e776c7dbf7ec398b3bff77ab482dab44d2b463b18d50d30",
+    "pdfSha256": "6104305059dfd48b7c5799f3e064f9d082b096eff6cd5ed2fe2a8a45d8d963ef",
+    "officePages": 14,
+    "pdfPages": 14,
+    "pdfProducer": "Microsoft® Word for Microsoft 365",
+    "notes": "ODS serves the Word file with a .DOC extension and application/msword type, but it is OOXML WordprocessingML (not macro-enabled); saved locally as .docx. pdf.js text extraction of this Arabic PDF is lossy (lam-alef ligatures, kashida), so the automatic text-overlap figure is low; page count and producer checks pass."
+  },
+  {
+    "id": "un-a-res-78-1-chinese",
+    "kind": "docx",
+    "publisher": "United Nations (Official Document System) - General Assembly resolution A/RES/78/1, Chinese",
+    "licence": {
+      "name": "United Nations Terms of Use (UN official document)",
+      "url": "https://www.un.org/en/about-us/terms-of-use",
+      "termsPage": "https://www.un.org/en/about-us/terms-of-use"
+    },
+    "features": [
+      "Chinese (CJK)",
+      "footnotes",
+      "table",
+      "first/odd/even headers and footers",
+      "emblem + barcode/QR images",
+      "comments part present",
+      "PDF from Chinese-UI Word"
+    ],
+    "officeUrl": "https://documents.un.org/doc/UNDOC/GEN/N23/306/64/DOC/N2330664.DOC",
+    "pdfUrl": "https://documents.un.org/doc/UNDOC/GEN/N23/306/64/PDF/N2330664.PDF",
+    "officeFile": "un-a-res-78-1-chinese.docx",
+    "pdfFile": "un-a-res-78-1-chinese.pdf",
+    "officeSha256": "6644d94ddcf5afe31ab84bcca9ca627a5f528a911cf1ef41d4cfecd3bc6d13da",
+    "pdfSha256": "28e062a44be2d5383e3d82fdf295a47da51dbea63d333878acf7fbb8030693f9",
+    "officePages": 11,
+    "pdfPages": 11,
+    "pdfProducer": "Microsoft® Word 适用于 Microsoft 365",
+    "notes": "Same .DOC-extension OOXML situation as the Arabic file; saved locally as .docx."
+  },
+  {
+    "id": "un-e-2024-57-sdg-report",
+    "kind": "docx",
+    "publisher": "United Nations (Official Document System) - ECOSOC E/2024/57, Secretary-General SDG progress report, English",
+    "licence": {
+      "name": "United Nations Terms of Use (UN official document)",
+      "url": "https://www.un.org/en/about-us/terms-of-use",
+      "termsPage": "https://www.un.org/en/about-us/terms-of-use"
+    },
+    "features": [
+      "20-page report",
+      "49 footnotes",
+      "3 tables",
+      "headers/footers",
+      "emblem + barcode/QR images",
+      "comments part present"
+    ],
+    "officeUrl": "https://documents.un.org/doc/UNDOC/GEN/N24/134/20/DOC/N2413420.DOCX",
+    "pdfUrl": "https://documents.un.org/doc/UNDOC/GEN/N24/134/20/PDF/N2413420.PDF",
+    "officeFile": "un-e-2024-57-sdg-report.docx",
+    "pdfFile": "un-e-2024-57-sdg-report.pdf",
+    "officeSha256": "341cba0058f3a464ddf86e559f1a966cb176628c4f37d585f02450fe859187d7",
+    "pdfSha256": "eab507917846287865e6289ead1d8142bf3ce0415f154b620a30bb3263dfdbfe",
+    "officePages": 20,
+    "pdfPages": 20,
+    "pdfProducer": "Microsoft® Word for Microsoft 365"
+  },
+  {
+    "id": "gla-health-inequalities-appendix",
+    "kind": "pptx",
+    "publisher": "Greater London Authority (London Datastore) - Snapshot of Health Inequalities in London 2022, Appendix",
+    "licence": {
+      "name": "London Datastore terms and conditions; this dataset declares no specific licence (GLA content is commonly OGL but it is not stated for this item)",
+      "url": "https://data.london.gov.uk/about/terms-and-conditions/",
+      "termsPage": "https://data.london.gov.uk/about/terms-and-conditions/"
+    },
+    "features": [
+      "16:9 slides",
+      "9 tables",
+      "pictures",
+      "speaker notes",
+      "many slide layouts (114)"
+    ],
+    "officeUrl": "https://data.london.gov.uk/download/2n1qm/204601ee-0585-4ffa-a028-79c892e85aa3/Appendix.pptx",
+    "pdfUrl": "https://data.london.gov.uk/download/2n1qm/b79e87b1-b1c2-4eda-a256-ecfcf1b3fe85/Appendix.pdf",
+    "officeFile": "gla-health-inequalities-appendix.pptx",
+    "pdfFile": "gla-health-inequalities-appendix.pdf",
+    "officeSha256": "1c93da449a32624f70fd21e89aa343471e8b189749f5d325ec0917ad046f1109",
+    "pdfSha256": "cab20c2bd031e34f93ac770dc8619df2e786d0927a06291fb22f81df585dbf44",
+    "officePages": 14,
+    "pdfPages": 14,
+    "pdfProducer": "Microsoft® PowerPoint® for Microsoft 365"
+  },
+  {
+    "id": "nhsd-insulin-pump-2016-17",
+    "kind": "pptx",
+    "publisher": "NHS Digital - National Diabetes Audit (Insulin Pump Audit 2016-17), commissioned by HQIP",
+    "licence": {
+      "name": "© 2018 Healthcare Quality Improvement Partnership (HQIP), all rights reserved; reproduction allowed with explicit reference to HQIP ownership; NHS/government bodies may re-use without permission (statement on the final slide). NOT OGL.",
+      "url": "https://www.hqip.org.uk/",
+      "termsPage": "https://digital.nhs.uk/about-nhs-digital/terms-and-conditions"
+    },
+    "features": [
+      "12 native charts",
+      "13 tables",
+      "pictures",
+      "speaker notes",
+      "PowerPoint 2016 export (not 365)"
+    ],
+    "officeUrl": "https://files.digital.nhs.uk/48/70B214/National%20Diabetes%20Insulin%20Pump%20Audit%20Report%2C%20Main%20Report%2C%202016-2017.pptx",
+    "pdfUrl": "https://files.digital.nhs.uk/80/1E37C4/National%20Diabetes%20Insulin%20Pump%20Audit%20Report%2C%20Main%20Report%2C%202016-2017.pdf",
+    "officeFile": "nhsd-insulin-pump-2016-17.pptx",
+    "pdfFile": "nhsd-insulin-pump-2016-17.pdf",
+    "officeSha256": "a2df88b4f4592afd579ecc320e80050bf97d85eacc3ae088cb3d03838ffd9fbb",
+    "pdfSha256": "a4582497e4c79fb39de2320b8591c8159539f73d7c02a4d3a385269ba2b67209",
+    "officePages": 38,
+    "pdfPages": 38,
+    "pdfProducer": "Microsoft® PowerPoint® 2016"
+  },
+  {
+    "id": "nhsd-nadia-harms-2019",
+    "kind": "pptx",
+    "publisher": "NHS Digital - National Diabetes Inpatient Audit Harms 2019, commissioned by HQIP",
+    "licence": {
+      "name": "© 2020 Healthcare Quality Improvement Partnership (HQIP), all rights reserved; reproduction allowed with explicit reference to HQIP ownership; NHS/government bodies may re-use without permission (statement on the final slide). NOT OGL.",
+      "url": "https://www.hqip.org.uk/",
+      "termsPage": "https://digital.nhs.uk/about-nhs-digital/terms-and-conditions"
+    },
+    "features": [
+      "48 slides",
+      "2 native charts",
+      "9 tables",
+      "90 picture shapes",
+      "speaker notes"
+    ],
+    "officeUrl": "https://files.digital.nhs.uk/6A/F96274/NaDIA-Harms%202019%20-%20Main%20Report%20-%20PowerPoint%20v1.0.pptx",
+    "pdfUrl": "https://files.digital.nhs.uk/4F/1A7BEF/NaDIA-Harms%202019%20-%20Main%20Report%20v1.0.pdf",
+    "officeFile": "nhsd-nadia-harms-2019.pptx",
+    "pdfFile": "nhsd-nadia-harms-2019.pdf",
+    "officeSha256": "711131e07632994bd390e40d2bcc7d011b6dea934b5a8ac77d4f28cf1fe6e0f6",
+    "pdfSha256": "64293035693691d9713b54616a26ad3ca5064c4ef266d9538c45ffdef62eb0ca",
+    "officePages": 48,
+    "pdfPages": 48,
+    "pdfProducer": "Microsoft® PowerPoint® for Microsoft 365"
+  },
+  {
+    "id": "nhsd-ndisa-2018-2021",
+    "kind": "pptx",
+    "publisher": "NHS Digital - National Diabetes Inpatient Safety Audit 2018-2021",
+    "licence": {
+      "name": "© 2022 NHS Digital, all rights reserved; NHS/government bodies may re-use without permission (statement on final slide). NOT OGL.",
+      "url": "https://digital.nhs.uk/about-nhs-digital/terms-and-conditions",
+      "termsPage": "https://digital.nhs.uk/about-nhs-digital/terms-and-conditions"
+    },
+    "features": [
+      "38 slides",
+      "5 native charts",
+      "13 tables",
+      "pictures",
+      "speaker notes"
+    ],
+    "officeUrl": "https://files.digital.nhs.uk/1F/32C12F/NDISA%202018-2021%20-%20Main%20Report%20%28PowerPoint%29%20v1.0.pptx",
+    "pdfUrl": "https://files.digital.nhs.uk/0B/3B413A/NDISA%202018-2021%20-%20Main%20Report%20v1.0.pdf",
+    "officeFile": "nhsd-ndisa-2018-2021.pptx",
+    "pdfFile": "nhsd-ndisa-2018-2021.pdf",
+    "officeSha256": "f6247082f476c1349a1e4afd73ec22175041348b3ee987f676e804c2d7d97212",
+    "pdfSha256": "4a267e8a4e37299e6817edd9f9a5e9f78728f8465939193b7035bb311ae60a40",
+    "officePages": 38,
+    "pdfPages": 38,
+    "pdfProducer": "Microsoft® PowerPoint® for Microsoft 365"
+  },
+  {
+    "id": "nhse-bcm-exercise-suppliers",
+    "kind": "pptx",
+    "publisher": "NHS England - Business Continuity Management Toolkit, Part 3 Resource B (exercise slides)",
+    "licence": {
+      "name": "Open Government Licence (NHS England website terms: content re-usable under the current OGL, logos/photos excluded)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.england.nhs.uk/terms-and-conditions-2/"
+    },
+    "features": [
+      "16:9 slides",
+      "SmartArt",
+      "grouped shapes",
+      "pictures",
+      "speaker notes"
+    ],
+    "officeUrl": "https://www.england.nhs.uk/wp-content/uploads/2023/05/part-3-b-exercise-service-and-suppliers-disruption.pptx",
+    "pdfUrl": "https://www.england.nhs.uk/wp-content/uploads/2023/04/part-3-b-exercise-service-and-suppliers-disruption.pdf",
+    "officeFile": "nhse-bcm-exercise-suppliers.pptx",
+    "pdfFile": "nhse-bcm-exercise-suppliers.pdf",
+    "officeSha256": "3ff3bda64d791746cd50ae4728c73b60efbbb5c9d5a0671b830f7b0bf739646f",
+    "pdfSha256": "9cbc6059593f9bfcbd722a9a2d977d1ab5817e2d546779c9e2d9ea1f4d87ba56",
+    "officePages": 16,
+    "pdfPages": 16,
+    "pdfProducer": "Microsoft® PowerPoint® for Microsoft 365",
+    "notes": "PDF exported 2023-04-17; the .pptx on the site was re-saved 2023-05-09. Slide count matches and slide text is identical (overlap 1.0), but minor non-text edits cannot be ruled out."
+  },
+  {
+    "id": "nhse-leder-easy-read-2022",
+    "kind": "pptx",
+    "publisher": "NHS England - LeDeR (Learning from lives and deaths) easy-read death data, end of February 2022",
+    "licence": {
+      "name": "Open Government Licence (NHS England website terms: content re-usable under the current OGL, logos/photos excluded)",
+      "url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+      "termsPage": "https://www.england.nhs.uk/terms-and-conditions-2/"
+    },
+    "features": [
+      "easy-read layout",
+      "many pictures (13)",
+      "grouped shapes",
+      "large text"
+    ],
+    "officeUrl": "https://www.england.nhs.uk/wp-content/uploads/2020/05/Easy-Read-LeDeR-death-data-end-of-February-2022.pptx",
+    "pdfUrl": "https://www.england.nhs.uk/wp-content/uploads/2020/05/Easy-Read-LeDeR-death-data-end-of-February-2022.pdf",
+    "officeFile": "nhse-leder-easy-read-2022.pptx",
+    "pdfFile": "nhse-leder-easy-read-2022.pdf",
+    "officeSha256": "a06aad25c85ee03381f163bb3ee230f9c3ca3d0957937b049f591936249cb2a9",
+    "pdfSha256": "0390483a08699cce6fa346b64789922fe94f437e04b1e6bbc52afcbd8da683f0",
+    "officePages": 2,
+    "pdfPages": 2,
+    "pdfProducer": "Microsoft® PowerPoint® for Microsoft 365",
+    "notes": "Found through the england.nhs.uk WordPress media library (the HTML landing pages sit behind a bot check), so no landing page is recorded. PDF exported 2022-03-31, .pptx saved 2022-03-30; text overlap 1.0."
+  }
+]

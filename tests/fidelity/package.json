@@ -1,0 +1,9 @@
+{
+  "name": "plain-viewer-fidelity",
+  "private": true,
+  "type": "module",
+  "description": "Tools for comparing Plain Viewer's Word/PowerPoint conversion with PDFs produced by Microsoft Office.",
+  "dependencies": {
+    "pdfjs-dist": "6.3.289"
+  }
+}

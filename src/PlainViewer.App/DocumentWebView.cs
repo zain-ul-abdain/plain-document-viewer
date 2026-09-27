@@ -30,6 +30,7 @@ internal sealed class DocumentWebView : Border
     public event Action? StateChanged;
     public event Action<int, int, bool>? FindResult;          // current, total, finished
     public event Action<string>? LinkRequested;
+    public event Action? Rendered;                             // first page or sheet drawn
     public Func<bool, string?>? AskPassword;                  // argument: previous password was wrong
 
     public DocumentWebView()
@@ -170,6 +171,9 @@ internal sealed class DocumentWebView : Border
                 break;
             case "link":
                 LinkRequested?.Invoke(message.GetProperty("href").GetString() ?? "");
+                break;
+            case "rendered":
+                Rendered?.Invoke();
                 break;
             case "password":
                 string? password = AskPassword?.Invoke(message.GetProperty("incorrect").GetBoolean());

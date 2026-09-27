@@ -64,7 +64,16 @@ internal sealed class WorkerJob : IDisposable
         if (!SetInformationJobObject(handle, 9, ref limits, (uint)Marshal.SizeOf<ExtendedLimits>()) || !AssignProcessToJobObject(handle, process.Handle))
         { int error = Marshal.GetLastWin32Error(); Dispose(); throw new System.ComponentModel.Win32Exception(error); }
     }
-    public void Dispose() { if (handle != IntPtr.Zero) CloseHandle(handle); }
+    // Peak memory of the most recent worker, for scripts/measure.ps1.
+    public static long LastPeakBytes { get; private set; }
+    public void Dispose()
+    {
+        if (handle == IntPtr.Zero) return;
+        var info = new ExtendedLimits();
+        if (QueryInformationJobObject(handle, 9, ref info, (uint)Marshal.SizeOf<ExtendedLimits>(), IntPtr.Zero)) LastPeakBytes = (long)info.PeakProcessMemory;
+        CloseHandle(handle);
+    }
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(IntPtr job, int info, ref ExtendedLimits limits, uint size, IntPtr returned);
     [StructLayout(LayoutKind.Sequential)] private struct BasicLimits { public long ProcessTime, JobTime; public uint LimitFlags; public UIntPtr Minimum, Maximum; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint Priority, Scheduling; }
     [StructLayout(LayoutKind.Sequential)] private struct IoCounters { public ulong ReadOperations, WriteOperations, OtherOperations, ReadBytes, WriteBytes, OtherBytes; }
     [StructLayout(LayoutKind.Sequential)] private struct ExtendedLimits { public BasicLimits Basic; public IoCounters Io; public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemory, PeakJobMemory; }

@@ -376,6 +376,7 @@ try {
   if (!workbook?.sheets?.length) throw new Error("empty");
   post({ type: "loaded", sheets: workbook.sheets.length });
   show(0);
+  requestAnimationFrame(() => post({ type: "rendered" }));    // first sheet drawn (used for timing)
 } catch {
   post({ type: "error", kind: "unavailable" });
 }

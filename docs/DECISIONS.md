@@ -60,10 +60,19 @@ Keys and values checked in LibreOffice's own configuration schema [S6]:
 | Calc: update links on load | `/org.openoffice.Office.Calc/Content/Update/Link` | **`1` = never** (0 always, 2 on request) | `2` |
 | Calc: recalculate OOXML on load | `/org.openoffice.Office.Calc/Formula/Load/OOXMLRecalcMode` | `1` = never | `1` |
 | Calc: recalculate ODF on load | `/org.openoffice.Office.Calc/Formula/Load/ODFRecalcMode` | `1` = never | `1` |
-| Lock file beside the document | `/org.openoffice.Office.Common/Load/UseDocumentOOoLockFile` | `false` | `true` |
-| System file locking | `/org.openoffice.Office.Common/Load/UseDocumentSystemFileLocking` | `false` | `true` |
+| Lock file beside the document | `/org.openoffice.Office.Common/Misc/UseDocumentOOoLockFile` (corrected 27 Sep 2026; was listed under `Load`) | `false` | `true` |
+| System file locking | `/org.openoffice.Office.Common/Misc/UseDocumentSystemFileLocking` (corrected, as above) | `false` | `true` |
+| Automatic update check | `/org.openoffice.Office.Jobs/Jobs/org.openoffice.Office.Jobs:Job['UpdateCheck']/Arguments/AutoCheckEnabled` with `oor:type="xs:boolean"` | `false` | `true` |
+| Font replacement for fonts missing on the PC | `/org.openoffice.Office.Common/Font/Substitution/Replacement` and `.../FontPairs` (Always = true) | only for missing fonts: Simplified Arabic → Arial, Traditional Arabic → Times New Roman, SimHei/DengXian → Microsoft YaHei and a few others (`OfficeConverter.DefaultReplacements`) | off |
 
 **Trap:** "never" is `2` for Writer but `1` for Calc. Copying one value to both leaves Calc on "update on request".
+
+**Found by the Office comparison tests (27 Sep 2026), now fixed and checked in the file LibreOffice saves after a run:**
+- The update-check entry was written without `oor:type`. LibreOffice rejected it and ignored every entry after it, so the update check stayed on and the dead-proxy and font settings never took effect. It is now written with its type, and last. In headless use the update check runs only when a window opens, and the network tests recorded 0 requests throughout.
+- The two file-locking settings used a non-existent `Load` path (above).
+- Rewriting the whole settings file before each run also removed LibreOffice's record that set-up and its extension check were done (`/org.openoffice.Setup/Office/ooSetupInstCompleted`, `LastCompatibilityCheckID`), so every run repeated the check and restarted LibreOffice. Once the profile is ready, the app now writes both back.
+- Writer resets `/org.openoffice.Office.Writer/Content/Update/Field` to `true` itself. This is not relied on: the worker blanks every field code that can fetch content before LibreOffice sees the file.
+- The dead-proxy values sit in a group that Windows' own proxy settings also feed (`WinInetBackend`); LibreOffice keeps ours, but the layer is treated as an extra, not a boundary.
 
 Command line [S3]: `soffice --headless --norestore --nologo --nodefault --nolockcheck -env:UserInstallation=file:///<private profile> --convert-to pdf --outdir <private dir> <private copy>`. The input is always a private snapshot, so any lock file lands in private storage even if a setting is missed.
 

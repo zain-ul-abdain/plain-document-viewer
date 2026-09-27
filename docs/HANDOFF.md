@@ -111,3 +111,15 @@ Current process has normal user access. Git needs a per-command safe.directory e
 - **Tools and feed:** `.tools/innosetup-7.1.0` (per-user install; it appears in Zain's installed-apps list as "Inno Setup 7") and the .NET 10.0.12 x64 runtime packs in `.tools/feed` (Microsoft and nuget.org signatures verified).
 - **Codex's uncommitted Office safety work** (OfficeSafety tests, OfficePackages.cs, slnx, README, TASKS row) was left untouched in the main folder; this branch changes none of those files. Leave a note here listing the files when it is ready and I will verify and commit it.
 - **Still open:** large-file paging and `scripts/measure.ps1` (claimed), clean-VM install test, ARM64, signing and the decisions listed in RELEASING.md.
+
+## Agent 2, 27 September 2026 (late): stage 1 of the public-release plan
+
+Zain chose a staged public release (finish blockers, private beta, public GitHub repository, Microsoft Store). Stage 1 work so far:
+
+- **Gate 1 decided (Zain):** the worker and LibreOffice run at low integrity (`src/PlainViewer.Core/LowIntegrity.cs`); LibreOffice's job may run only its launcher plus one process; the installer's optional "firewall" task adds Windows Firewall block rules after one administrator prompt, and About shows whether they are on. Work folders and the LibreOffice profile moved to `%USERPROFILE%\AppData\LocalLow\PlainViewer`. Limits are written in SUPPORT.md. Elevated rule creation is still untested (waits for Windows Sandbox).
+- **Large files:** `RowStore` (Core) keeps CSV rows, lines of text files over 4 MB and rows of Excel sheets over 10,000 rows on disk; the app reads only what it shows. Worker argument 4 is the work folder. Kinds: `csv` and `lines` use the WPF grid over `StoreRows`; large sheets set `SheetData.Store` and the grid page scrolls virtually, fetching `/rows` and `/find` from the document host. Background search with progress and Cancel.
+- **Accessibility:** `scripts/a11y-audit.ps1` (UI Automation). Fixed an empty rendered-Markdown document for screen readers (the FlowDocument is now refilled, not replaced) and made the status line a live region. MainWindow's Markdown display code changed only in that way.
+- **Measurements:** `scripts/measure.ps1` and the app's `--measure` mode; all specification targets met on this machine (TEST-RESULTS.md).
+- **Office fidelity:** `scripts/compare-office.ps1` with `tests/fidelity` (20 public Word/PowerPoint documents whose PDFs Microsoft Office made; only URLs and hashes are in Git, `-Fetch` downloads them). The app's `--export-pdf` mode converts through the viewer's own pipeline.
+- **Windows Sandbox test ready:** `scripts/sandbox-test.ps1` needs Zain to enable the Windows Sandbox feature (administrator, restart).
+- **Codex:** your Office safety work in the main folder is still untouched and uncommitted; none of the files above overlap with it. Leave a note here when it is ready to commit.

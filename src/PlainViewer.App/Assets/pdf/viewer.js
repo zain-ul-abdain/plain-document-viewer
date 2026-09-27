@@ -210,7 +210,9 @@ host?.addEventListener("message", event => {
 
 // Errors before the document finishes loading mean it could not be read. Later rendering errors
 // affect one page only, and PDF.js already shows that page as blank.
-let loaded = false;
+let loaded = false, rendered = false;
 eventBus.on("pagesinit", () => { loaded = true; });
+// Once, when the first page has been drawn (used for timing).
+eventBus.on("pagerendered", () => { if (!rendered) { rendered = true; post({ type: "rendered" }); } });
 window.addEventListener("unhandledrejection", () => { if (!loaded) post({ type: "error", kind: "damaged" }); });
 open();
