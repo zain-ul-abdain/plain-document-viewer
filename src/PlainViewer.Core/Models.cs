@@ -8,6 +8,10 @@ public sealed class DocumentView
     public string Notice { get; set; } = "";
     public char Delimiter { get; set; }
     public List<string[]> Rows { get; set; } = [];
+    // CSV and large text: rows are in a RowStore named Store in the work folder the app passed to the worker.
+    public string Store { get; set; } = "";
+    public int RowCount { get; set; }
+    public int Columns { get; set; }
     public List<ViewBlock> Blocks { get; set; } = [];
     public List<SheetData> Sheets { get; set; } = [];
 }

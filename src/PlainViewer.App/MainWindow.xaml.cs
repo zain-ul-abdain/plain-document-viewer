@@ -15,6 +15,11 @@ public partial class MainWindow : Window
     private DocumentView? document;
     private string? currentPath;
     private CancellationTokenSource? loading;
+    // CSV and large text: rows on disk in a work folder written by the worker; deleted when replaced or closed.
+    private RowStore? rowStore;
+    private string? rowStoreFolder;
+    private StoreSearch? storeSearch;
+    private int storeMatch = -1;
     private double zoom = 1;
     private string lastQuery = "";
     private int matchIndex = -1;
@@ -23,7 +28,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent(); PreviewKeyDown += WindowKeyDown;
-        Closed += (_, _) => { loading?.Cancel(); };
+        Closed += (_, _) => { loading?.Cancel(); ReplaceRowStore(null, null); };
         // The status line is a live region: screen readers announce loading, errors and search results as they change.
         var statusText = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         EventHandler announce = (_, _) => System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(Status)
@@ -59,9 +64,9 @@ public partial class MainWindow : Window
     }
     internal async Task VerifyPreviewAsync(string path)
     {
-        if (UsesWebPane(path))
+        if (UsesWebPane(path) || Environment.GetEnvironmentVariable("PLAINVIEWER_CAPTURE_DIR") is { Length: > 0 })
         {
-            // WebView2 needs a real window handle, so the smoke test shows the window off-screen.
+            // WebView2 needs a real window handle (and captures a drawn window), so the smoke test shows it off-screen.
             WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show();
         }
         currentPath = path; await LoadCurrent();
@@ -86,9 +91,29 @@ public partial class MainWindow : Window
         }
         Measure(new Size(1100, 760)); Arrange(new Rect(0, 0, 1100, 760)); UpdateLayout();
         if (document.Kind == "markdown" && MarkdownDisplay.Document.Blocks.Count == 0) throw new InvalidOperationException("No Markdown blocks rendered.");
-        if (document.Kind == "csv" && CsvGrid.Items.Count != document.Rows.Count) throw new InvalidOperationException("CSV row count mismatch.");
+        if (document.Kind is "csv" or "lines" && CsvGrid.Items.Count != (rowStore is null ? document.Rows.Count : document.RowCount)) throw new InvalidOperationException("Row count mismatch.");
         if (document.Kind == "text" && TextView.Text != document.Text) throw new InvalidOperationException("Text view mismatch.");
         FindBox.Text = "Hello"; Find(false);
+        if (storeSearch is not null)
+        {
+            while (!storeSearch.Done) await Task.Delay(50);
+            if (storeSearch.Error is not null) throw new InvalidOperationException(storeSearch.Error);
+        }
+        if (Environment.GetEnvironmentVariable("PLAINVIEWER_CAPTURE_DIR") is { Length: > 0 } captureFolder)
+        {
+            // Optional visual evidence for manual review, as for the web views.
+            UpdateLayout(); Directory.CreateDirectory(captureFolder);
+            // Drawn over the theme's window colour: the Fluent window itself has a transparent backdrop.
+            var layer = new DrawingVisual();
+            using (var context = layer.RenderOpen())
+            {
+                context.DrawRectangle(IsDarkTheme() ? Brushes.Black : Brushes.White, null, new Rect(0, 0, 1100, 760));
+                context.DrawRectangle(new VisualBrush(this), null, new Rect(0, 0, ActualWidth, ActualHeight));
+            }
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(1100, 760, 96, 96, PixelFormats.Pbgra32); bitmap.Render(layer);
+            var png = new System.Windows.Media.Imaging.PngBitmapEncoder(); png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            using var file = File.Create(Path.Combine(captureFolder, Path.GetFileName(path) + ".png")); png.Save(file);
+        }
         if (document.Kind == "markdown" && MarkdownDisplay.Selection.Text != "Hello") throw new InvalidOperationException("Rendered Markdown search selected the wrong text.");
         ChangeZoom(1.2);
         if (document.Kind == "markdown") { SourceToggle.IsChecked = true; if (TextView.Text != document.Text) throw new InvalidOperationException("Source view mismatch."); }
@@ -109,17 +134,27 @@ public partial class MainWindow : Window
         loading?.Cancel(); var operation = new CancellationTokenSource(); loading = operation;
         CancelButton.IsEnabled = true; Progress.Visibility = Visibility.Visible; Status.Text = "Opening document…";
         var stopwatch = Stopwatch.StartNew();
+        string? work = null; RowStore? opened = null;
         try
         {
-            var loaded = IsPdf(currentPath) ? await LoadPdf(currentPath, operation.Token)
-                : IsOffice(currentPath) ? await LoadOffice(currentPath, operation.Token)
-                : await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), operation.Token);
+            DocumentView loaded;
+            if (IsPdf(currentPath)) loaded = await LoadPdf(currentPath, operation.Token);
+            else if (IsOffice(currentPath)) loaded = await LoadOffice(currentPath, operation.Token);
+            else
+            {
+                work = OfficeConverter.NewWorkFolder();
+                loaded = await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), work, operation.Token);
+                // The store name comes from the worker, so only the one name it may use is accepted.
+                if (loaded.Store.Length > 0) opened = loaded.Store == "rows" ? RowStore.Open(work, "rows") : throw new InvalidDataException("Unexpected worker output.");
+            }
             if (loading != operation) return;
             if (loaded.Kind == "sheet") await LoadSheets(loaded, operation.Token);
             if (loading != operation) return;
+            ReplaceRowStore(opened, opened is null ? null : work); if (opened is not null) { opened = null; work = null; }
             document = loaded; Title = Path.GetFileName(currentPath) + " · Plain Viewer preview";
             openSeconds = stopwatch.Elapsed.TotalSeconds;
-            Display(); Status.Text = $"Read only · {document.Encoding} · Opened in {openSeconds:F2}s. {document.Notice}";
+            string size = rowStore is null ? "" : $"{document.RowCount:N0} {(document.Kind == "lines" ? "lines" : "rows")} · ";
+            Display(); Status.Text = $"Read only · {document.Encoding} · {size}Opened in {openSeconds:F2}s. {document.Notice}";
             if (InWebPane) ShowWebStatus();
         }
         catch (OperationCanceledException) { if (loading == operation) Status.Text = "Opening cancelled. Choose a file to try again."; }
@@ -130,9 +165,17 @@ public partial class MainWindow : Window
         }
         finally
         {
+            opened?.Dispose(); if (work is not null) OfficeConverter.Delete(work);
             if (loading == operation) { CancelButton.IsEnabled = false; Progress.Visibility = Visibility.Collapsed; }
             operation.Dispose(); if (loading == operation) loading = null;
         }
+    }
+    private void ReplaceRowStore(RowStore? store, string? folder)
+    {
+        storeSearch?.Dispose(); storeSearch = null; storeMatch = -1;
+        CsvGrid.ItemsSource = null;
+        rowStore?.Dispose(); if (rowStoreFolder is not null) OfficeConverter.Delete(rowStoreFolder);
+        rowStore = store; rowStoreFolder = folder;
     }
     private void Display()
     {
@@ -147,11 +190,19 @@ public partial class MainWindow : Window
         EncodingChoice.IsEnabled = !web;
         if (web) { DelimiterChoice.IsEnabled = false; lastQuery = ""; matchIndex = -1; WebPane.FocusDocument(); return; }
         DelimiterChoice.IsEnabled = document.Kind == "csv";
-        if (document.Kind == "csv")
+        if (document.Kind is "csv" or "lines")
         {
-            CsvGrid.Columns.Clear(); int count = document.Rows.Count == 0 ? 0 : document.Rows.Max(row => row.Length);
-            for (int i = 0; i < count; i++) CsvGrid.Columns.Add(new DataGridTextColumn { Header = ColumnName(i), Binding = new Binding($"[{i}]") { FallbackValue = "" }, Width = 140 });
-            CsvGrid.ItemsSource = document.Rows.Select(row => Enumerable.Range(0, count).Select(i => i < row.Length ? row[i] : "").ToArray()).ToList();
+            // Large plain text shows one line per row, with line numbers as row headers.
+            bool lines = document.Kind == "lines";
+            CsvGrid.Columns.Clear();
+            int count = rowStore is not null ? document.Columns : document.Rows.Count == 0 ? 0 : document.Rows.Max(row => row.Length);
+            for (int i = 0; i < count; i++)
+                CsvGrid.Columns.Add(new DataGridTextColumn { Header = lines ? "Text" : ColumnName(i), Binding = new Binding($"[{i}]") { FallbackValue = "" }, Width = lines ? DataGridLength.Auto : 140 });
+            CsvGrid.HeadersVisibility = lines ? DataGridHeadersVisibility.Row : DataGridHeadersVisibility.All;
+            if (lines) CsvGrid.FontFamily = new FontFamily("Consolas"); else CsvGrid.ClearValue(FontFamilyProperty);
+            System.Windows.Automation.AutomationProperties.SetName(CsvGrid, lines ? "Read-only text, one line per row" : "Read-only CSV grid");
+            CsvGrid.ItemsSource = rowStore is not null ? new StoreRows(rowStore)
+                : document.Rows.Select(row => Enumerable.Range(0, count).Select(i => i < row.Length ? row[i] : "").ToArray()).ToList();
             CsvGrid.Visibility = Visibility.Visible;
         }
         else if (document.Kind == "markdown" && SourceToggle.IsChecked != true)
@@ -222,6 +273,7 @@ public partial class MainWindow : Window
     {
         if (document is null || FindBox.Text.Length == 0) return;
         if (InWebPane) { Status.Text = "Searching…"; WebPane.Find(FindBox.Text, previous); lastQuery = FindBox.Text; return; }
+        if (rowStore is not null) { FindInStore(FindBox.Text, previous); return; }
         string query = FindBox.Text; var hits = new List<int>();
         if (document.Kind == "csv")
         {
@@ -251,6 +303,43 @@ public partial class MainWindow : Window
             Status.Text = hits.Count == 0 ? "No matches." : $"Match {matchIndex + 1} of {hits.Count}.";
         }
         lastQuery = query;
+    }
+    // CSV and large text search on a background thread: the first match shows as soon as it is found, progress
+    // appears in the status line, and Cancel or a new search stops it.
+    private void FindInStore(string query, bool previous)
+    {
+        if (storeSearch is null || storeSearch.Query != query || storeSearch.Error is not null)
+        {
+            storeSearch?.Dispose(); storeMatch = -1; lastQuery = query;
+            storeSearch = new StoreSearch(rowStore!, query, search => Dispatcher.InvokeAsync(() => SearchChanged(search, previous)));
+            CancelButton.IsEnabled = true; Status.Text = "Searching…";
+            return;
+        }
+        ShowStoreMatch(previous);
+    }
+    private void SearchChanged(StoreSearch search, bool previous)
+    {
+        if (search != storeSearch) return;
+        if (storeMatch < 0 && search.Count > 0) ShowStoreMatch(previous); else ShowSearchStatus();
+        if (search.Done && loading is null) CancelButton.IsEnabled = false;
+    }
+    private void ShowStoreMatch(bool previous)
+    {
+        var search = storeSearch!; int count = search.Count;
+        if (count > 0 && CsvGrid.ItemsSource is StoreRows rows)
+        {
+            storeMatch = storeMatch < 0 ? (previous && search.Done ? count - 1 : 0) : (storeMatch + (previous ? -1 : 1) + count) % count;
+            var row = rows.Row(search.Hit(storeMatch));
+            CsvGrid.SelectedItem = row; CsvGrid.ScrollIntoView(row);
+        }
+        ShowSearchStatus();
+    }
+    private void ShowSearchStatus()
+    {
+        var search = storeSearch!; int count = search.Count; string unit = document?.Kind == "lines" ? "line" : "row";
+        Status.Text = search.Error ?? (search.Done
+            ? count == 0 ? "No matches." : $"Matching {unit} {storeMatch + 1} of {count:N0}.{(search.Truncated ? " The search stopped at 1,000,000 matches." : "")}"
+            : $"Searching… {search.Progress:P0} · {count:N0} matching {unit}s so far{(storeMatch >= 0 ? $", showing {storeMatch + 1}" : "")}. Cancel stops the search.");
     }
     private static TextPointer PointerAtTextOffset(FlowDocument flow, int offset)
     {
@@ -376,7 +465,11 @@ public partial class MainWindow : Window
     private void FindKeyDown(object s, KeyEventArgs e) { if (e.Key == Key.Enter) Find(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)); }
     private void ViewChanged(object s, RoutedEventArgs e) => Display();
     private void OptionsChanged(object s, SelectionChangedEventArgs e) { if (IsLoaded && currentPath is not null && !InWebPane) _ = LoadCurrent(); }
-    private void CancelClicked(object s, RoutedEventArgs e) => loading?.Cancel();
+    private void CancelClicked(object s, RoutedEventArgs e)
+    {
+        loading?.Cancel();
+        if (storeSearch is { Done: false }) { storeSearch.Dispose(); storeSearch = null; storeMatch = -1; Status.Text = "Search cancelled."; CancelButton.IsEnabled = loading is not null; }
+    }
     // WPF still marks runtime Fluent theme switching experimental in this SDK.
 #pragma warning disable WPF0001
     private void ThemeChanged(object s, SelectionChangedEventArgs e)

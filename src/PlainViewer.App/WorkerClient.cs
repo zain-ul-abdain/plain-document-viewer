@@ -8,8 +8,9 @@ namespace PlainViewer.App;
 
 internal static class WorkerClient
 {
-    public static Task<DocumentView> Load(string path, string encoding, string delimiter, CancellationToken cancellation) =>
-        Run([path, encoding, delimiter], cancellation);
+    // Rows of CSV and large text files are written to a RowStore in `work`, which the caller deletes when done.
+    public static Task<DocumentView> Load(string path, string encoding, string delimiter, string work, CancellationToken cancellation) =>
+        Run([path, encoding, delimiter, work], cancellation);
 
     // Validates a Word/PowerPoint package in the worker and writes a sanitised copy to `output` for conversion.
     public static Task<DocumentView> PrepareOffice(string path, string output, CancellationToken cancellation) =>

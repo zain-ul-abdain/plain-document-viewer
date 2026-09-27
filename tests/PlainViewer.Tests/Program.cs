@@ -50,6 +50,46 @@ try
     Test("Wrong extension content rejected", () => { string path = Path.Combine(root, "fake.txt"); File.WriteAllText(path, "%PDF-1.7"); Throws<DocumentException>(() => TextFiles.Load(path)); });
     Test("Empty text is valid", () => { string path = Path.Combine(root, "empty.txt"); File.WriteAllText(path, ""); Check(TextFiles.Load(path).Text == ""); });
     Test("CSV preview explicitly reports truncation", () => { string path = Path.Combine(root, "large.csv"); File.WriteAllLines(path, Enumerable.Range(0, 1500).Select(i => i + ",001")); var view = TextFiles.Load(path); Check(view.Rows.Count == 1000 && view.Notice.Contains("1,000")); });
+    // Row store: CSV and large-text rows on disk, written by the low-integrity worker and read by the app.
+    string NewFolder(string name) { string folder = Path.Combine(root, name); Directory.CreateDirectory(folder); return folder; }
+    Test("Row store keeps text, empty fields and ragged rows", () => {
+        string folder = NewFolder("store-round-trip");
+        using (var writer = new RowStoreWriter(folder, "rows")) { writer.Add(["001", "Ali, A", "line1\nline2"]); writer.Add([]); writer.Add(["", "سنڌي 中文 😀"]); writer.Complete(); }
+        using var store = RowStore.Open(folder, "rows");
+        var rows = store.Read(0, 3);
+        Check(store.Count == 3 && store.Columns == 3 && rows[0][1] == "Ali, A" && rows[0][2] == "line1\nline2" && rows[1].Length == 0 && rows[2][1] == "سنڌي 中文 😀");
+        Check(store.Read(2, 1)[0][0] == "");
+        Throws<ArgumentOutOfRangeException>(() => store.Read(2, 2)); });
+    Test("Damaged row stores are refused", () => {
+        string folder = NewFolder("store-damaged");
+        using (var writer = new RowStoreWriter(folder, "rows")) { writer.Add(["a", "b"]); writer.Add(["c"]); writer.Complete(); }
+        string index = Path.Combine(folder, "rows.index"), data = Path.Combine(folder, "rows.rows");
+        byte[] goodIndex = File.ReadAllBytes(index), goodData = File.ReadAllBytes(data);
+        void Refused(Action damage) { File.WriteAllBytes(index, goodIndex); File.WriteAllBytes(data, goodData); damage(); Throws<InvalidDataException>(() => { using var store = RowStore.Open(folder, "rows"); store.Read(0, store.Count); }); }
+        Refused(() => { var b = (byte[])goodIndex.Clone(); BitConverter.GetBytes(long.MaxValue).CopyTo(b, 24); File.WriteAllBytes(index, b); });   // offset past the end
+        Refused(() => { var b = (byte[])goodIndex.Clone(); BitConverter.GetBytes(0L).CopyTo(b, 32); File.WriteAllBytes(index, b); });             // offsets going backwards
+        Refused(() => File.WriteAllBytes(index, goodIndex[..^4]));                                                                            // truncated index
+        Refused(() => { var b = (byte[])goodIndex.Clone(); b[0] = (byte)'X'; File.WriteAllBytes(index, b); });                              // wrong header
+        Refused(() => { var d = (byte[])goodData.Clone(); d[1] = 100; File.WriteAllBytes(data, d); }); });                                  // field longer than its row
+    Test("CSV rows stream to a row store and match the in-memory reader", () => {
+        string folder = NewFolder("store-csv"), file = Path.Combine(FindCorpus(), "complex.csv");
+        var stored = TextFiles.Load(file, "Auto", "Auto", folder); var memory = TextFiles.Load(file);
+        using var store = RowStore.Open(folder, stored.Store);
+        Check(stored.Kind == "csv" && stored.Store == "rows" && stored.RowCount == memory.Rows.Count && store.Read(0, store.Count).Zip(memory.Rows).All(pair => pair.First.SequenceEqual(pair.Second))); });
+    Test("Large text streams to a row store, one row per line", () => {
+        string folder = NewFolder("store-text"), file = Path.Combine(root, "big.txt");
+        File.WriteAllText(file, "﻿first line\r\n" + string.Concat(Enumerable.Range(0, 400_000).Select(i => $"line {i:D6}\n")) + "last line");
+        var view = TextFiles.Load(file, "Auto", "Auto", folder);
+        using var store = RowStore.Open(folder, "rows");
+        Check(view.Kind == "lines" && view.RowCount == 400_002 && store.Read(0, 1)[0][0] == "first line" && store.Read(400_001, 1)[0][0] == "last line"); });
+    string largeCsv = Path.Combine(FindCorpus(), "generated", "csv-large-200mb.csv");
+    if (File.Exists(largeCsv))
+        Test("200 MB CSV fixture streams to a row store", () => {
+            string folder = NewFolder("store-large");
+            var view = TextFiles.Load(largeCsv, "Auto", "Auto", folder);
+            using var store = RowStore.Open(folder, "rows");
+            Check(view.RowCount > 4_000_000 && view.Columns == 6 && store.Read(view.RowCount - 1, 1)[0][5] == "Hello last row"); });
+    else Console.WriteLine("SKIP 200 MB CSV fixture (run npm run generate:large in tests/corpus/generate)");
     // The worker and LibreOffice run at low integrity: they must not be able to write the user's folders.
     Test("Low integrity blocks writes to the user's folders but not to its own", () => {
         string medium = Path.Combine(root, "medium"), low = Path.Combine(LowIntegrity.Root, "Temp", "probe-" + Guid.NewGuid().ToString("N"));

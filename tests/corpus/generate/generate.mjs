@@ -8,12 +8,14 @@ import { generatePdf } from "./pdf.mjs";
 import { generateXlsx } from "./xlsx.mjs";
 import { generateDocx } from "./docx.mjs";
 import { generatePptx } from "./pptx.mjs";
+import { generateLargeText } from "./large-text.mjs";
 
 const large = process.argv.includes("--large");
 await generatePdf({ large });
 await generateXlsx({ large });
 await generateDocx();
 await generatePptx();
+generateLargeText({ large });
 
 // Codex's hand-written fixtures (tests/corpus/*.txt|csv|md|markdown) keep their own provenance table in SOURCES.md.
 const codexLicence = "Authored for this project by Codex (see SOURCES.md)";

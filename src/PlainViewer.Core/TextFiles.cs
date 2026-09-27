@@ -48,7 +48,12 @@ public static class TextFiles
         }
         catch (DecoderFallbackException) { return (Encoding.GetEncoding(1252), 0); }
     }
-    public static DocumentView Load(string path, string encodingChoice = "Auto", string delimiterChoice = "Auto")
+    // With a row store (the app always passes a work folder), CSV files and large text files stream to disk.
+    public const long StoreLimit = 1024L * 1024 * 1024;
+    private static readonly System.Buffers.SearchValues<char> Binary = System.Buffers.SearchValues.Create(
+        Enumerable.Range(0, 0xA0).Select(i => (char)i).Where(c => char.IsControl(c) && c is not ('\n' or '\r' or '\t' or '\f')).ToArray());
+
+    public static DocumentView Load(string path, string encodingChoice = "Auto", string delimiterChoice = "Auto", string? storeFolder = null)
     {
         ValidateLocalPath(path);
         string extension = Path.GetExtension(path).ToLowerInvariant();
@@ -56,8 +61,11 @@ public static class TextFiles
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         long originalLength = stream.Length;
         var modified = File.GetLastWriteTimeUtc(path);
-        if (originalLength > (extension == ".csv" ? 256L * 1024 * 1024 : TextLimit))
-            throw new DocumentException("This file exceeds the preview limit (4 MB text/Markdown, 256 MB CSV). Full large-file viewing is still being built.");
+        bool lines = storeFolder is not null && extension == ".txt" && originalLength > TextLimit;
+        long limit = storeFolder is not null && (extension == ".csv" || lines) ? StoreLimit : extension == ".csv" ? 256L * 1024 * 1024 : TextLimit;
+        if (originalLength > limit)
+            throw new DocumentException(limit == StoreLimit ? "This file is larger than the 1 GB this viewer can open."
+                : "This file exceeds the preview limit (4 MB for Markdown). Open it as plain text or in an editor.");
         byte[] sample = new byte[Math.Min(8192L, originalLength)]; stream.ReadExactly(sample);
         if (sample.AsSpan().StartsWith("%PDF-"u8) || sample.AsSpan().StartsWith("PK\u0003\u0004"u8) ||
             sample.AsSpan().StartsWith(new byte[] { 0xd0, 0xcf, 0x11, 0xe0 }) || sample.AsSpan().StartsWith("MZ"u8))
@@ -70,10 +78,37 @@ public static class TextFiles
             // Detection tolerates a sample ending inside a UTF-8 character.
             string prefix = Encoding.GetEncoding(encoding.CodePage).GetString(sample.AsSpan(skip));
             char delimiter = delimiterChoice switch { "Comma" => ',', "Semicolon" => ';', "Tab" => '\t', _ => Csv.DetectDelimiter(prefix) };
-            view.Kind = "csv"; view.Delimiter = delimiter; view.Rows = Csv.Read(reader, delimiter).Take(1001).ToList();
-            if (view.Rows.SelectMany(row => row).Any(field => field.Contains('\0')))
-                throw new DocumentException("This CSV contains binary data. Choose another encoding or a valid CSV file.");
-            if (view.Rows.Count > 1000) { view.Rows.RemoveAt(1000); view.Notice = "Preview: first 1,000 rows only. Remaining rows are not loaded."; }
+            view.Kind = "csv"; view.Delimiter = delimiter;
+            if (storeFolder is not null)
+            {
+                using var store = new RowStoreWriter(storeFolder, "rows");
+                foreach (var row in Csv.Read(reader, delimiter))
+                {
+                    foreach (var field in row) if (field.Contains('\0')) throw new DocumentException("This CSV contains binary data. Choose another encoding or a valid CSV file.");
+                    store.Add(row);
+                }
+                store.Complete(); view.Store = "rows"; view.RowCount = store.Count; view.Columns = store.Columns;
+            }
+            else
+            {
+                view.Rows = Csv.Read(reader, delimiter).Take(1001).ToList();
+                if (view.Rows.SelectMany(row => row).Any(field => field.Contains('\0')))
+                    throw new DocumentException("This CSV contains binary data. Choose another encoding or a valid CSV file.");
+                if (view.Rows.Count > 1000) { view.Rows.RemoveAt(1000); view.Notice = "Preview: first 1,000 rows only. Remaining rows are not loaded."; }
+            }
+        }
+        else if (lines)
+        {
+            // Large plain text: one row per line, shown in a scrolling list instead of one text box.
+            using var store = new RowStoreWriter(storeFolder!, "rows");
+            var row = new string[1];
+            for (string? line = reader.ReadLine(); line is not null; line = reader.ReadLine())
+            {
+                if (store.Count == 0) line = line.TrimStart('﻿');
+                if (line.AsSpan().ContainsAny(Binary)) throw new DocumentException("This file contains binary data. Choose a text, CSV, or Markdown file.");
+                row[0] = line; store.Add(row);
+            }
+            store.Complete(); view.Kind = "lines"; view.Store = "rows"; view.RowCount = store.Count; view.Columns = 1;
         }
         else
         {

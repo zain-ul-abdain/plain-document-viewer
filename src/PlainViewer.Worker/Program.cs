@@ -13,12 +13,13 @@ try
     try { LowIntegrity.LowerCurrentProcess(); }
     catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
     { throw new DocumentException("The document worker could not start in its restricted mode, so the file was not opened."); }
-    if (args.Length is < 1 or > 3) throw new DocumentException("Choose a file to open.");
+    if (args.Length is < 1 or > 4) throw new DocumentException("Choose a file to open.");
     string extension = Path.GetExtension(args[0]).ToLowerInvariant();
-    // "--prepare-office <output>": validate a Word/PowerPoint package and write a sanitised copy for conversion.
+    // "<file> --prepare-office <output>": validate a Word/PowerPoint package and write a sanitised copy for conversion.
+    // "<file> <encoding> <delimiter> <work folder>": large rows go to a RowStore in the work folder.
     var document = args.ElementAtOrDefault(1) == "--prepare-office" ? OfficePackages.Prepare(args[0], args[2])
         : extension is ".xlsx" or ".xlsm" or ".xltx" or ".xltm" or ".xlsb" ? Spreadsheets.Load(args[0])
-        : TextFiles.Load(args[0], args.ElementAtOrDefault(1) ?? "Auto", args.ElementAtOrDefault(2) ?? "Auto");
+        : TextFiles.Load(args[0], args.ElementAtOrDefault(1) ?? "Auto", args.ElementAtOrDefault(2) ?? "Auto", args.ElementAtOrDefault(3));
     response = new WorkerResponse(document, null);
 }
 catch (DocumentException ex) { response = new(null, ex.Message); }
