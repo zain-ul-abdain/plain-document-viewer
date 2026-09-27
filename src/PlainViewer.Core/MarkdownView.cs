@@ -3,11 +3,12 @@ using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
+using Markdig.Extensions.Mathematics;
 namespace PlainViewer.Core;
 
 public static class MarkdownView
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePipeTables().UseTaskLists().Build();
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePipeTables().UseTaskLists().UseMathematics().Build();
     public static List<ViewBlock> Parse(string source)
     {
         var result = new List<ViewBlock>();
@@ -30,6 +31,7 @@ public static class MarkdownView
         switch (block)
         {
             case HeadingBlock heading: output.Kind = "heading"; output.Level = heading.Level; break;
+            case MathBlock math: return new ViewBlock { Kind = "code", Text = SourceText(math, source) };
             case CodeBlock code: return new ViewBlock { Kind = "code", Text = code.Lines.ToString() };
             case HtmlBlock html: return new ViewBlock { Kind = "code", Text = html.Lines.ToString() };
             case ThematicBreakBlock: return new ViewBlock { Kind = "rule" };
@@ -42,13 +44,13 @@ public static class MarkdownView
         }
         if (block is ContainerBlock container)
             foreach (var child in container) output.Children.Add(ConvertBlock(child, source, depth + 1));
-        if (block is LeafBlock leaf && leaf.Inline is not null) output.Runs = Runs(leaf.Inline, false, false, 0);
-        // Math is inert text in this initial parser, with display math styled as code.
-        if (block is ParagraphBlock && output.Runs.Count > 0 && output.Runs[0].Text.StartsWith("$$"))
-        { output.Kind = "code"; output.Text = string.Concat(output.Runs.Select(r => r.Text)); output.Runs.Clear(); }
+        if (block is LeafBlock leaf && leaf.Inline is not null) output.Runs = Runs(leaf.Inline, false, false, 0, source);
         return output;
     }
-    private static List<ViewRun> Runs(ContainerInline container, bool bold, bool italic, int depth)
+    private static string SourceText(MarkdownObject node, string source) =>
+        node.Span.Start >= 0 && node.Span.End >= node.Span.Start && node.Span.End < source.Length
+            ? source.Substring(node.Span.Start, node.Span.Length) : "";
+    private static List<ViewRun> Runs(ContainerInline container, bool bold, bool italic, int depth, string source)
     {
         if (depth > 64) throw new DocumentException("The Markdown nesting is too deep for this preview.");
         var result = new List<ViewRun>();
@@ -57,20 +59,27 @@ public static class MarkdownView
             switch (inline)
             {
                 case LinkInline link:
-                    var label = Runs(link, bold, italic, depth + 1);
+                    var label = Runs(link, bold, italic, depth + 1, source);
                     string text = string.Concat(label.Select(r => r.Text));
                     if (link.IsImage) result.Add(new ViewRun { Text = "[Image: " + text + "]" });
                     else if (LinkPolicy.CanOpen(link.Url)) { foreach (var run in label) run.Link = link.Url; result.AddRange(label); }
                     else result.Add(new ViewRun { Text = text + " (" + link.Url + ")", Bold = bold, Italic = italic });
                     break;
-                case EmphasisInline emphasis: result.AddRange(Runs(emphasis, bold || emphasis.DelimiterCount >= 2, italic || emphasis.DelimiterCount == 1, depth + 1)); break;
+                case EmphasisInline emphasis: result.AddRange(Runs(emphasis, bold || emphasis.DelimiterCount >= 2, italic || emphasis.DelimiterCount % 2 == 1, depth + 1, source)); break;
+                case MathInline math: result.Add(new ViewRun { Text = SourceText(math, source), Code = true }); break;
+                case HtmlEntityInline entity: result.Add(new ViewRun { Text = entity.Transcoded.ToString(), Bold = bold, Italic = italic }); break;
                 case CodeInline code: result.Add(new ViewRun { Text = code.Content, Code = true }); break;
                 case LiteralInline literal: result.Add(new ViewRun { Text = literal.Content.ToString(), Bold = bold, Italic = italic }); break;
                 case HtmlInline html: result.Add(new ViewRun { Text = html.Tag, Code = true }); break;
-                case LineBreakInline: result.Add(new ViewRun { Text = "\n" }); break;
+                case LineBreakInline line: result.Add(new ViewRun { Text = line.IsHard ? "\n" : " " }); break;
                 case TaskList task: result.Add(new ViewRun { Text = task.Checked ? "☑ " : "☐ " }); break;
-                case AutolinkInline auto: result.Add(new ViewRun { Text = auto.Url, Link = LinkPolicy.CanOpen(auto.Url) ? auto.Url : null }); break;
-                case ContainerInline nested: result.AddRange(Runs(nested, bold, italic, depth + 1)); break;
+                case AutolinkInline auto:
+                    string address = auto.IsEmail ? "mailto:" + auto.Url : auto.Url;
+                    result.Add(new ViewRun { Text = auto.Url, Link = LinkPolicy.CanOpen(address) ? address : null }); break;
+                case ContainerInline nested: result.AddRange(Runs(nested, bold, italic, depth + 1, source)); break;
+                default:
+                    // Unsupported syntax must stay visible rather than silently losing text.
+                    result.Add(new ViewRun { Text = SourceText(inline, source), Bold = bold, Italic = italic }); break;
             }
         }
         return result;

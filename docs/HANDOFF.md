@@ -81,3 +81,13 @@ DECISIONS.md research retained without edits. Direction is consistent with the i
 ## Commit/push result
 
 Codex attempted to stage and commit the verified preview as required by AGENTS.md. Git could not create .git/index.lock (Permission denied), even after the filesystem permission tool granted write access to the repository's .git directory. No Codex commit or push was made. Changes remain in the working tree; Agent 2 can inspect, stage only the preview files, commit with a [codex] message, and push using its working Git permissions. Preserve any concurrently added files belonging to Agent 2.
+
+## Codex continuation: Markdown fidelity
+
+User manually checked MD and TXT successfully, then asked to continue. Agent 2 has PDF/XLSX/XLS work claimed in its worktree, so Codex avoided MainWindow, WorkerClient, Worker Program.cs, package references and the shared core test runner.
+
+Changed MarkdownView.cs: decode entities visibly, preserve emphasis, distinguish soft/hard breaks, make email autolinks use mailto, parse math only to show its exact source as code, and preserve fallback inline syntax rather than silently dropping it. No HTML or math execution introduced.
+
+Added tests/PlainViewer.Markdown.Tests and scripts/test-markdown.ps1; registered the project in the solution. Results: 14 Markdown regressions + 22 existing core tests + six native WPF smoke fixtures pass; release build zero warnings/errors. List numbering/table alignment and wide-code scrolling remain pending until the UI branch merges.
+
+Current process has normal user access. Git needs a per-command safe.directory exception for this specific sandbox-owned repository, without changing global configuration. Codex will try its own commit/push now. File claims released after this increment.

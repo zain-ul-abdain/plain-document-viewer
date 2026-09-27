@@ -3,4 +3,5 @@
   <Project Path="src/PlainViewer.Worker/PlainViewer.Worker.csproj" />
   <Project Path="src/PlainViewer.App/PlainViewer.App.csproj" />
   <Project Path="tests/PlainViewer.Tests/PlainViewer.Tests.csproj" />
+  <Project Path="tests/PlainViewer.Markdown.Tests/PlainViewer.Markdown.Tests.csproj" />
 </Solution>

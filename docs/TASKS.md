@@ -13,6 +13,7 @@ Update owner and status before editing. Codex completed the initial preview mile
 | Application solution and native shell | Preview implemented | Unclaimed | Builds; six worker/WPF smoke fixtures pass; manual checks pending |
 | Safe loading and isolated worker | Partial | Unclaimed | Shared reads and Job resource limits; restricted privileges/snapshots/instrumentation pending |
 | Text, CSV and Markdown viewers | Preview implemented | Unclaimed | 22 core tests pass; 4 MB text cap and first 1,000 CSV rows; full acceptance pending |
+| Markdown fidelity and dedicated regressions | Done for this increment | Codex | Entity text, soft/hard breaks, email autolinks, combined emphasis and literal math fixed; 14 regression tests. File claims released. Numbering/alignment deferred until Agent 2's UI merge |
 | PDF viewer (PDF.js in locked-down WebView2) and XLSX/XLS grid (cached values) | In progress | Agent 2 | Branch a local branch in worktree a separate worktree. New files under src/*/Pdf*, src/*/Sheet*, src/PlainViewer.App/Assets/pdfjs; small edits to MainWindow, WorkerClient, Worker Program.cs, csproj package references, tests runner. Codex: please avoid these files until merged, or note overlap here |
 | DOCX/PPTX via LibreOffice | Not started | Unclaimed | Needs PDF viewer first, disk space for LibreOffice, and the AppContainer gate in DECISIONS.md |
 | Accessibility, themes and keyboard | Not started | Unclaimed | UI/manual tests |

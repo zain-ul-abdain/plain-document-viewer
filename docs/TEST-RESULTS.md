@@ -4,6 +4,9 @@ Windows x64, local .NET SDK 10.0.401, Release builds. Hardware/performance basel
 
 ## Executed
 
+- User manually confirmed MD and TXT files work on 2026-09-27. This confirms those user checks, not the full accessibility or corpus checklist.
+- `scripts/test-markdown.ps1 -Offline`: 14 new regressions passed: visible entities, safe decoded text, soft/hard breaks, email targets, combined emphasis, literal inline/display math, currency, code, unsafe links/images and front-matter offsets. Original 22 tests and six WPF smoke fixtures rerun successfully after this change.
+
 - `scripts/build.ps1 -Offline`: zero warnings/errors. WPF experimental runtime-theme diagnostic narrowly suppressed beside its use.
 - `scripts/test.ps1 -Offline`: 22 core tests passed, 0 failed. CSV quoting/multiline/limits, encoding, unsafe links, Markdown HTML/images/tables/tasks/front matter/Mermaid, DTD rejection, ZIP limits/traversal, local paths, source hashes, shared access, wrong signatures, empty text, explicit CSV truncation.
 - `scripts/smoke-test.ps1`: six fixtures passed actual worker and WPF views. Windows instantiated and laid out without being shown; rendered-search selection, zoom, source toggle and grid row count checked.
