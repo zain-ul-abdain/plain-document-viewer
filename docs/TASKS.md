@@ -15,7 +15,7 @@ Update owner and status before editing. Codex completed the initial preview mile
 | Text, CSV and Markdown viewers | Preview implemented | Unclaimed | 22 core tests pass; 4 MB text cap and first 1,000 CSV rows; full acceptance pending |
 | Markdown fidelity and dedicated regressions | Done for this increment | Codex | Entity text, soft/hard breaks, email autolinks, combined emphasis and literal math fixed; 14 regression tests. File claims released. Numbering/alignment deferred until Agent 2's UI merge |
 | PDF viewer (PDF.js in locked-down WebView2) | Preview merged (4aafdeb) | Agent 2 | Smoke 10/10 incl. 4 PDFs; 27 core tests. Manual visual, Narrator, large-file and OS-level network checks pending. MainWindow/csproj claims released; Codex may resume Markdown numbering/alignment |
-| XLSX grid (cached values, sheet tabs, merged cells, widths, frozen panes) | In progress | Agent 2 | Branch a local branch. New src/PlainViewer.Core/Spreadsheet*.cs and a sheet view; edits to MainWindow, Worker Program.cs, tests runner, smoke-test.ps1. Codex: tell me here before touching MainWindow so we avoid conflicts |
+| XLSX grid (cached values, sheet tabs, merged cells, widths, frozen panes) | Preview merged (9ad7446) | Agent 2 | 40 core tests incl. 11 manifest-driven workbook fixtures; smoke 12/12; captured PNGs reviewed. Large-sheet paging, cell styles and manual checks pending. File claims released |
 | DOCX/PPTX via LibreOffice | Not started | Unclaimed | Needs PDF viewer first, disk space for LibreOffice, and the AppContainer gate in DECISIONS.md |
 | Accessibility, themes and keyboard | Not started | Unclaimed | UI/manual tests |
 | Offline installer and release validation | Not started | Unclaimed | packaging, format registry, corpus, timings, notices |
