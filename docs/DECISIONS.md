@@ -17,10 +17,10 @@ Use a hybrid renderer: Markdig for Markdown syntax mapped to safe native display
 | D3 | LibreOffice, headless, converts DOCX/PPTX (and optional DOC/PPT/RTF/ODT/ODP) to PDF inside the isolated worker | Accepted, gated on the isolation tests in "Validation gates" | Only free engine with broad Word/PowerPoint layout support, including old binary formats. MPL-2.0 does not require publishing this app's source [S4] |
 | D4 | PDF.js (Apache-2.0) in WebView2 displays PDFs and LibreOffice output | Accepted | Gives text layer, search and selection. Windows.Data.Pdf only renders page images; `PdfPage` has no text API [S9] |
 | D5 | Spreadsheets: ExcelDataReader (MIT) + ExcelNumberFormat (MIT) feeding a virtualized WPF grid | Proposed | Forward-only, row-by-row reader; exposes merged cells, column widths and number-format strings; covers .xlsx and old .xls [S10, S11]. Formula evaluation is not part of its API; cached-value behaviour must be proven by fixtures |
-| D6 | Markdown: Markdig (BSD-2-Clause, CommonMark 0.31.2, pipe tables, task lists) with raw HTML parsing disabled, rendered to native WPF elements | Accepted | Parser is CommonMark-compliant and lets HTML parsing be switched off [S12] |
+| D6 | Markdown: Markdig (BSD-2-Clause, CommonMark 0.31.2, pipe tables, task lists) rendered to native WPF elements; HTML nodes stay in the AST and are shown as literal text | Accepted (revised after Codex review) | CommonMark-compliant parser [S12]. Keeping HTML nodes as literal text is safe because nothing instantiates HTML or XAML, and it preserves layout better than switching HTML parsing off. Compare fidelity before changing it |
 | D7 | Installer: Inno Setup, per-user, EXE | Proposed | Free for commercial use, no fee [S7]. WiX v6+ requires organisations with more than USD 10,000 annual revenue to pay an Open Source Maintenance Fee [S8], which needs Zain's approval |
 | D8 | Bundle OFL-1.1 fallback fonts for LibreOffice: Carlito (Calibri metrics), Caladea (Cambria), Liberation Sans/Serif/Mono (Arial, Times New Roman, Courier New) | Proposed | Metric-compatible substitutes keep line breaks and page counts closer [S13–S15] |
-| D9 | WebView2 Evergreen runtime (preinstalled on Windows 11), not the Fixed Version | Proposed | Fixed Version adds "over 250 MB" [S2]. Windows 11 ships the Evergreen runtime; the installer still checks for it |
+| D9 | WebView2 Evergreen runtime (preinstalled on Windows 11), not the Fixed Version | Proposed; open question for Zain | Fixed Version adds "over 250 MB" [S2]. Windows 11 ships the Evergreen runtime, but the installer must still check for it. If it is missing, an online bootstrapper cannot meet the offline-first-launch requirement (Codex review). Options: bundle Microsoft's offline Evergreen Standalone Installer, or state the runtime as an explicit prerequisite. Zain decides before release |
 | D10 | No commercial SDK in v1 | Accepted unless Zain decides otherwise | Costs and contract terms below; the free stack covers the required formats if the gates pass |
 
 ## Engine per format
@@ -88,7 +88,7 @@ No schema key was found that blocks remote graphics outright. Preferences are th
 
 ## Validation gates (release blockers)
 
-1. **LibreOffice in AppContainer.** Run a conversion inside an AppContainer with no network capability. If it works, that is the network boundary. If it does not, fall back to a job object, the hardened profile and a low-integrity token, document that network blocking then relies on configuration, and ask Zain before shipping.
+1. **LibreOffice in AppContainer.** Run a conversion inside an AppContainer with no network capability. If it works, that is the network boundary. If it does not, a job object, the hardened profile and a low-integrity token are **not** an equivalent boundary (Codex review): the no-network requirement must not be weakened silently. Record the gap and get Zain's written decision before any release that enables LibreOffice.
 2. **Hostile fixtures.** Remote image, remote template, external workbook link, UNC and WebDAV paths, XML external entity, ZIP bomb: zero network requests and no files beside the source.
 3. **Fluent theme.** Check high contrast, 100–300% scaling and every control used.
 4. **Spreadsheet values.** Formulas with and without cached results show the cached value or "Result unavailable"; nothing recalculates.

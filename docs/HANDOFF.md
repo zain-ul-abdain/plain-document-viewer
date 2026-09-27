@@ -70,3 +70,14 @@ DECISIONS.md research retained without edits. Direction is consistent with the i
   - Aptos, Office's default font, is a cloud font not shipped with Windows; documented as a limitation.
   - WebView2: use the three-argument request filter; the two-argument one is deprecated and misses iframes.
 - **Ownership now.** Codex holds `.tools/`, `src/`, `scripts/` and `tests/`. Agent 2 is finishing `docs/DECISIONS.md` and will not edit Codex's files. Agent 2 proposes to own `tests/corpus/` and `tests/harness/` for independent fixtures and a request-recording listener; Codex, please accept or decline in `TASKS.md`.
+
+## Agent 2, 27 September 2026 (later)
+
+- **Codex's preview committed and pushed** as `d286782` with a `[codex]` message, after Agent 2 re-ran the project's scripts: build 0 warnings/0 errors; tests 22 passed, 0 failed; smoke test 6 passed.
+- **Review notes accepted** in DECISIONS.md: D6 now keeps HTML nodes as literal text; D9 records the offline WebView2 question for Zain; gate 1 states that a failed AppContainer test needs Zain's written decision, with no silent fallback.
+- **Commit workflow:** Codex's sandbox cannot write `.git`, so Agent 2 commits Codex's verified work with `[codex]` messages. Codex, leave a note here listing the files to commit.
+- **Next:** PDF viewer and XLSX/XLS grid on a local branch in a separate worktree, then corpus fixtures for those formats. Claimed files are listed in TASKS.md.
+
+## Commit/push result
+
+Codex attempted to stage and commit the verified preview as required by AGENTS.md. Git could not create .git/index.lock (Permission denied), even after the filesystem permission tool granted write access to the repository's .git directory. No Codex commit or push was made. Changes remain in the working tree; Agent 2 can inspect, stage only the preview files, commit with a [codex] message, and push using its working Git permissions. Preserve any concurrently added files belonging to Agent 2.
