@@ -3,10 +3,14 @@
 import * as pdfjsLib from "./pdfjs/build/pdf.min.mjs";
 
 globalThis.pdfjsLib = pdfjsLib;
-const { EventBus, PDFLinkService, PDFFindController, PDFViewer, FindState } = await import("./pdfjs/web/pdf_viewer.mjs");
+const { EventBus, PDFLinkService, PDFFindController, PDFViewer, FindState, ScrollMode } = await import("./pdfjs/web/pdf_viewer.mjs");
 
 const DOCUMENT_URL = "https://doc.plainviewer.invalid/document.pdf";
-document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+const params = new URLSearchParams(location.search);
+document.documentElement.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
+// Slides mode (converted PowerPoint files): one slide at a time with a thumbnail strip.
+const slides = params.get("mode") === "slides";
+if (slides) document.body.classList.add("slides");
 const asset = path => new URL(path, location.href).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = asset("pdfjs/build/pdf.worker.min.mjs");
 
@@ -31,9 +35,69 @@ let lastQuery = "";
 function state() {
   post({ type: "state", page: viewer.currentPageNumber, pages: viewer.pagesCount, scale: viewer.currentScale });
 }
-eventBus.on("pagechanging", state);
+eventBus.on("pagechanging", event => { state(); markThumbnail(event.pageNumber); });
 eventBus.on("scalechanging", state);
-eventBus.on("pagesinit", () => { viewer.currentScaleValue = "page-width"; container.focus(); state(); });
+eventBus.on("pagesinit", () => {
+  if (slides) { viewer.scrollMode = ScrollMode.PAGE; viewer.currentScaleValue = "page-fit"; buildThumbnails(); }
+  else viewer.currentScaleValue = "page-width";
+  // Fit again once layout has settled (scroll mode changes and scrollbars alter the available space).
+  requestAnimationFrame(() => { if (viewer.currentScaleValue === "page-fit" || viewer.currentScaleValue === "page-width") viewer.currentScaleValue = viewer.currentScaleValue; });
+  container.focus(); state();
+});
+// Keep "fit width" and "fit page" true when the window is resized.
+window.addEventListener("resize", () => {
+  const value = viewer.currentScaleValue;
+  if (value === "page-fit" || value === "page-width") viewer.currentScaleValue = value;
+});
+
+// Thumbnails are rendered only when they scroll into view, so long presentations stay responsive.
+const thumbs = document.getElementById("thumbs");
+function buildThumbnails() {
+  const pdf = viewer.pdfDocument;
+  const observer = new IntersectionObserver(entries => entries.forEach(async entry => {
+    if (!entry.isIntersecting || entry.target.dataset.rendered) return;
+    entry.target.dataset.rendered = "1";
+    const page = await pdf.getPage(Number(entry.target.dataset.page));
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: 150 / base.width });
+    const canvas = entry.target.querySelector("canvas");
+    canvas.width = Math.floor(viewport.width * devicePixelRatio);
+    canvas.height = Math.floor(viewport.height * devicePixelRatio);
+    canvas.style.width = viewport.width + "px"; canvas.style.height = viewport.height + "px";
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport, transform: devicePixelRatio !== 1 ? [devicePixelRatio, 0, 0, devicePixelRatio, 0, 0] : null }).promise;
+  }), { root: thumbs, rootMargin: "300px" });
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.page = String(i);
+    button.setAttribute("aria-label", `Slide ${i}`);
+    const canvas = document.createElement("canvas");
+    canvas.style.width = "150px"; canvas.style.height = "84px";
+    const label = document.createElement("span");
+    label.textContent = String(i);
+    button.append(canvas, label);
+    button.addEventListener("click", () => { viewer.currentPageNumber = i; container.focus(); });
+    thumbs.append(button);
+    observer.observe(button);
+  }
+  markThumbnail(1);
+}
+function markThumbnail(number) {
+  if (!slides) return;
+  for (const button of thumbs.children) {
+    const current = Number(button.dataset.page) === number;
+    button.classList.toggle("current", current);
+    if (current) { button.setAttribute("aria-current", "true"); button.scrollIntoView({ block: "nearest" }); } else button.removeAttribute("aria-current");
+  }
+}
+// In slides mode the arrow and page keys move between slides.
+container.addEventListener("keydown", event => {
+  if (!slides || event.ctrlKey || event.altKey) return;
+  if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(event.key)) { viewer.nextPage(); event.preventDefault(); }
+  else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(event.key)) { viewer.previousPage(); event.preventDefault(); }
+  else if (event.key === "Home") { viewer.currentPageNumber = 1; event.preventDefault(); }
+  else if (event.key === "End") { viewer.currentPageNumber = viewer.pagesCount; event.preventDefault(); }
+});
 // With progress updates off, PDF.js sends the match count once, after every page has been searched.
 eventBus.on("updatefindmatchescount", e => post({ type: "find", current: e.matchesCount.current, total: e.matchesCount.total, done: true }));
 eventBus.on("updatefindcontrolstate", e => {
@@ -131,6 +195,9 @@ host?.addEventListener("message", event => {
       break;
     case "page":
       if (Number.isInteger(m.number) && m.number >= 1 && m.number <= viewer.pagesCount) viewer.currentPageNumber = m.number;
+      break;
+    case "step":
+      if (m.delta > 0) viewer.nextPage(); else viewer.previousPage();
       break;
     case "theme":
       document.documentElement.dataset.theme = m.dark ? "dark" : "light";

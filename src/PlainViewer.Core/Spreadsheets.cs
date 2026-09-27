@@ -408,7 +408,7 @@ public static class Spreadsheets
         {
             int n = inner.Read(buffer, offset, count);
             read += n;
-            if (read > limit) throw new DocumentException("This file is damaged or exceeds safe archive limits.");
+            if (read > limit) throw new DocumentException("This file is damaged or too large to open safely. Try another copy of the file.");
             return n;
         }
         public override bool CanRead => true;

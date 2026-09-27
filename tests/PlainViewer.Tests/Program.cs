@@ -67,8 +67,48 @@ try
     var culture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
     using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "manifest.json")));
     var errorWords = new Dictionary<string, string[]> {
-        ["damaged"] = ["damaged", "safe archive limits"], ["empty"] = ["empty"], ["password"] = ["password"],
-        ["mismatch"] = ["not an Excel workbook", "older Excel file"], ["unsupported"] = ["not supported"] };
+        ["damaged"] = ["damaged", "too large to open safely"], ["empty"] = ["empty"], ["password"] = ["password"],
+        ["mismatch"] = ["not an Excel workbook", "older Excel file", "contents are not", "older Office file"], ["unsupported"] = ["not supported", "contains macros"] };
+
+    // Word and PowerPoint: OfficePackages.Prepare must refuse bad packages with the right message and write a
+    // copy of good ones with no outside references (other than hyperlinks) and no content-fetching field codes.
+    foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
+    {
+        string format = fixture.GetProperty("format").GetString()!;
+        if (format is not ("docx" or "pptx" or "docm" or "pptm") || fixture.TryGetProperty("generated", out _)) continue;
+        string file = fixture.GetProperty("file").GetString()!;
+        var expect = fixture.GetProperty("expect");
+        Test("Office preparation " + file, () => {
+            string path = Path.Combine(corpus, file.Replace('/', Path.DirectorySeparatorChar));
+            string output = Path.Combine(root, Guid.NewGuid().ToString("N"), "document" + Path.GetExtension(path));
+            byte[] before = SHA256.HashData(File.ReadAllBytes(path)); var siblings = Directory.GetFiles(Path.GetDirectoryName(path)!);
+            if (expect.GetProperty("result").GetString() == "error")
+            {
+                string message = "";
+                try { OfficePackages.Prepare(path, output); } catch (DocumentException ex) { message = ex.Message; }
+                var words = errorWords[expect.GetProperty("error").GetString()!];
+                if (!words.Any(w => message.Contains(w, StringComparison.OrdinalIgnoreCase))) throw new Exception($"Expected a {string.Join("/", words)} message, got: '{message}'");
+                Check(!File.Exists(output));
+            }
+            else
+            {
+                var view = OfficePackages.Prepare(path, output);
+                Check(view.Kind == (format == "docx" ? "word" : "slides"));
+                using var zip = ZipFile.OpenRead(output);
+                foreach (var entry in zip.Entries.Where(e => e.FullName.EndsWith(".xml") || e.FullName.EndsWith(".rels")))
+                {
+                    using var reader = new StreamReader(entry.Open()); string xml = reader.ReadToEnd();
+                    foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(xml, "<Relationship [^>]*TargetMode=\"External\"[^>]*>"))
+                        if (!m.Value.Contains("/hyperlink\"")) throw new Exception($"{entry.FullName} still has an outside reference: {m.Value}");
+                    if (System.Text.RegularExpressions.Regex.IsMatch(xml, "INCLUDEPICTURE|INCLUDETEXT|DDEAUTO", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                        throw new Exception($"{entry.FullName} still has a content-fetching field.");
+                }
+                if (fixture.GetProperty("category").GetString() == "attack") Check(view.Notice.Contains("removed"));
+            }
+            Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))));
+            Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
+        });
+    }
     foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
     {
         string format = fixture.GetProperty("format").GetString()!;

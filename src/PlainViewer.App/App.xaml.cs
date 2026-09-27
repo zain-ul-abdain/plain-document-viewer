@@ -5,6 +5,8 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Remove private work folders left behind if the app or a conversion was ended abruptly.
+        _ = Task.Run(() => { try { OfficeConverter.CleanLeftovers(); } catch (System.IO.IOException) { } catch (UnauthorizedAccessException) { } });
         if (e.Args.FirstOrDefault() == "--smoke-test")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

@@ -8,13 +8,20 @@ namespace PlainViewer.App;
 
 internal static class WorkerClient
 {
-    public static async Task<DocumentView> Load(string path, string encoding, string delimiter, CancellationToken cancellation)
+    public static Task<DocumentView> Load(string path, string encoding, string delimiter, CancellationToken cancellation) =>
+        Run([path, encoding, delimiter], cancellation);
+
+    // Validates a Word/PowerPoint package in the worker and writes a sanitised copy to `output` for conversion.
+    public static Task<DocumentView> PrepareOffice(string path, string output, CancellationToken cancellation) =>
+        Run([path, "--prepare-office", output], cancellation);
+
+    private static async Task<DocumentView> Run(string[] arguments, CancellationToken cancellation)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(20));
         string worker = Path.Combine(AppContext.BaseDirectory, "worker", "PlainViewer.Worker.dll");
         string host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
         var start = new ProcessStartInfo(host) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
-        start.ArgumentList.Add(worker); start.ArgumentList.Add(path); start.ArgumentList.Add(encoding); start.ArgumentList.Add(delimiter);
+        start.ArgumentList.Add(worker); foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new DocumentException("The document worker could not start. Rebuild the application and try again.");
         try
         {

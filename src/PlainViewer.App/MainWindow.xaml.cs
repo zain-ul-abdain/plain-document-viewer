@@ -36,10 +36,13 @@ public partial class MainWindow : Window
     private static string Choice(ComboBox box) => ((ComboBoxItem)box.SelectedItem).Content.ToString()!;
     private static bool IsPdf(string path) => string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
     private static bool IsWorkbook(string path) => Path.GetExtension(path).ToLowerInvariant() is ".xlsx" or ".xlsm" or ".xltx" or ".xltm" or ".xlsb";
-    private bool InWebPane => document?.Kind is "pdf" or "sheet";
+    private static bool IsOffice(string path) => OfficePackages.IsOfficeDocument(path);
+    private static bool UsesWebPane(string path) => IsPdf(path) || IsWorkbook(path) || IsOffice(path);
+    private bool InWebPane => document?.Kind is "pdf" or "sheet" or "word" or "slides";
+    private bool Paginated => document?.Kind is "pdf" or "word" or "slides";
     internal async Task<string> VerifyRefusedAsync(string path)
     {
-        if (IsPdf(path) || IsWorkbook(path))
+        if (UsesWebPane(path))
         { WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show(); }
         currentPath = path; await LoadCurrent();
         if (document is not null) throw new InvalidOperationException($"Expected {Path.GetFileName(path)} to be refused, but it opened.");
@@ -50,7 +53,7 @@ public partial class MainWindow : Window
     }
     internal async Task VerifyPreviewAsync(string path)
     {
-        if (IsPdf(path) || IsWorkbook(path))
+        if (UsesWebPane(path))
         {
             // WebView2 needs a real window handle, so the smoke test shows the window off-screen.
             WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show();
@@ -86,7 +89,7 @@ public partial class MainWindow : Window
     }
     private void OpenClicked(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.pdf;*.xlsx;*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.pdf;*.docx;*.xlsx;*.pptx;*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
         if (dialog.ShowDialog(this) == true) OpenPath(dialog.FileName);
     }
     public void OpenPath(string path)
@@ -103,6 +106,7 @@ public partial class MainWindow : Window
         try
         {
             var loaded = IsPdf(currentPath) ? await LoadPdf(currentPath, operation.Token)
+                : IsOffice(currentPath) ? await LoadOffice(currentPath, operation.Token)
                 : await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), operation.Token);
             if (loading != operation) return;
             if (loaded.Kind == "sheet") await LoadSheets(loaded, operation.Token);
@@ -131,7 +135,9 @@ public partial class MainWindow : Window
         SourceToggle.Visibility = document.Kind == "markdown" ? Visibility.Visible : Visibility.Collapsed;
         bool web = InWebPane;
         WebPane.Visibility = web ? Visibility.Visible : Visibility.Collapsed;
-        PageControls.Visibility = document.Kind == "pdf" ? Visibility.Visible : Visibility.Collapsed;
+        PageControls.Visibility = Paginated ? Visibility.Visible : Visibility.Collapsed;
+        PageLabel.Text = document.Kind == "slides" ? "Slide" : "Page";
+        System.Windows.Automation.AutomationProperties.SetName(PageBox, document.Kind == "slides" ? "Go to slide number" : "Go to page number");
         EncodingChoice.IsEnabled = !web;
         if (web) { DelimiterChoice.IsEnabled = false; lastQuery = ""; matchIndex = -1; WebPane.FocusDocument(); return; }
         DelimiterChoice.IsEnabled = document.Kind == "csv";
@@ -263,6 +269,27 @@ public partial class MainWindow : Window
     private void ResetZoom(object s, RoutedEventArgs e) => ZoomBy(0);
     private void FitWidth(object s, RoutedEventArgs e) => WebPane.Zoom("page-width");
     private void FitPage(object s, RoutedEventArgs e) => WebPane.Zoom("page-fit");
+    private void PreviousPage(object s, RoutedEventArgs e) => WebPane.Step(-1);
+    private void NextPage(object s, RoutedEventArgs e) => WebPane.Step(1);
+    private async Task<DocumentView> LoadOffice(string path, CancellationToken cancellation)
+    {
+        // The worker checks the package and writes a private copy without outside references; LibreOffice converts that copy.
+        string work = OfficeConverter.NewWorkFolder();
+        try
+        {
+            string copy = Path.Combine(work, "in", "document" + Path.GetExtension(path).ToLowerInvariant());
+            var prepared = await WorkerClient.PrepareOffice(path, copy, cancellation);
+            Status.Text = "Preparing the document for viewing…";
+            var pdf = await OfficeConverter.ToPdf(copy, work, cancellation);
+            Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
+            WebPane.Visibility = Visibility.Visible;
+            bool slides = prepared.Kind == "slides";
+            await WebPane.LoadPdf(pdf, IsDarkTheme(), cancellation, slides);
+            if (slides) prepared.Notice = (prepared.Notice + " Slides are shown as still pictures: animations, transitions, audio and video do not play.").Trim();
+            return prepared;
+        }
+        finally { OfficeConverter.Delete(work); }
+    }
     private void PageBoxKeyDown(object s, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
@@ -292,11 +319,13 @@ public partial class MainWindow : Window
     {
         if (document is null || !InWebPane) return;
         ZoomButton.Content = $"{WebPane.Scale:P0}";
-        if (document.Kind == "pdf")
+        if (Paginated)
         {
+            string unit = document.Kind == "slides" ? "Slide" : "Page";
+            string type = document.Kind switch { "word" => "Word document", "slides" => "PowerPoint presentation", _ => "PDF" };
             PageCount.Text = $"of {WebPane.Pages}";
             if (!PageBox.IsKeyboardFocused) PageBox.Text = WebPane.Page.ToString();
-            Status.Text = $"Read only · PDF · Page {WebPane.Page} of {WebPane.Pages} · Opened in {openSeconds:F2}s";
+            Status.Text = $"Read only · {type} · {unit} {WebPane.Page} of {WebPane.Pages} · Opened in {openSeconds:F2}s. {document.Notice}";
         }
         else Status.Text = $"Read only · Excel workbook · Sheet {WebPane.Page} of {WebPane.Pages}: {WebPane.SheetName} · Opened in {openSeconds:F2}s. {document.Notice}";
     }
@@ -350,7 +379,7 @@ public partial class MainWindow : Window
 #pragma warning restore WPF0001
     private void NumberRow(object s, DataGridRowEventArgs e) => e.Row.Header = (e.Row.GetIndex() + 1).ToString();
     private void FileDropped(object s, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] files) foreach (var file in files) OpenPath(file); }
-    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, "Plain Viewer — development preview\n\nRead-only PDF, Excel (.xlsx), text, CSV and Markdown. Word and PowerPoint rendering are pending.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
+    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, "Plain Viewer — development preview\n\nRead-only PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), text, CSV and Markdown.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Word and PowerPoint files are converted to PDF by LibreOffice (MPL-2.0). Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
     private void WindowKeyDown(object s, KeyEventArgs e)
     {
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);

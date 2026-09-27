@@ -104,19 +104,20 @@ internal sealed class DocumentWebView : Border
         e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(null, 403, "Blocked", "");
     }
 
-    public Task<int> LoadPdf(byte[] data, bool dark, CancellationToken cancellation) =>
-        Load("pdf/viewer.html", data, "document.pdf", "application/pdf", dark, cancellation);
+    // slides: one slide at a time with a thumbnail strip (converted PowerPoint files).
+    public Task<int> LoadPdf(byte[] data, bool dark, CancellationToken cancellation, bool slides = false) =>
+        Load("pdf/viewer.html", data, "document.pdf", "application/pdf", dark, cancellation, slides ? "&mode=slides" : "");
 
     public Task<int> LoadSheets(byte[] json, bool dark, CancellationToken cancellation) =>
-        Load("sheet/sheet.html", json, "workbook.json", "application/json; charset=utf-8", dark, cancellation);
+        Load("sheet/sheet.html", json, "workbook.json", "application/json; charset=utf-8", dark, cancellation, "");
 
-    private async Task<int> Load(string pagePath, byte[] data, string name, string type, bool dark, CancellationToken cancellation)
+    private async Task<int> Load(string pagePath, byte[] data, string name, string type, bool dark, CancellationToken cancellation, string query)
     {
         bytes = data; resource = name; contentType = type; page = pagePath;
         await EnsureReady();
         opening = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellation.Register(() => opening.TrySetCanceled(cancellation));
-        web.CoreWebView2.Navigate($"https://{AppHost}/{pagePath}?theme={(dark ? "dark" : "light")}");
+        web.CoreWebView2.Navigate($"https://{AppHost}/{pagePath}?theme={(dark ? "dark" : "light")}{query}");
         try { return await opening.Task; }
         catch { web.CoreWebView2?.Stop(); throw; }
     }
@@ -171,6 +172,7 @@ internal sealed class DocumentWebView : Border
     public void Find(string query, bool previous) => Post(new { type = "find", query, previous });
     public void Zoom(object value) => Post(new { type = "zoom", value });
     public void GoToPage(int number) => Post(new { type = "page", number });
+    public void Step(int delta) => Post(new { type = "step", delta });
     public void ChangeSheet(int delta) => Post(new { type = "sheet", delta });
     public void SetTheme(bool dark) => Post(new { type = "theme", dark });
     public void FocusDocument() { web.Focus(); Post(new { type = "focus" }); }

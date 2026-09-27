@@ -19,9 +19,11 @@
     <ComboBox x:Name="EncodingChoice" Width="125" SelectedIndex="0" SelectionChanged="OptionsChanged" AutomationProperties.Name="Text encoding"><ComboBoxItem>Auto</ComboBoxItem><ComboBoxItem>UTF-8</ComboBoxItem><ComboBoxItem>UTF-16 LE</ComboBoxItem><ComboBoxItem>UTF-16 BE</ComboBoxItem><ComboBoxItem>Windows-1252</ComboBoxItem></ComboBox>
     <ComboBox x:Name="DelimiterChoice" Width="110" SelectedIndex="0" SelectionChanged="OptionsChanged" AutomationProperties.Name="CSV delimiter" Margin="8,0,0,0"><ComboBoxItem>Auto</ComboBoxItem><ComboBoxItem>Comma</ComboBoxItem><ComboBoxItem>Semicolon</ComboBoxItem><ComboBoxItem>Tab</ComboBoxItem></ComboBox>
     <StackPanel x:Name="PageControls" Orientation="Horizontal" Visibility="Collapsed">
-     <TextBlock Text="Page" VerticalAlignment="Center" Margin="0,0,6,0" />
+     <Button x:Name="PreviousPageButton" Content="‹" Click="PreviousPage" Padding="10,6" Margin="0,0,4,0" AutomationProperties.Name="Previous page" ToolTip="Previous page" />
+     <TextBlock x:Name="PageLabel" Text="Page" VerticalAlignment="Center" Margin="0,0,6,0" />
      <TextBox x:Name="PageBox" Width="56" Padding="6,5" KeyDown="PageBoxKeyDown" AutomationProperties.Name="Go to page number" />
-     <TextBlock x:Name="PageCount" VerticalAlignment="Center" Margin="6,0,12,0" />
+     <TextBlock x:Name="PageCount" VerticalAlignment="Center" Margin="6,0,4,0" />
+     <Button x:Name="NextPageButton" Content="›" Click="NextPage" Padding="10,6" Margin="0,0,12,0" AutomationProperties.Name="Next page" ToolTip="Next page" />
      <Button Content="Fit width" Click="FitWidth" Margin="0,0,4,0" Padding="10,6" />
      <Button Content="Fit page" Click="FitPage" Padding="10,6" />
     </StackPanel>
@@ -30,7 +32,7 @@
   </StackPanel>
   <TextBlock x:Name="Status" DockPanel.Dock="Bottom" Margin="0,12,0,0" TextWrapping="Wrap" Text="Development preview · Read only · No files are uploaded" />
   <Grid>
-   <TextBlock x:Name="Welcome" Text="Open a document&#10;&#10;PDF, Excel (.xlsx), text, CSV and Markdown preview&#10;Word and PowerPoint viewing are being built.&#10;&#10;Drop a local file here or press Ctrl+O." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="22" />
+   <TextBlock x:Name="Welcome" Text="Open a document&#10;&#10;PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx),&#10;text, CSV and Markdown · development preview&#10;&#10;Drop a local file here or press Ctrl+O." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="22" />
    <local:DocumentWebView x:Name="WebPane" Visibility="Collapsed" />
    <TextBox x:Name="TextView" Visibility="Collapsed" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" Padding="20" AutomationProperties.Name="Read-only document text" />
    <RichTextBox x:Name="MarkdownDisplay" Visibility="Collapsed" IsReadOnly="True" IsDocumentEnabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="20" AutomationProperties.Name="Rendered Markdown document" />
