@@ -37,6 +37,7 @@ SetupLogging=yes
 
 [Tasks]
 Name: openwith; Description: "Add Plain Viewer to ""Open with"" for PDF, Word, Excel, PowerPoint, CSV, text and Markdown files (your default apps do not change)"
+Name: firewall; Description: "Block the parts that read documents from the network with Windows Firewall (asks for administrator permission once)"
 Name: desktopicon; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [InstallDelete]
@@ -99,6 +100,7 @@ Filename: "{app}\PlainViewer.exe"; Description: "{cm:LaunchProgram,Plain Viewer}
 ; Plain Viewer's private data: converter profile, temporary work folders and the page view's cache.
 ; Never touches the user's documents.
 Type: filesandordirs; Name: "{localappdata}\PlainViewer"
+Type: filesandordirs; Name: "{%USERPROFILE}\AppData\LocalLow\PlainViewer"
 
 [Code]
 // PDF, Word, Excel and PowerPoint views need the Microsoft Edge WebView2 Runtime, which Windows 11 includes.
@@ -112,6 +114,66 @@ begin
       and (Version <> '') and (Version <> '0.0.0.0'))
     or (RegQueryStringValue(HKCU, 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version)
       and (Version <> '') and (Version <> '0.0.0.0'));
+end;
+
+// Optional Windows Firewall rules (DECISIONS.md, gate 1): block the worker and LibreOffice from the network in both
+// directions. Adding and removing rules needs administrator rights, so each runs as one elevated command (one prompt).
+const
+  RulePrefix = 'Plain Viewer - block network - ';
+
+function RuleCommand(Add: Boolean; Name, Exe, Direction: String): String;
+begin
+  Result := 'netsh advfirewall firewall delete rule name="' + RulePrefix + Name + ' (' + Direction + ')" >nul 2>&1';
+  if Add then
+    Result := Result + ' & netsh advfirewall firewall add rule name="' + RulePrefix + Name + ' (' + Direction + ')" dir=' + Direction +
+      ' action=block program="' + Exe + '" enable=yes profile=any >nul';
+end;
+
+function ProgramCommands(Add: Boolean; Name, Exe: String): String;
+begin
+  Result := RuleCommand(Add, Name, Exe, 'out') + ' & ' + RuleCommand(Add, Name, Exe, 'in');
+end;
+
+function FirewallCommand(Add: Boolean): String;
+begin
+  Result := ProgramCommands(Add, 'document worker', ExpandConstant('{app}\PlainViewer.Worker.exe')) + ' & ' +
+    ProgramCommands(Add, 'converter launcher', ExpandConstant('{app}\libreoffice\program\soffice.exe')) + ' & ' +
+    ProgramCommands(Add, 'converter', ExpandConstant('{app}\libreoffice\program\soffice.bin')) + ' & ' +
+    ProgramCommands(Add, 'converter scripting', ExpandConstant('{app}\libreoffice\program\python.exe'));
+end;
+
+procedure RunElevated(Command: String);
+var
+  ResultCode: Integer;
+begin
+  // Returns quietly if the user declines the administrator prompt; callers check the rules afterwards.
+  ShellExec('runas', ExpandConstant('{cmd}'), '/s /c "' + Command + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function FirewallRulesExist: Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Reading rules does not need administrator rights.
+  Result := Exec(ExpandConstant('{sys}\netsh.exe'), 'advfirewall firewall show rule name="' + RulePrefix + 'converter (out)"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+    and (ResultCode = 0);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('firewall') then
+  begin
+    RunElevated(FirewallCommand(True));
+    if not FirewallRulesExist then
+      SuppressibleMsgBox('The Windows Firewall rules were not added (administrator permission was not given). Plain Viewer works without them, ' +
+        'but the parts that read documents are then not blocked from the network by Windows. Run this installer again to add them.', mbInformation, MB_OK, IDOK);
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if (CurUninstallStep = usPostUninstall) and FirewallRulesExist then
+    RunElevated(FirewallCommand(False));
 end;
 
 function InitializeSetup: Boolean;

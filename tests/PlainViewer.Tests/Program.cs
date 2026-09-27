@@ -4,6 +4,14 @@ using System.Text;
 using System.Xml;
 using PlainViewer.Core;
 
+// Child mode for the low-integrity test: drop to low integrity, then report which folders Windows lets it write to.
+if (args is ["--low-integrity-probe", var mediumFolder, var lowFolder])
+{
+    LowIntegrity.LowerCurrentProcess();
+    Console.WriteLine($"{CanWrite(mediumFolder)} {CanWrite(lowFolder)}");
+    return 0;
+}
+
 int passed = 0, failed = 0;
 void Test(string name, Action test) { try { test(); Console.WriteLine("PASS " + name); passed++; } catch (Exception ex) { Console.WriteLine("FAIL " + name + ": " + ex.Message); failed++; } }
 void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
@@ -42,6 +50,22 @@ try
     Test("Wrong extension content rejected", () => { string path = Path.Combine(root, "fake.txt"); File.WriteAllText(path, "%PDF-1.7"); Throws<DocumentException>(() => TextFiles.Load(path)); });
     Test("Empty text is valid", () => { string path = Path.Combine(root, "empty.txt"); File.WriteAllText(path, ""); Check(TextFiles.Load(path).Text == ""); });
     Test("CSV preview explicitly reports truncation", () => { string path = Path.Combine(root, "large.csv"); File.WriteAllLines(path, Enumerable.Range(0, 1500).Select(i => i + ",001")); var view = TextFiles.Load(path); Check(view.Rows.Count == 1000 && view.Notice.Contains("1,000")); });
+    // The worker and LibreOffice run at low integrity: they must not be able to write the user's folders.
+    Test("Low integrity blocks writes to the user's folders but not to its own", () => {
+        string medium = Path.Combine(root, "medium"), low = Path.Combine(LowIntegrity.Root, "Temp", "probe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(medium); Directory.CreateDirectory(low);
+        try
+        {
+            string self = Environment.ProcessPath!;
+            var start = new System.Diagnostics.ProcessStartInfo(self) { RedirectStandardOutput = true, UseShellExecute = false };
+            if (Path.GetFileNameWithoutExtension(self).Equals("dotnet", StringComparison.OrdinalIgnoreCase)) start.ArgumentList.Add(System.Reflection.Assembly.GetEntryAssembly()!.Location);
+            foreach (var argument in new[] { "--low-integrity-probe", medium, low }) start.ArgumentList.Add(argument);
+            using var probe = System.Diagnostics.Process.Start(start)!;
+            string result = probe.StandardOutput.ReadToEnd().Trim(); probe.WaitForExit();
+            Check(result == "False True" && !File.Exists(Path.Combine(medium, "probe.txt")) && File.Exists(Path.Combine(low, "probe.txt")));
+        }
+        finally { Directory.Delete(low, true); }
+    });
     // PDF snapshot. PDF.js parses inside WebView2; these cover the host-side checks only.
     Test("PDF snapshot copies bytes and leaves the original unchanged", () => {
         string path = Path.Combine(root, "doc.pdf"); File.WriteAllBytes(path, Encoding.ASCII.GetBytes("%PDF-1.7\n%%EOF\n"));
@@ -171,6 +195,12 @@ try
 finally { Directory.Delete(root, true); }
 Console.WriteLine($"Results: {passed} passed, {failed} failed. No UI, Office fidelity, network instrumentation or release performance checks were run.");
 return failed == 0 ? 0 : 1;
+
+static bool CanWrite(string folder)
+{
+    try { File.WriteAllText(Path.Combine(folder, "probe.txt"), "probe"); return true; }
+    catch (UnauthorizedAccessException) { return false; }
+}
 
 static string FindCorpus()
 {

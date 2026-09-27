@@ -6,14 +6,16 @@ using PlainViewer.Core;
 namespace PlainViewer.App;
 
 // Converts a sanitised Word/PowerPoint copy to PDF with the bundled LibreOffice.
-// LibreOffice cannot run inside an AppContainer (it always creates a machine-wide named pipe), so it runs in a Job
-// Object with memory, process-count and UI limits, from a private profile whose hardened settings are rewritten on
-// every run. The input is a private copy already stripped of outside references by the worker. See DECISIONS.md.
+// LibreOffice cannot run inside an AppContainer (it always creates a machine-wide named pipe), so it runs at low
+// integrity in a Job Object with memory, process-count and UI limits, from a private profile whose hardened settings
+// are rewritten on every run; optional firewall rules added by the installer block its network access. The input is
+// a private copy already stripped of outside references by the worker. See DECISIONS.md, gate 1.
 internal static class OfficeConverter
 {
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(2);
     private static string AppData => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PlainViewer");
-    private static string Profile => Path.Combine(AppData, "LibreOffice", "profile");
+    // LibreOffice runs at low integrity, so its profile and work folders live where low-integrity writes are allowed.
+    private static string Profile => Path.Combine(LowIntegrity.Root, "LibreOffice", "profile");
     // Written once LibreOffice has built the profile; holds the LibreOffice build it was built with.
     private static string ReadyMarker => Path.Combine(Profile, "user", "plainviewer-ready.txt");
 
@@ -34,9 +36,11 @@ internal static class OfficeConverter
         return null;
     }
 
+    private static string WorkRoot => Path.Combine(LowIntegrity.Root, "Temp");
+
     public static string NewWorkFolder()
     {
-        string folder = Path.Combine(AppData, "Temp", Guid.NewGuid().ToString("N"));
+        string folder = Path.Combine(WorkRoot, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(folder, "in"));
         return folder;
     }
@@ -54,10 +58,13 @@ internal static class OfficeConverter
     // Removes work folders left behind by a crash (called at start-up).
     public static void CleanLeftovers()
     {
-        string root = Path.Combine(AppData, "Temp");
-        if (!Directory.Exists(root)) return;
-        foreach (var folder in Directory.GetDirectories(root))
-            if (Directory.GetLastWriteTimeUtc(folder) < DateTime.UtcNow.AddMinutes(-10)) Delete(folder);
+        // Also the folder used before the converter ran at low integrity (version 0.1.0).
+        foreach (var root in new[] { WorkRoot, Path.Combine(AppData, "Temp") })
+        {
+            if (!Directory.Exists(root)) continue;
+            foreach (var folder in Directory.GetDirectories(root))
+                if (Directory.GetLastWriteTimeUtc(folder) < DateTime.UtcNow.AddMinutes(-10)) Delete(folder);
+        }
     }
 
     public static async Task<byte[]> ToPdf(string input, string work, CancellationToken cancellation)
@@ -196,7 +203,8 @@ internal static class OfficeConverter
         {
             var limits = new ExtendedLimits();
             limits.Basic.LimitFlags = 0x2000 | 0x200 | 0x8 | 0x400;   // kill on close, job memory, active processes, die on unhandled exception
-            limits.Basic.ActiveProcessLimit = 4;
+            // The launcher (soffice.exe) and one soffice.bin; LibreOffice may not start any other program.
+            limits.Basic.ActiveProcessLimit = 2;
             limits.JobMemoryLimit = (UIntPtr)(3UL * 1024 * 1024 * 1024);
             if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf<ExtendedLimits>())) throw new Win32Exception();
             uint ui = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x40 | 0x80;   // no outside USER handles, clipboard, system settings, global atoms, desktops or log-off
@@ -212,9 +220,16 @@ internal static class OfficeConverter
             }
             environment.Append("TEMP=").Append(temp).Append('\0').Append("TMP=").Append(temp).Append('\0').Append('\0');
             const uint Suspended = 0x4, NoWindow = 0x08000000, UnicodeEnvironment = 0x400;
-            if (!CreateProcess(exe, new StringBuilder($"\"{exe}\" {arguments}"), IntPtr.Zero, IntPtr.Zero, false, Suspended | NoWindow | UnicodeEnvironment,
-                    environment.ToString(), temp, ref startup, out var process))
-                throw new Win32Exception();
+            // Started at low integrity: LibreOffice and anything it starts cannot write the user's files or change other programs.
+            IntPtr token = LowIntegrity.CreateToken();
+            ProcessInformation process;
+            try
+            {
+                if (!CreateProcessAsUser(token, exe, new StringBuilder($"\"{exe}\" {arguments}"), IntPtr.Zero, IntPtr.Zero, false, Suspended | NoWindow | UnicodeEnvironment,
+                        environment.ToString(), temp, ref startup, out process))
+                    throw new Win32Exception();
+            }
+            finally { CloseHandle(token); }
             try
             {
                 if (!AssignProcessToJobObject(job, process.Process)) { TerminateProcess(process.Process, 1); throw new Win32Exception(); }
@@ -254,7 +269,7 @@ internal static class OfficeConverter
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref uint info, uint size);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(IntPtr job, int infoClass, ref BasicAccounting info, uint size, IntPtr returned);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CreateProcess(string application, StringBuilder commandLine, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint flags, string environment, string directory, ref StartupInfo startup, out ProcessInformation information);
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool CreateProcessAsUser(IntPtr token, string application, StringBuilder commandLine, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint flags, string environment, string directory, ref StartupInfo startup, out ProcessInformation information);
     [DllImport("kernel32.dll")] private static extern uint ResumeThread(IntPtr thread);
     [DllImport("kernel32.dll")] private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
     [DllImport("kernel32.dll")] private static extern bool GetExitCodeProcess(IntPtr process, out uint code);

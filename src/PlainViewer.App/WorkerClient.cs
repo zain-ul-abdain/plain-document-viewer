@@ -49,7 +49,7 @@ internal static class WorkerClient
     }
 }
 
-// Resource containment only: restricted token/AppContainer is still a release blocker.
+// Resource limits. Privileges are reduced by the worker itself, which drops to low integrity before reading (Program.cs).
 internal sealed class WorkerJob : IDisposable
 {
     private readonly IntPtr handle;

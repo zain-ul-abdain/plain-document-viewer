@@ -8,6 +8,11 @@ if (Console.ReadLine() != "START") return 2;
 WorkerResponse response;
 try
 {
+    // Before touching the document: from here on this process cannot write the user's files or change other programs.
+    // Output for Word/PowerPoint preparation goes under LowIntegrity.Root, which allows low-integrity writes.
+    try { LowIntegrity.LowerCurrentProcess(); }
+    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+    { throw new DocumentException("The document worker could not start in its restricted mode, so the file was not opened."); }
     if (args.Length is < 1 or > 3) throw new DocumentException("Choose a file to open.");
     string extension = Path.GetExtension(args[0]).ToLowerInvariant();
     // "--prepare-office <output>": validate a Word/PowerPoint package and write a sanitised copy for conversion.
