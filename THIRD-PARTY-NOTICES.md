@@ -67,7 +67,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## PDF.js 6.3.289 (pdfjs-dist)
 
-Source: https://github.com/mozilla/pdf.js, npm package pdfjs-dist 6.3.289 (integrity sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw==). Unmodified files are shipped in `Assets/pdf/pdfjs`.
+Source: https://github.com/mozilla/pdf.js, npm package pdfjs-dist 6.3.289 (integrity sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw==). Unmodified files are shipped in `Assets/pdf/pdfjs`, except that the four Liberation Sans font files are replaced (see the table below).
 
 Copyright Mozilla Foundation. Licensed under the Apache License, Version 2.0; the full licence text ships as `Assets/pdf/pdfjs/LICENSE`. You may not use these files except in compliance with the License. Distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.
 
@@ -76,7 +76,7 @@ Components bundled inside PDF.js, each with its licence file next to it:
 | Component | Files | Licence |
 |---|---|---|
 | Foxit standard fonts (from PDFium) | `standard_fonts/Foxit*.pfb` | BSD-3-Clause, `standard_fonts/LICENSE_FOXIT` |
-| Liberation Sans 1.x | `standard_fonts/LiberationSans-*.ttf` | GPL v2 with font exception (Red Hat), `standard_fonts/LICENSE_LIBERATION`. Separate font files; they do not make the application a derivative work. Planned: replace with Liberation 2.x (OFL-1.1) before release |
+| Liberation Sans 2.1.5 (replaces the 1.07.4 files PDF.js ships, which were GPL v2 with a font exception) | `standard_fonts/LiberationSans-*.ttf`, unmodified copies from LibreOffice 26.2.6 | SIL Open Font License 1.1; copyright notice and full licence in `standard_fonts/LICENSE_LIBERATION`. Digitized data copyright (c) 2010 Google Corporation; copyright (c) 2012 Red Hat, Inc. SHA-256 of Regular: 76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8. PDF.js loads them only when a PDF uses an unembedded Helvetica and system fonts are unavailable |
 | OpenJPEG decoder (WebAssembly) | `wasm/openjpeg*` | BSD-2-Clause, `wasm/LICENSE_OPENJPEG`, `wasm/LICENSE_PDFJS_OPENJPEG` |
 | JBIG2 decoder from PDFium (WebAssembly) | `wasm/jbig2*` | BSD-3-Clause and Apache-2.0, `wasm/LICENSE_JBIG2`, `wasm/LICENSE_PDFJS_JBIG2` |
 | qcms colour management (WebAssembly) | `wasm/qcms_bg.wasm` | MIT, `wasm/LICENSE_QCMS`, `wasm/LICENSE_PDFJS_QCMS` |
