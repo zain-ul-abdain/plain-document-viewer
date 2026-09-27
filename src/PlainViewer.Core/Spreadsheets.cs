@@ -1,0 +1,425 @@
+using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using System.Xml;
+using ExcelNumberFormat;
+namespace PlainViewer.Core;
+
+// Reads .xlsx workbooks as display text. Only saved values are shown: formulas are never evaluated,
+// external links and data connections are never followed, and hidden sheets stay hidden.
+public static class Spreadsheets
+{
+    public const long SizeLimit = 256L * 1024 * 1024;
+    public const int MaxRowsPerSheet = 10_000, MaxColumns = 256, MaxCellsPerWorkbook = 300_000;
+    public const string ResultUnavailable = "Result unavailable";
+    private const long PartByteLimit = 1024L * 1024 * 1024;       // decompressed bytes read from any one part
+    private const long StringCharacterLimit = 32L * 1024 * 1024;   // total shared-string characters kept
+    private const string RelationshipNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    private const string StrictRelationshipNs = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+
+    private static readonly Dictionary<int, string> BuiltInFormats = new()
+    {
+        [0] = "General", [1] = "0", [2] = "0.00", [3] = "#,##0", [4] = "#,##0.00", [9] = "0%", [10] = "0.00%",
+        [11] = "0.00E+00", [12] = "# ?/?", [13] = "# ??/??", [15] = "d-mmm-yy", [16] = "d-mmm", [17] = "mmm-yy",
+        [18] = "h:mm AM/PM", [19] = "h:mm:ss AM/PM", [20] = "h:mm", [21] = "h:mm:ss", [37] = "#,##0 ;(#,##0)",
+        [38] = "#,##0 ;[Red](#,##0)", [39] = "#,##0.00;(#,##0.00)", [40] = "#,##0.00;[Red](#,##0.00)", [45] = "mm:ss",
+        [46] = "[h]:mm:ss", [47] = "mmss.0", [48] = "##0.0E+0", [49] = "@"
+    };
+
+    public static DocumentView Load(string path, CultureInfo? culture = null)
+    {
+        culture ??= CultureInfo.CurrentCulture;
+        TextFiles.ValidateLocalPath(path);
+        string extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is ".xlsm" or ".xltx" or ".xltm" or ".xlsb" or ".xlam")
+            throw new DocumentException($"{extension} files are not supported yet. Save the workbook as .xlsx in a spreadsheet application to view it here.");
+        if (extension != ".xlsx") throw new DocumentException("Only .xlsx workbooks open in the spreadsheet view.");
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        long length = stream.Length;
+        var modified = File.GetLastWriteTimeUtc(path);
+        if (length == 0) throw new DocumentException("This workbook is empty (0 bytes). It may not have finished downloading or copying. Get a complete copy and try again.");
+        if (length > SizeLimit) throw new DocumentException("This workbook is larger than 256 MB, which is more than this viewer can open safely.");
+        byte[] head = new byte[Math.Min(length, 65536)];
+        stream.ReadExactly(head); stream.Position = 0;
+        if (head.AsSpan().StartsWith(new byte[] { 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 }))
+            throw new DocumentException(head.AsSpan().IndexOf(Encoding.Unicode.GetBytes("EncryptionInfo")) >= 0
+                ? "This workbook is protected with a password. Password-protected Excel files cannot be opened in this version. Remove the password in Excel, or ask the sender for an unprotected copy."
+                : "This looks like an older Excel file (.xls) saved with an .xlsx name. Older .xls files are not supported yet.");
+        if (!head.AsSpan().StartsWith("PK\u0003\u0004"u8))
+            throw new DocumentException("This file is named .xlsx, but its contents are not an Excel workbook. Open it with an application for its actual format.");
+
+        DocumentView view;
+        try
+        {
+            using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+            // Sheet XML compresses well, so the total is generous; the ratio check still stops ZIP bombs.
+            ArchiveSafety.Validate(zip, maximumBytes: 4L * 1024 * 1024 * 1024, maximumEntries: 10000, maximumRatio: 500);
+            view = new Reader(zip, culture).Read();
+        }
+        catch (InvalidDataException) { throw Damaged(); }
+        catch (XmlException) { throw Damaged(); }
+        if (File.GetLastWriteTimeUtc(path) != modified || new FileInfo(path).Length != length)
+            throw new DocumentException("The file changed while it was being opened. Wait until it has finished saving, then open it again.");
+        return view;
+    }
+
+    private static DocumentException Damaged() => new("This workbook is damaged or incomplete, so it cannot be shown. Try another copy of the file.");
+
+    private sealed class Reader(ZipArchive zip, CultureInfo culture)
+    {
+        private readonly Dictionary<string, NumberFormat> formats = [];
+        private readonly Dictionary<int, string> customFormats = [];
+        private readonly List<int> cellFormats = [];
+        private List<string> strings = [];
+        private bool date1904;
+        private int cellBudget = MaxCellsPerWorkbook;
+        private int formulasWithoutResult;
+        private bool truncated;
+
+        public DocumentView Read()
+        {
+            string workbookPart = OfficeDocumentPart();
+            var workbookRels = Relationships(workbookPart);
+            var sheets = new List<(string Name, string State, string Id)>();
+            using (var r = Open(workbookPart))
+            {
+                while (r.Read())
+                {
+                    if (r.NodeType != XmlNodeType.Element) continue;
+                    if (r.LocalName == "workbookPr") date1904 = r.GetAttribute("date1904") is "1" or "true";
+                    else if (r.LocalName == "sheet")
+                        sheets.Add((r.GetAttribute("name") ?? "Sheet", r.GetAttribute("state") ?? "visible",
+                            r.GetAttribute("id", RelationshipNs) ?? r.GetAttribute("id", StrictRelationshipNs) ?? ""));
+                }
+            }
+            foreach (var rel in workbookRels.Values)
+            {
+                if (rel.Type.EndsWith("/sharedStrings", StringComparison.Ordinal)) strings = ReadSharedStrings(rel.Target);
+                else if (rel.Type.EndsWith("/styles", StringComparison.Ordinal)) ReadStyles(rel.Target);
+            }
+
+            var view = new DocumentView { Kind = "sheet", Encoding = "Excel workbook" };
+            var notes = new List<string>();
+            int hidden = 0;
+            foreach (var (name, state, id) in sheets)
+            {
+                if (state is "hidden" or "veryHidden") { hidden++; continue; }
+                if (!workbookRels.TryGetValue(id, out var rel)) continue;
+                if (!rel.Type.EndsWith("/worksheet", StringComparison.Ordinal)) { notes.Add($"The chart sheet \"{name}\" is not shown in this version."); continue; }
+                view.Sheets.Add(ReadSheet(name, rel.Target));
+            }
+            if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
+            if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
+            if (formulasWithoutResult > 0)
+                notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");
+            if (truncated) notes.Add($"Preview limit: only the first {MaxRowsPerSheet:N0} rows and {MaxColumns} columns of each sheet, up to {MaxCellsPerWorkbook:N0} cells in total, are shown.");
+            view.Notice = string.Join(" ", notes);
+            return view;
+        }
+
+        private string OfficeDocumentPart()
+        {
+            foreach (var rel in Relationships("").Values)
+                if (rel.Type.EndsWith("/officeDocument", StringComparison.Ordinal)) return rel.Target;
+            if (zip.GetEntry("xl/workbook.xml") is not null) return "xl/workbook.xml";
+            throw new DocumentException("This file is not a valid Excel workbook, so it cannot be shown.");
+        }
+
+        private sealed record Relationship(string Type, string Target);
+
+        // Relationships of a part. External targets (web addresses, other files) are skipped, never opened.
+        private Dictionary<string, Relationship> Relationships(string part)
+        {
+            string directory = part.Contains('/') ? part[..(part.LastIndexOf('/') + 1)] : "";
+            string relsPart = directory + "_rels/" + part[(part.LastIndexOf('/') + 1)..] + ".rels";
+            var result = new Dictionary<string, Relationship>();
+            if (zip.GetEntry(relsPart) is null) return result;
+            using var r = Open(relsPart);
+            while (r.Read())
+            {
+                if (r.NodeType != XmlNodeType.Element || r.LocalName != "Relationship") continue;
+                if (r.GetAttribute("TargetMode") == "External") continue;
+                string? id = r.GetAttribute("Id"), type = r.GetAttribute("Type"), target = r.GetAttribute("Target");
+                if (id is null || type is null || target is null) continue;
+                result[id] = new Relationship(type, Resolve(directory, target));
+            }
+            return result;
+        }
+
+        private static string Resolve(string directory, string target)
+        {
+            var parts = new List<string>();
+            string combined = target.StartsWith('/') ? target[1..] : directory + target;
+            foreach (var piece in combined.Replace('\\', '/').Split('/'))
+            {
+                if (piece is "" or ".") continue;
+                if (piece == "..") { if (parts.Count > 0) parts.RemoveAt(parts.Count - 1); continue; }
+                parts.Add(piece);
+            }
+            return string.Join('/', parts);
+        }
+
+        private XmlReader Open(string part)
+        {
+            var entry = zip.GetEntry(part) ?? throw new DocumentException("This workbook is damaged or incomplete, so it cannot be shown. Try another copy of the file.");
+            // Same protections as ArchiveSafety.CreateXmlReader (no DTDs, no resolver), with a byte cap instead
+            // of a character cap because worksheets can be large.
+            return XmlReader.Create(new LimitedStream(entry.Open(), PartByteLimit), new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersFromEntities = 1024,
+                IgnoreComments = true, IgnoreProcessingInstructions = true, CloseInput = true
+            });
+        }
+
+        private List<string> ReadSharedStrings(string part)
+        {
+            var list = new List<string>();
+            if (zip.GetEntry(part) is null) return list;
+            using var r = Open(part);
+            StringBuilder? current = null; int phonetic = 0; long characters = 0;
+            r.MoveToContent();
+            while (!r.EOF)
+            {
+                if (r.NodeType == XmlNodeType.Element)
+                {
+                    if (r.LocalName == "t" && current is not null && phonetic == 0 && !r.IsEmptyElement)
+                    {
+                        string text = r.ReadElementContentAsString();
+                        characters += text.Length;
+                        if (characters > StringCharacterLimit) throw new DocumentException("This workbook contains more text than this viewer can show safely.");
+                        current.Append(text);
+                        continue;
+                    }
+                    if (r.LocalName == "si") { if (r.IsEmptyElement) list.Add(""); else current = new StringBuilder(); }
+                    else if (r.LocalName == "rPh" && !r.IsEmptyElement) phonetic++;
+                }
+                else if (r.NodeType == XmlNodeType.EndElement)
+                {
+                    if (r.LocalName == "si" && current is not null) { list.Add(current.ToString()); current = null; }
+                    else if (r.LocalName == "rPh") phonetic--;
+                }
+                r.Read();
+            }
+            return list;
+        }
+
+        private void ReadStyles(string part)
+        {
+            if (zip.GetEntry(part) is null) return;
+            using var r = Open(part);
+            bool inCellXfs = false;
+            while (r.Read())
+            {
+                if (r.NodeType == XmlNodeType.Element)
+                {
+                    if (r.LocalName == "numFmt" && int.TryParse(r.GetAttribute("numFmtId"), out int id) && r.GetAttribute("formatCode") is { } code) customFormats[id] = code;
+                    else if (r.LocalName == "cellXfs" && !r.IsEmptyElement) inCellXfs = true;
+                    else if (r.LocalName == "xf" && inCellXfs) cellFormats.Add(int.TryParse(r.GetAttribute("numFmtId"), out int f) ? f : 0);
+                }
+                else if (r.NodeType == XmlNodeType.EndElement && r.LocalName == "cellXfs") inCellXfs = false;
+            }
+        }
+
+        private SheetData ReadSheet(string name, string part)
+        {
+            var sheet = new SheetData { Name = name };
+            var rows = new SortedDictionary<int, List<(int Column, string Text, char Align)>>();
+            var widths = new List<(int Min, int Max, double Width, bool Hidden)>();
+            double defaultWidth = 8.43;
+            int maxRow = 0, maxColumn = 0, rowNumber = 0;
+            bool firstView = true, stopped = false;
+            using var r = Open(part);
+            r.MoveToContent();
+            while (!r.EOF)
+            {
+                if (r.NodeType != XmlNodeType.Element) { r.Read(); continue; }
+                switch (r.LocalName)
+                {
+                    case "sheetView":
+                        if (firstView) sheet.RightToLeft = r.GetAttribute("rightToLeft") is "1" or "true";
+                        firstView = false; break;
+                    case "pane":
+                        if (r.GetAttribute("state") is "frozen" or "frozenSplit")
+                        {
+                            sheet.FrozenColumns = (int)Math.Min(MaxColumns, ParseDouble(r.GetAttribute("xSplit")));
+                            sheet.FrozenRows = (int)Math.Min(MaxRowsPerSheet, ParseDouble(r.GetAttribute("ySplit")));
+                        }
+                        break;
+                    case "sheetFormatPr":
+                        if (r.GetAttribute("defaultColWidth") is { } dw) defaultWidth = ParseDouble(dw);
+                        else if (r.GetAttribute("baseColWidth") is { } bw) defaultWidth = ParseDouble(bw) + 0.71;
+                        break;
+                    case "col":
+                        if (int.TryParse(r.GetAttribute("min"), out int min) && int.TryParse(r.GetAttribute("max"), out int max))
+                            widths.Add((min, Math.Min(max, MaxColumns), r.GetAttribute("width") is { } w ? ParseDouble(w) : -1, r.GetAttribute("hidden") is "1" or "true"));
+                        break;
+                    case "row":
+                        rowNumber = int.TryParse(r.GetAttribute("r"), out int rn) ? rn : rowNumber + 1;
+                        if (rowNumber > MaxRowsPerSheet || cellBudget <= 0 || stopped)
+                        {
+                            truncated = true; stopped = true;
+                            r.Skip(); continue;                       // keep scanning for merges after the data
+                        }
+                        if (r.GetAttribute("hidden") is "1" or "true") sheet.HiddenRows.Add(rowNumber);
+                        if (r.IsEmptyElement) break;
+                        var cells = ReadRow(r, rowNumber, ref maxColumn);
+                        if (cells.Count > 0) { rows[rowNumber] = cells; maxRow = Math.Max(maxRow, rowNumber); }
+                        continue;                                    // ReadRow leaves the reader after </row>
+                    case "mergeCell":
+                        if (r.GetAttribute("ref") is { } reference && TryRange(reference, out var range)) sheet.Merges.Add(range);
+                        break;
+                }
+                r.Read();
+            }
+
+            maxRow = Math.Max(maxRow, sheet.FrozenRows);
+            maxColumn = Math.Max(maxColumn, sheet.FrozenColumns);
+            foreach (var (row, cells) in rows)
+            {
+                var text = new string[maxColumn]; var align = new char[maxColumn];
+                Array.Fill(text, ""); Array.Fill(align, 'l');
+                foreach (var (column, value, a) in cells) { text[column] = value; align[column] = a; }
+                while (sheet.Rows.Count < row - 1) { sheet.Rows.Add(Empty(maxColumn)); sheet.Align.Add(new string('l', maxColumn)); }
+                sheet.Rows.Add(text); sheet.Align.Add(new string(align));
+            }
+            while (sheet.Rows.Count < maxRow) { sheet.Rows.Add(Empty(maxColumn)); sheet.Align.Add(new string('l', maxColumn)); }
+            for (int c = 1; c <= maxColumn; c++)
+            {
+                double width = defaultWidth;
+                foreach (var span in widths)
+                    if (c >= span.Min && c <= span.Max) width = span.Hidden ? 0 : span.Width >= 0 ? span.Width : width;
+                sheet.ColumnWidths.Add(Math.Round(width, 2));
+            }
+            sheet.Merges = sheet.Merges.Where(m => m[0] < maxRow && m[1] < maxColumn)
+                .Select(m => new[] { m[0], m[1], Math.Min(m[2], maxRow - 1), Math.Min(m[3], maxColumn - 1) }).ToList();
+            if (sheet.Rows.Count == 0) sheet.Notice = "This sheet is empty.";
+            return sheet;
+        }
+
+        private static string[] Empty(int count) { var row = new string[count]; Array.Fill(row, ""); return row; }
+
+        // Reads one <row>; returns its cells and leaves the reader positioned after </row>.
+        private List<(int, string, char)> ReadRow(XmlReader r, int rowNumber, ref int maxColumn)
+        {
+            var cells = new List<(int, string, char)>();
+            int column = -1;
+            r.Read();
+            while (!r.EOF && !(r.NodeType == XmlNodeType.EndElement && r.LocalName == "row"))
+            {
+                if (r.NodeType == XmlNodeType.Element && r.LocalName == "c")
+                {
+                    column = r.GetAttribute("r") is { } reference && TryCell(reference, out _, out int parsed) ? parsed : column + 1;
+                    string? type = r.GetAttribute("t");
+                    int style = int.TryParse(r.GetAttribute("s"), out int s) ? s : 0;
+                    string? value = null, inline = null; bool formula = false;
+                    if (!r.IsEmptyElement)
+                    {
+                        int depth = r.Depth; r.Read();
+                        while (!r.EOF && r.Depth > depth)
+                        {
+                            if (r.NodeType == XmlNodeType.Element && r.LocalName == "f") { formula = true; r.Skip(); continue; }
+                            if (r.NodeType == XmlNodeType.Element && r.LocalName == "v") { value = r.ReadElementContentAsString(); continue; }
+                            if (r.NodeType == XmlNodeType.Element && r.LocalName == "t") { inline = (inline ?? "") + r.ReadElementContentAsString(); continue; }
+                            r.Read();
+                        }
+                    }
+                    if (column < MaxColumns && cellBudget > 0)
+                    {
+                        string text = Display(type, value, inline, formula, style, out char align);
+                        if (text.Length > 0) { cells.Add((column, text, align)); maxColumn = Math.Max(maxColumn, column + 1); cellBudget--; }
+                    }
+                    else truncated = true;
+                }
+                r.Read();
+            }
+            r.Read();
+            return cells;
+        }
+
+        private string Display(string? type, string? value, string? inline, bool formula, int style, out char align)
+        {
+            align = 'l';
+            if (formula && value is null && inline is null) { formulasWithoutResult++; return ResultUnavailable; }
+            switch (type)
+            {
+                case "s": return int.TryParse(value, out int index) && index >= 0 && index < strings.Count ? strings[index] : "";
+                case "inlineStr": return inline ?? "";
+                case "str": return value ?? "";
+                case "b": align = 'c'; return value is "1" or "true" ? "TRUE" : "FALSE";
+                case "e": align = 'c'; return value ?? "";
+                case "d":
+                    align = 'r';
+                    if (!DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var date)) return value ?? "";
+                    return FormatNumber(date.ToOADate() - (date1904 ? 1462 : 0), style);
+                default:
+                    if (value is null) return "";
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)) return value;
+                    align = 'r';
+                    return FormatNumber(number, style);
+            }
+        }
+
+        private string FormatNumber(double value, int style)
+        {
+            int id = style >= 0 && style < cellFormats.Count ? cellFormats[style] : 0;
+            // Built-in 14 and 22 follow the viewer's regional short date, as Excel does.
+            if (id is 14 or 22 && !customFormats.ContainsKey(id))
+            {
+                var date = FromSerial(value);
+                return id == 14 ? date.ToString(culture.DateTimeFormat.ShortDatePattern, culture) : date.ToString(culture.DateTimeFormat.ShortDatePattern + " H:mm", culture);
+            }
+            string code = customFormats.TryGetValue(id, out var custom) ? custom : BuiltInFormats.GetValueOrDefault(id, "General");
+            if (!formats.TryGetValue(code, out var format)) formats[code] = format = new NumberFormat(code);
+            try { return format.IsValid ? format.Format(value, culture, date1904) : value.ToString("G15", culture); }
+            catch (Exception) { return value.ToString("G15", culture); }
+        }
+
+        private DateTime FromSerial(double value)
+        {
+            double serial = date1904 ? value + 1462 : value;
+            return serial is >= -657435 and <= 2958465 ? DateTime.FromOADate(serial) : DateTime.MinValue;
+        }
+    }
+
+    private static double ParseDouble(string? text) => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : 0;
+
+    public static bool TryCell(string reference, out int row, out int column)
+    {
+        row = 0; column = 0; int i = 0, letters = 0;
+        while (i < reference.Length && char.IsAsciiLetter(reference[i])) { column = column * 26 + (char.ToUpperInvariant(reference[i]) - 'A' + 1); i++; letters++; }
+        if (letters is 0 or > 3 || !int.TryParse(reference.AsSpan(i), NumberStyles.None, CultureInfo.InvariantCulture, out row) || row < 1) return false;
+        column--; return true;
+    }
+
+    public static bool TryRange(string reference, out int[] range)
+    {
+        range = [];
+        var parts = reference.Split(':');
+        if (parts.Length != 2 || !TryCell(parts[0], out int r1, out int c1) || !TryCell(parts[1], out int r2, out int c2)) return false;
+        range = [Math.Min(r1, r2) - 1, Math.Min(c1, c2), Math.Max(r1, r2) - 1, Math.Max(c1, c2)];
+        return true;
+    }
+
+    private sealed class LimitedStream(Stream inner, long limit) : Stream
+    {
+        private long read;
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            int n = inner.Read(buffer, offset, count);
+            read += n;
+            if (read > limit) throw new DocumentException("This file is damaged or exceeds safe archive limits.");
+            return n;
+        }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => read; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing) { if (disposing) inner.Dispose(); base.Dispose(disposing); }
+    }
+}

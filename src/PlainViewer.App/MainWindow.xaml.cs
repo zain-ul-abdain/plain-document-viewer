@@ -24,33 +24,44 @@ public partial class MainWindow : Window
     {
         InitializeComponent(); PreviewKeyDown += WindowKeyDown;
         Closed += (_, _) => { loading?.Cancel(); };
-        PdfPane.StateChanged += ShowPdfStatus;
-        PdfPane.FindResult += (current, total, finished) => { if (finished) Status.Text = total == 0 ? "No matches." : $"Match {Math.Max(current, 1)} of {total}."; };
-        PdfPane.LinkRequested += address =>
+        WebPane.StateChanged += ShowWebStatus;
+        WebPane.FindResult += (current, total, finished) => { if (finished) Status.Text = total == 0 ? "No matches." : $"Match {Math.Max(current, 1)} of {total}."; };
+        WebPane.LinkRequested += address =>
         {
             if (LinkPolicy.CanOpen(address)) OpenLink(address);
             else Status.Text = "This link was not opened because it is not a web or email address.";
         };
-        PdfPane.AskPassword = AskPdfPassword;
+        WebPane.AskPassword = AskPdfPassword;
     }
     private static string Choice(ComboBox box) => ((ComboBoxItem)box.SelectedItem).Content.ToString()!;
     private static bool IsPdf(string path) => string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
+    private static bool IsWorkbook(string path) => Path.GetExtension(path).ToLowerInvariant() is ".xlsx" or ".xlsm" or ".xltx" or ".xltm" or ".xlsb";
+    private bool InWebPane => document?.Kind is "pdf" or "sheet";
     internal async Task VerifyPreviewAsync(string path)
     {
-        if (IsPdf(path))
+        if (IsPdf(path) || IsWorkbook(path))
         {
             // WebView2 needs a real window handle, so the smoke test shows the window off-screen.
             WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show();
         }
         currentPath = path; await LoadCurrent();
         if (document is null) throw new InvalidOperationException(Status.Text);
-        if (document.Kind == "pdf")
+        if (InWebPane)
         {
-            if (PdfPane.Pages < 1) throw new InvalidOperationException("PDF reported no pages.");
+            if (WebPane.Pages < 1) throw new InvalidOperationException("The document reported no pages or sheets.");
             var (_, total) = await PdfFind("Hello");
-            if (total < 1) throw new InvalidOperationException("PDF text search found no match for 'Hello'.");
+            if (total < 1) throw new InvalidOperationException("Search found no match for 'Hello'.");
             ZoomBy(1); ZoomBy(0);
-            if (PdfPane.BlockedRequests != 0) throw new InvalidOperationException($"PDF view attempted {PdfPane.BlockedRequests} blocked request(s).");
+            if (Environment.GetEnvironmentVariable("PLAINVIEWER_CAPTURE_DIR") is { Length: > 0 } captures)
+            {
+                // Optional visual evidence for manual review: one PNG per document (and per sheet).
+                Directory.CreateDirectory(captures); await Task.Delay(800);
+                await WebPane.Capture(Path.Combine(captures, Path.GetFileName(path) + ".png"));
+                for (int sheet = 2; document.Kind == "sheet" && sheet <= WebPane.Pages; sheet++)
+                { WebPane.ChangeSheet(1); await Task.Delay(500); await WebPane.Capture(Path.Combine(captures, $"{Path.GetFileName(path)}.sheet{sheet}.png")); }
+            }
+            if (document.Kind == "sheet" && WebPane.Pages > 1) { WebPane.ChangeSheet(1); WebPane.ChangeSheet(-1); }
+            if (WebPane.BlockedRequests != 0) throw new InvalidOperationException($"The document view attempted {WebPane.BlockedRequests} blocked request(s).");
             return;
         }
         Measure(new Size(1100, 760)); Arrange(new Rect(0, 0, 1100, 760)); UpdateLayout();
@@ -64,7 +75,7 @@ public partial class MainWindow : Window
     }
     private void OpenClicked(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.pdf;*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.pdf;*.xlsx;*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
         if (dialog.ShowDialog(this) == true) OpenPath(dialog.FileName);
     }
     public void OpenPath(string path)
@@ -83,10 +94,12 @@ public partial class MainWindow : Window
             var loaded = IsPdf(currentPath) ? await LoadPdf(currentPath, operation.Token)
                 : await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), operation.Token);
             if (loading != operation) return;
+            if (loaded.Kind == "sheet") await LoadSheets(loaded, operation.Token);
+            if (loading != operation) return;
             document = loaded; Title = Path.GetFileName(currentPath) + " · Plain Viewer preview";
             openSeconds = stopwatch.Elapsed.TotalSeconds;
             Display(); Status.Text = $"Read only · {document.Encoding} · Opened in {openSeconds:F2}s. {document.Notice}";
-            if (document.Kind == "pdf") ShowPdfStatus();
+            if (InWebPane) ShowWebStatus();
         }
         catch (OperationCanceledException) { if (loading == operation) Status.Text = "Opening cancelled. Choose a file to try again."; }
         catch (Exception ex)
@@ -105,11 +118,11 @@ public partial class MainWindow : Window
         if (document is null) return;
         Welcome.Visibility = Visibility.Collapsed; TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
         SourceToggle.Visibility = document.Kind == "markdown" ? Visibility.Visible : Visibility.Collapsed;
-        bool pdf = document.Kind == "pdf";
-        PdfPane.Visibility = pdf ? Visibility.Visible : Visibility.Collapsed;
-        PageControls.Visibility = pdf ? Visibility.Visible : Visibility.Collapsed;
-        EncodingChoice.IsEnabled = !pdf;
-        if (pdf) { DelimiterChoice.IsEnabled = false; lastQuery = ""; matchIndex = -1; PdfPane.FocusDocument(); return; }
+        bool web = InWebPane;
+        WebPane.Visibility = web ? Visibility.Visible : Visibility.Collapsed;
+        PageControls.Visibility = document.Kind == "pdf" ? Visibility.Visible : Visibility.Collapsed;
+        EncodingChoice.IsEnabled = !web;
+        if (web) { DelimiterChoice.IsEnabled = false; lastQuery = ""; matchIndex = -1; WebPane.FocusDocument(); return; }
         DelimiterChoice.IsEnabled = document.Kind == "csv";
         if (document.Kind == "csv")
         {
@@ -182,7 +195,7 @@ public partial class MainWindow : Window
     private void Find(bool previous)
     {
         if (document is null || FindBox.Text.Length == 0) return;
-        if (document.Kind == "pdf") { Status.Text = "Searching…"; PdfPane.Find(FindBox.Text, previous); lastQuery = FindBox.Text; return; }
+        if (InWebPane) { Status.Text = "Searching…"; WebPane.Find(FindBox.Text, previous); lastQuery = FindBox.Text; return; }
         string query = FindBox.Text; var hits = new List<int>();
         if (document.Kind == "csv")
         {
@@ -231,19 +244,19 @@ public partial class MainWindow : Window
     private void ChangeZoom(double value) { zoom = Math.Clamp(value, 0.5, 3); if (document?.Kind == "markdown") Display(); else ApplyZoom(); }
     private void ZoomBy(int direction)
     {
-        if (document?.Kind == "pdf") { PdfPane.Zoom(direction > 0 ? "in" : direction < 0 ? "out" : 1.0); return; }
+        if (InWebPane) { WebPane.Zoom(direction > 0 ? "in" : direction < 0 ? "out" : 1.0); return; }
         ChangeZoom(direction == 0 ? 1 : zoom + 0.1 * direction);
     }
     private void ZoomIn(object s, RoutedEventArgs e) => ZoomBy(1);
     private void ZoomOut(object s, RoutedEventArgs e) => ZoomBy(-1);
     private void ResetZoom(object s, RoutedEventArgs e) => ZoomBy(0);
-    private void FitWidth(object s, RoutedEventArgs e) => PdfPane.Zoom("page-width");
-    private void FitPage(object s, RoutedEventArgs e) => PdfPane.Zoom("page-fit");
+    private void FitWidth(object s, RoutedEventArgs e) => WebPane.Zoom("page-width");
+    private void FitPage(object s, RoutedEventArgs e) => WebPane.Zoom("page-fit");
     private void PageBoxKeyDown(object s, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        if (int.TryParse(PageBox.Text.Trim(), out int page) && page >= 1 && page <= PdfPane.Pages) { PdfPane.GoToPage(page); PdfPane.FocusDocument(); }
-        else Status.Text = $"Enter a page number from 1 to {PdfPane.Pages}.";
+        if (int.TryParse(PageBox.Text.Trim(), out int page) && page >= 1 && page <= WebPane.Pages) { WebPane.GoToPage(page); WebPane.FocusDocument(); }
+        else Status.Text = $"Enter a page number from 1 to {WebPane.Pages}.";
         e.Handled = true;
     }
     private async Task<DocumentView> LoadPdf(string path, CancellationToken cancellation)
@@ -251,25 +264,38 @@ public partial class MainWindow : Window
         var data = await Task.Run(() => PdfFiles.Snapshot(path), cancellation);
         // Show the PDF area before loading so PDF.js can measure the page width.
         Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
-        PdfPane.Visibility = Visibility.Visible;
-        await PdfPane.Load(data, IsDarkTheme(), cancellation);
+        WebPane.Visibility = Visibility.Visible;
+        await WebPane.LoadPdf(data, IsDarkTheme(), cancellation);
         return new DocumentView { Kind = "pdf", Encoding = "PDF" };
     }
-    private void ShowPdfStatus()
+    private async Task LoadSheets(DocumentView view, CancellationToken cancellation)
     {
-        if (document?.Kind != "pdf") return;
-        PageCount.Text = $"of {PdfPane.Pages}";
-        if (!PageBox.IsKeyboardFocused) PageBox.Text = PdfPane.Page.ToString();
-        ZoomButton.Content = $"{PdfPane.Scale:P0}";
-        Status.Text = $"Read only · PDF · Page {PdfPane.Page} of {PdfPane.Pages} · Opened in {openSeconds:F2}s";
+        // The worker has already turned the workbook into display text; the page only lays it out.
+        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { sheets = view.Sheets },
+            new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+        Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
+        WebPane.Visibility = Visibility.Visible;
+        await WebPane.LoadSheets(json, IsDarkTheme(), cancellation);
+    }
+    private void ShowWebStatus()
+    {
+        if (document is null || !InWebPane) return;
+        ZoomButton.Content = $"{WebPane.Scale:P0}";
+        if (document.Kind == "pdf")
+        {
+            PageCount.Text = $"of {WebPane.Pages}";
+            if (!PageBox.IsKeyboardFocused) PageBox.Text = WebPane.Page.ToString();
+            Status.Text = $"Read only · PDF · Page {WebPane.Page} of {WebPane.Pages} · Opened in {openSeconds:F2}s";
+        }
+        else Status.Text = $"Read only · Excel workbook · Sheet {WebPane.Page} of {WebPane.Pages}: {WebPane.SheetName} · Opened in {openSeconds:F2}s. {document.Notice}";
     }
     private async Task<(int Current, int Total)> PdfFind(string query)
     {
         var result = new TaskCompletionSource<(int, int)>(TaskCreationOptions.RunContinuationsAsynchronously);
         void Handler(int current, int total, bool finished) { if (finished) result.TrySetResult((current, total)); }
-        PdfPane.FindResult += Handler;
-        try { PdfPane.Find(query, false); return await result.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
-        finally { PdfPane.FindResult -= Handler; }
+        WebPane.FindResult += Handler;
+        try { WebPane.Find(query, false); return await result.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
+        finally { WebPane.FindResult -= Handler; }
     }
     private string? AskPdfPassword(bool incorrect)
     {
@@ -300,7 +326,7 @@ public partial class MainWindow : Window
     private void PreviousMatch(object s, RoutedEventArgs e) => Find(true);
     private void FindKeyDown(object s, KeyEventArgs e) { if (e.Key == Key.Enter) Find(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)); }
     private void ViewChanged(object s, RoutedEventArgs e) => Display();
-    private void OptionsChanged(object s, SelectionChangedEventArgs e) { if (IsLoaded && currentPath is not null && document?.Kind != "pdf") _ = LoadCurrent(); }
+    private void OptionsChanged(object s, SelectionChangedEventArgs e) { if (IsLoaded && currentPath is not null && !InWebPane) _ = LoadCurrent(); }
     private void CancelClicked(object s, RoutedEventArgs e) => loading?.Cancel();
     // WPF still marks runtime Fluent theme switching experimental in this SDK.
 #pragma warning disable WPF0001
@@ -308,12 +334,12 @@ public partial class MainWindow : Window
     {
         if (ThemeChoice is null) return;
         ThemeMode = Choice(ThemeChoice) switch { "Dark" => ThemeMode.Dark, "Light" => ThemeMode.Light, _ => ThemeMode.System };
-        if (document?.Kind == "pdf") PdfPane.SetTheme(IsDarkTheme());
+        if (InWebPane) WebPane.SetTheme(IsDarkTheme());
     }
 #pragma warning restore WPF0001
     private void NumberRow(object s, DataGridRowEventArgs e) => e.Row.Header = (e.Row.GetIndex() + 1).ToString();
     private void FileDropped(object s, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] files) foreach (var file in files) OpenPath(file); }
-    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, "Plain Viewer — development preview\n\nRead-only PDF, text, CSV and Markdown. Word, Excel and PowerPoint rendering are pending.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
+    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, "Plain Viewer — development preview\n\nRead-only PDF, Excel (.xlsx), text, CSV and Markdown. Word and PowerPoint rendering are pending.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
     private void WindowKeyDown(object s, KeyEventArgs e)
     {
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
@@ -324,6 +350,7 @@ public partial class MainWindow : Window
         else if (ctrl && (e.Key == Key.Subtract || e.Key == Key.OemMinus)) ZoomBy(-1);
         else if (ctrl && (e.Key == Key.D0 || e.Key == Key.NumPad0)) ZoomBy(0);
         else if (e.Key == Key.F3) Find(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        else if (ctrl && e.Key is Key.PageUp or Key.PageDown && document?.Kind == "sheet") WebPane.ChangeSheet(e.Key == Key.PageDown ? 1 : -1);
         else if (e.Key == Key.F11) { if (WindowStyle == WindowStyle.None) { WindowStyle = WindowStyle.SingleBorderWindow; WindowState = savedState; } else { savedState = WindowState; WindowStyle = WindowStyle.None; WindowState = WindowState.Maximized; } }
         else return;
         e.Handled = true;

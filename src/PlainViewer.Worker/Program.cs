@@ -9,9 +9,16 @@ WorkerResponse response;
 try
 {
     if (args.Length is < 1 or > 3) throw new DocumentException("Choose a file to open.");
-    response = new WorkerResponse(TextFiles.Load(args[0], args.ElementAtOrDefault(1) ?? "Auto", args.ElementAtOrDefault(2) ?? "Auto"), null);
+    string extension = Path.GetExtension(args[0]).ToLowerInvariant();
+    var document = extension is ".xlsx" or ".xlsm" or ".xltx" or ".xltm" or ".xlsb"
+        ? Spreadsheets.Load(args[0])
+        : TextFiles.Load(args[0], args.ElementAtOrDefault(1) ?? "Auto", args.ElementAtOrDefault(2) ?? "Auto");
+    response = new WorkerResponse(document, null);
 }
 catch (DocumentException ex) { response = new(null, ex.Message); }
+catch (InvalidDataException) { response = new(null, "This file is damaged or incomplete, so it cannot be shown. Try another copy of the file."); }
+catch (System.Xml.XmlException) { response = new(null, "This file is damaged or incomplete, so it cannot be shown. Try another copy of the file."); }
+catch (OutOfMemoryException) { response = new(null, "This file needs more memory than the viewer allows for one document."); }
 catch (DecoderFallbackException) { response = new(null, "The text encoding could not be read. Choose a different encoding and try again."); }
 catch (UnauthorizedAccessException) { response = new(null, "The file cannot be read. Check its permissions or copy it to a local folder."); }
 catch (FileNotFoundException) { response = new(null, "The file was moved or deleted. Choose it again from its current location."); }

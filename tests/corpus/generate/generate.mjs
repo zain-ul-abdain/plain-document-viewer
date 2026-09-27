@@ -5,9 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { CORPUS, manifestEntries, SAFE_RULES } from "./lib.mjs";
 import { generatePdf } from "./pdf.mjs";
+import { generateXlsx } from "./xlsx.mjs";
 
 const large = process.argv.includes("--large");
 await generatePdf({ large });
+await generateXlsx({ large });
 
 // Codex's hand-written fixtures (tests/corpus/*.txt|csv|md|markdown) keep their own provenance table in SOURCES.md.
 const codexLicence = "Authored for this project by Codex (see SOURCES.md)";

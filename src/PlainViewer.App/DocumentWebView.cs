@@ -7,19 +7,24 @@ using Microsoft.Web.WebView2.Wpf;
 using PlainViewer.Core;
 namespace PlainViewer.App;
 
-// Hosts PDF.js in a locked-down WebView2. PDF.js parses the PDF inside WebView2's sandboxed renderer
-// process; this class only supplies the bytes and relays messages. Every network request is refused.
-internal sealed class PdfView : Border
+// A locked-down WebView2 that shows one document page: the PDF viewer (PDF.js parses the PDF inside WebView2's
+// sandboxed renderer) or the spreadsheet grid (display text prepared by the worker). This class only supplies
+// the document bytes and relays messages. Every other request is refused and counted.
+internal sealed class DocumentWebView : Border
 {
     private const string AppHost = "app.plainviewer.invalid";
     private const string DocumentHost = "doc.plainviewer.invalid";
     private static Task<CoreWebView2Environment>? environment;
     private readonly WebView2 web = new();
     private byte[]? bytes;
+    private string resource = "";
+    private string contentType = "";
+    private string page = "";
     private TaskCompletionSource<int>? opening;
 
-    public int Page { get; private set; }
-    public int Pages { get; private set; }
+    public int Page { get; private set; }         // PDF page, or 1-based sheet index
+    public int Pages { get; private set; }        // PDF page count, or sheet count
+    public string SheetName { get; private set; } = "";
     public double Scale { get; private set; } = 1;
     public int BlockedRequests { get; private set; }
     public event Action? StateChanged;
@@ -27,11 +32,11 @@ internal sealed class PdfView : Border
     public event Action<string>? LinkRequested;
     public Func<bool, string?>? AskPassword;                  // argument: previous password was wrong
 
-    public PdfView()
+    public DocumentWebView()
     {
         Child = web;
-        AutomationProperties.SetName(this, "PDF document");
-        AutomationProperties.SetName(web, "PDF pages");
+        AutomationProperties.SetName(this, "Document");
+        AutomationProperties.SetName(web, "Document content");
     }
 
     private static Task<CoreWebView2Environment> SharedEnvironment() => environment ??= CreateEnvironment();
@@ -50,7 +55,7 @@ internal sealed class PdfView : Border
     {
         if (web.CoreWebView2 is not null) return;
         await web.EnsureCoreWebView2Async(await SharedEnvironment());
-        var core = web.CoreWebView2 ?? throw new DocumentException("The PDF view could not start. Check that Microsoft Edge WebView2 Runtime is installed.");
+        var core = web.CoreWebView2 ?? throw new DocumentException("The document view could not start. Check that Microsoft Edge WebView2 Runtime is installed.");
         var settings = core.Settings;
         settings.AreDevToolsEnabled = false;
         settings.AreDefaultContextMenusEnabled = false;
@@ -67,30 +72,27 @@ internal sealed class PdfView : Border
         settings.IsReputationCheckingRequired = false;
         settings.IsWebMessageEnabled = true;
 
-        core.SetVirtualHostNameToFolderMapping(AppHost, Path.Combine(AppContext.BaseDirectory, "Assets", "pdf"), CoreWebView2HostResourceAccessKind.Deny);
+        core.SetVirtualHostNameToFolderMapping(AppHost, Path.Combine(AppContext.BaseDirectory, "Assets"), CoreWebView2HostResourceAccessKind.Deny);
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
         core.WebResourceRequested += OnResourceRequested;
-        core.NavigationStarting += (_, e) => { if (!IsViewerPage(e.Uri)) e.Cancel = true; };
+        core.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith($"https://{AppHost}/{page}", StringComparison.Ordinal)) e.Cancel = true; };
         core.FrameNavigationStarting += (_, e) => e.Cancel = true;
         core.NewWindowRequested += (_, e) => e.Handled = true;          // no window is created
         core.DownloadStarting += (_, e) => e.Cancel = true;
         core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
         core.LaunchingExternalUriScheme += (_, e) => e.Cancel = true;
         core.WebMessageReceived += OnMessage;
-        core.ProcessFailed += (_, _) => opening?.TrySetException(new DocumentException("The PDF view stopped unexpectedly. Open the file again."));
+        core.ProcessFailed += (_, _) => opening?.TrySetException(new DocumentException("The document view stopped unexpectedly. Open the file again."));
     }
-
-    private static bool IsViewerPage(string uri) => uri.StartsWith($"https://{AppHost}/viewer.html", StringComparison.Ordinal);
 
     private void OnResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
     {
         if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri)) { Block(e); return; }
         if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == AppHost) return;   // served from the app's own folder
-        if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == DocumentHost && uri.AbsolutePath == "/document.pdf" && bytes is not null)
+        if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == DocumentHost && uri.AbsolutePath == "/" + resource && bytes is not null)
         {
-            e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(
-                new MemoryStream(bytes, false), 200, "OK",
-                $"Content-Type: application/pdf\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: https://{AppHost}");
+            e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(new MemoryStream(bytes, false), 200, "OK",
+                $"Content-Type: {contentType}\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: https://{AppHost}");
             return;
         }
         Block(e);
@@ -102,13 +104,19 @@ internal sealed class PdfView : Border
         e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(null, 403, "Blocked", "");
     }
 
-    public async Task<int> Load(byte[] data, bool dark, CancellationToken cancellation)
+    public Task<int> LoadPdf(byte[] data, bool dark, CancellationToken cancellation) =>
+        Load("pdf/viewer.html", data, "document.pdf", "application/pdf", dark, cancellation);
+
+    public Task<int> LoadSheets(byte[] json, bool dark, CancellationToken cancellation) =>
+        Load("sheet/sheet.html", json, "workbook.json", "application/json; charset=utf-8", dark, cancellation);
+
+    private async Task<int> Load(string pagePath, byte[] data, string name, string type, bool dark, CancellationToken cancellation)
     {
-        bytes = data;
+        bytes = data; resource = name; contentType = type; page = pagePath;
         await EnsureReady();
         opening = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellation.Register(() => opening.TrySetCanceled(cancellation));
-        web.CoreWebView2.Navigate($"https://{AppHost}/viewer.html?theme={(dark ? "dark" : "light")}");
+        web.CoreWebView2.Navigate($"https://{AppHost}/{pagePath}?theme={(dark ? "dark" : "light")}");
         try { return await opening.Task; }
         catch { web.CoreWebView2?.Stop(); throw; }
     }
@@ -122,11 +130,13 @@ internal sealed class PdfView : Border
         switch (type)
         {
             case "loaded":
-                Pages = message.GetProperty("pages").GetInt32(); Page = 1;
+                Pages = message.TryGetProperty("pages", out var pages) ? pages.GetInt32() : message.GetProperty("sheets").GetInt32();
+                Page = 1;
                 opening?.TrySetResult(Pages);
                 break;
             case "state":
-                Page = message.GetProperty("page").GetInt32(); Pages = message.GetProperty("pages").GetInt32();
+                if (message.TryGetProperty("page", out var p)) { Page = p.GetInt32(); Pages = message.GetProperty("pages").GetInt32(); }
+                else { Page = message.GetProperty("sheet").GetInt32(); Pages = message.GetProperty("sheets").GetInt32(); SheetName = message.GetProperty("name").GetString() ?? ""; }
                 Scale = message.GetProperty("scale").GetDouble();
                 StateChanged?.Invoke();
                 break;
@@ -149,7 +159,7 @@ internal sealed class PdfView : Border
     private static string ErrorText(string? kind) => kind switch
     {
         "password-cancelled" => "This PDF is password protected. Open it again and enter its password to view it.",
-        "unavailable" => "The PDF could not be passed to the viewer. Open the file again.",
+        "unavailable" => "The document could not be passed to the viewer. Open the file again.",
         _ => "This PDF is damaged or incomplete, so it cannot be shown. Try another copy of the file."
     };
 
@@ -161,6 +171,15 @@ internal sealed class PdfView : Border
     public void Find(string query, bool previous) => Post(new { type = "find", query, previous });
     public void Zoom(object value) => Post(new { type = "zoom", value });
     public void GoToPage(int number) => Post(new { type = "page", number });
+    public void ChangeSheet(int delta) => Post(new { type = "sheet", delta });
     public void SetTheme(bool dark) => Post(new { type = "theme", dark });
     public void FocusDocument() { web.Focus(); Post(new { type = "focus" }); }
+
+    // Test aid: saves what the view currently shows as a PNG. Works while the window is off-screen.
+    public async Task Capture(string file)
+    {
+        if (web.CoreWebView2 is null) return;
+        await using var stream = File.Create(file);
+        await web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+    }
 }

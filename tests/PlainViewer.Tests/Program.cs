@@ -61,7 +61,80 @@ try
         using var handle = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
         Check(PdfFiles.Snapshot(path).Length == 9); });
     Test("PDF network path rejected before access", () => Throws<DocumentException>(() => PdfFiles.Snapshot(@"\\nonexistent.invalid\share\secret.pdf")));
+
+    // Spreadsheets: every xlsx/xlsm fixture in tests/corpus/manifest.json is checked against its expected result.
+    string corpus = FindCorpus();
+    var culture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+    using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "manifest.json")));
+    var errorWords = new Dictionary<string, string[]> {
+        ["damaged"] = ["damaged", "safe archive limits"], ["empty"] = ["empty"], ["password"] = ["password"],
+        ["mismatch"] = ["not an Excel workbook", "older Excel file"], ["unsupported"] = ["not supported"] };
+    foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
+    {
+        string format = fixture.GetProperty("format").GetString()!;
+        if (format is not ("xlsx" or "xlsm") || fixture.TryGetProperty("generated", out _)) continue;
+        string file = fixture.GetProperty("file").GetString()!;
+        var expect = fixture.GetProperty("expect");
+        Test("Spreadsheet fixture " + file, () => {
+            string path = Path.Combine(corpus, file.Replace('/', Path.DirectorySeparatorChar));
+            byte[] before = SHA256.HashData(File.ReadAllBytes(path)); var siblings = Directory.GetFiles(Path.GetDirectoryName(path)!);
+            if (expect.GetProperty("result").GetString() == "error")
+            {
+                string message = "";
+                try { Spreadsheets.Load(path, culture); } catch (DocumentException ex) { message = ex.Message; }
+                var words = errorWords[expect.GetProperty("error").GetString()!];
+                if (!words.Any(w => message.Contains(w, StringComparison.OrdinalIgnoreCase))) throw new Exception($"Expected a {string.Join("/", words)} message, got: '{message}'");
+            }
+            else
+            {
+                var view = Spreadsheets.Load(path, culture);
+                var names = view.Sheets.Select(s => s.Name).ToArray();
+                var expected = expect.GetProperty("sheets").EnumerateArray().Select(e => e.GetString()!).ToArray();
+                if (!names.SequenceEqual(expected)) throw new Exception($"Sheets: got {string.Join(",", names)}");
+                if (expect.TryGetProperty("cells", out var cells))
+                    foreach (var cell in cells.EnumerateArray())
+                    {
+                        var sheet = view.Sheets.Single(s => s.Name == cell.GetProperty("sheet").GetString());
+                        Check(Spreadsheets.TryCell(cell.GetProperty("ref").GetString()!, out int row, out int column));
+                        string actual = row - 1 < sheet.Rows.Count && column < sheet.Rows[row - 1].Length ? sheet.Rows[row - 1][column] : "(missing)";
+                        if (actual != cell.GetProperty("text").GetString()) throw new Exception($"{sheet.Name}!{cell.GetProperty("ref").GetString()}: got '{actual}', expected '{cell.GetProperty("text").GetString()}'");
+                    }
+                if (expect.TryGetProperty("notice", out var notice)) Check(view.Sheets[0].Notice == notice.GetString());
+                if (expect.TryGetProperty("hiddenSheetsNotShown", out var hidden))
+                    Check(hidden.EnumerateArray().All(h => !names.Contains(h.GetString())) && !view.Sheets.SelectMany(s => s.Rows).SelectMany(r => r).Any(t => t.Contains("hidden value")));
+                if (expect.TryGetProperty("frozen", out var frozen))
+                {
+                    var sheet = view.Sheets.Single(s => s.Name == frozen.GetProperty("sheet").GetString());
+                    Check(sheet.FrozenRows == frozen.GetProperty("rows").GetInt32() && sheet.FrozenColumns == frozen.GetProperty("columns").GetInt32());
+                }
+                if (expect.TryGetProperty("merges", out var merges))
+                    foreach (var merge in merges.EnumerateArray())
+                    {
+                        Check(Spreadsheets.TryRange(merge.GetProperty("range").GetString()!, out var range));
+                        Check(view.Sheets.Single(s => s.Name == merge.GetProperty("sheet").GetString()).Merges.Any(m => m.SequenceEqual(range)));
+                    }
+                if (expect.TryGetProperty("rightToLeft", out var rtl))
+                    Check(rtl.EnumerateArray().All(n => view.Sheets.Single(s => s.Name == n.GetString()).RightToLeft));
+            }
+            Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))));
+            Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
+        });
+    }
+    Test("Spreadsheet complex fixture reports hidden sheets and the missing formula result", () => {
+        var view = Spreadsheets.Load(Path.Combine(corpus, "xlsx", "complex.xlsx"), culture);
+        Check(view.Notice.Contains("2 hidden sheets") && view.Notice.Contains("1 formula cell has no saved result")); });
+    Test("Spreadsheet cell references", () => {
+        Check(Spreadsheets.TryCell("A1", out int r, out int c) && r == 1 && c == 0);
+        Check(Spreadsheets.TryCell("AB12", out r, out c) && r == 12 && c == 27);
+        Check(!Spreadsheets.TryCell("12", out _, out _) && !Spreadsheets.TryCell("ABCD1", out _, out _)); });
 }
 finally { Directory.Delete(root, true); }
 Console.WriteLine($"Results: {passed} passed, {failed} failed. No UI, Office fidelity, network instrumentation or release performance checks were run.");
 return failed == 0 ? 0 : 1;
+
+static string FindCorpus()
+{
+    for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        if (File.Exists(Path.Combine(dir.FullName, "tests", "corpus", "manifest.json"))) return Path.Combine(dir.FullName, "tests", "corpus");
+    throw new DirectoryNotFoundException("tests/corpus/manifest.json not found above the test output folder.");
+}

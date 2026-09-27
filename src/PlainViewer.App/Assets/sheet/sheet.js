@@ -1,0 +1,204 @@
+// Plain Viewer spreadsheet page. Runs inside the same locked-down WebView2 as the PDF view. The workbook JSON is
+// display text prepared by the worker process; nothing here evaluates formulas or loads anything else.
+const DATA_URL = "https://doc.plainviewer.invalid/workbook.json";
+const CHUNK = 200;                                   // rows per <tbody>; off-screen chunks are skipped by the browser
+const host = window.chrome?.webview;
+const post = message => host?.postMessage(message);
+const scroller = document.getElementById("scroller");
+const tabs = document.getElementById("tabs");
+document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+
+let workbook = null, active = 0, zoom = 1;
+let hits = [], hitIndex = -1, lastQuery = "";
+
+const columnName = index => { let name = ""; for (let v = index + 1; v > 0; v = Math.floor((v - 1) / 26)) name = String.fromCharCode(65 + (v - 1) % 26) + name; return name; };
+const pixels = width => width <= 0 ? 0 : Math.round(width * 7 + 5);   // Excel character width to pixels (Calibri 11, 96 DPI)
+
+function state() {
+  const sheet = workbook.sheets[active];
+  post({ type: "state", sheet: active + 1, sheets: workbook.sheets.length, name: sheet.name, scale: zoom });
+}
+
+function renderTabs() {
+  tabs.replaceChildren(...workbook.sheets.map((sheet, i) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(i === active));
+    button.tabIndex = i === active ? 0 : -1;
+    button.textContent = sheet.name;
+    button.addEventListener("click", () => show(i));
+    return button;
+  }));
+}
+
+tabs.addEventListener("keydown", event => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const step = (event.key === "ArrowRight") !== (getComputedStyle(tabs).direction === "rtl") ? 1 : -1;
+  show((active + step + workbook.sheets.length) % workbook.sheets.length);
+  tabs.children[active]?.focus();
+  event.preventDefault();
+});
+
+function show(index) {
+  active = index;
+  hits = []; hitIndex = -1; lastQuery = "";
+  renderTabs();
+  render(workbook.sheets[index]);
+  scroller.scrollTo(0, 0);
+  state();
+}
+
+function render(sheet) {
+  if (!sheet.rows.length) {
+    const note = document.createElement("p");
+    note.className = "empty";
+    note.textContent = "This sheet is empty.";
+    scroller.replaceChildren(note);
+    return;
+  }
+  const columns = sheet.columnWidths.length;
+  const table = document.createElement("table");
+  table.className = "grid";
+  table.setAttribute("aria-label", `Sheet ${sheet.name}`);
+  if (sheet.rightToLeft) table.dir = "rtl";
+
+  const group = document.createElement("colgroup");
+  const rowHeaderColumn = document.createElement("col");
+  rowHeaderColumn.style.width = "52px";
+  group.append(rowHeaderColumn);
+  const offsets = [];
+  let x = 52;
+  for (let c = 0; c < columns; c++) {
+    const col = document.createElement("col");
+    col.style.width = pixels(sheet.columnWidths[c]) + "px";
+    group.append(col);
+    offsets.push(x); x += pixels(sheet.columnWidths[c]);
+  }
+  table.append(group);
+
+  // Sections: the column letters plus frozen rows stay in <thead> so they remain visible while scrolling.
+  const frozen = Math.min(sheet.frozenRows, sheet.rows.length);
+  const sections = [[0, frozen]];
+  for (let start = frozen; start < sheet.rows.length; start += CHUNK) sections.push([start, Math.min(start + CHUNK, sheet.rows.length)]);
+  const sectionEnd = row => { for (const [s, e] of sections) if (row >= s && row < e) return e; return sheet.rows.length; };
+
+  // Merged cells span within their section; the remainder of a merge that crosses a section boundary shows as empty cells.
+  const spans = new Map(), covered = new Set();
+  for (const [r1, c1, r2, c2] of sheet.merges) {
+    const lastRow = Math.min(r2, sectionEnd(r1) - 1);
+    spans.set(`${r1},${c1}`, [lastRow - r1 + 1, c2 - c1 + 1]);
+    for (let r = r1; r <= lastRow; r++) for (let c = c1; c <= c2; c++) if (r !== r1 || c !== c1) covered.add(`${r},${c}`);
+  }
+  const hiddenRows = new Set(sheet.hiddenRows);
+
+  const head = document.createElement("thead");
+  const letters = document.createElement("tr");
+  letters.className = "letters";
+  const corner = document.createElement("th");
+  corner.className = "corner";
+  corner.setAttribute("aria-label", "Row and column headers");
+  letters.append(corner);
+  for (let c = 0; c < columns; c++) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = columnName(c);
+    if (sheet.columnWidths[c] <= 0) th.className = "hidden-col";
+    if (c < sheet.frozenColumns) { th.classList.add("frozen-col"); th.style.insetInlineStart = offsets[c] + "px"; }
+    letters.append(th);
+  }
+  head.append(letters);
+  for (let r = 0; r < frozen; r++) head.append(row(sheet, r, spans, covered, hiddenRows, offsets, true));
+  table.append(head);
+
+  for (const [start, end] of sections.slice(1)) {
+    const body = document.createElement("tbody");
+    body.className = "chunk";
+    body.style.containIntrinsicSize = `auto ${(end - start) * 22}px`;
+    for (let r = start; r < end; r++) body.append(row(sheet, r, spans, covered, hiddenRows, offsets, false));
+    table.append(body);
+  }
+  scroller.replaceChildren(table);
+}
+
+function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
+  const tr = document.createElement("tr");
+  tr.dataset.r = r;
+  if (hiddenRows.has(r + 1)) tr.hidden = true;
+  if (isFrozen) { tr.className = "frozen"; tr.style.setProperty("--top", `calc(var(--row) * ${r + 1})`); }
+  const header = document.createElement("th");
+  header.scope = "row";
+  header.textContent = String(r + 1);
+  if (isFrozen) header.style.top = `calc(var(--row) * ${r + 1})`;
+  tr.append(header);
+  const values = sheet.rows[r], align = sheet.align[r] ?? "";
+  for (let c = 0; c < values.length; c++) {
+    if (covered.has(`${r},${c}`)) continue;
+    const td = document.createElement("td");
+    td.dataset.c = c;
+    td.textContent = values[c];                                    // text only, never HTML
+    if (align[c] === "r") td.className = "r"; else if (align[c] === "c") td.className = "c";
+    if (values[c] === "Result unavailable") td.classList.add("unavailable");
+    if (sheet.columnWidths[c] <= 0) td.classList.add("hidden-col");
+    const span = spans.get(`${r},${c}`);
+    if (span) { td.rowSpan = span[0]; td.colSpan = span[1]; td.classList.add("merged"); }
+    if (c < sheet.frozenColumns) { td.classList.add("frozen-col"); td.style.insetInlineStart = offsets[c] + "px"; }
+    if (isFrozen) td.style.top = `calc(var(--row) * ${r + 1})`;
+    tr.append(td);
+  }
+  return tr;
+}
+
+function cellElement(r, c) {
+  const tr = scroller.querySelector(`tr[data-r="${r}"]`);
+  return tr?.querySelector(`td[data-c="${c}"]`) ?? null;
+}
+
+function find(query, previous) {
+  const sheet = workbook.sheets[active];
+  if (query !== lastQuery) {
+    for (const el of scroller.querySelectorAll("td.hit, td.current")) el.classList.remove("hit", "current");
+    const needle = query.toLocaleLowerCase();
+    hits = [];
+    if (needle) sheet.rows.forEach((values, r) => values.forEach((text, c) => { if (text && text.toLocaleLowerCase().includes(needle)) hits.push([r, c]); }));
+    hitIndex = previous ? 0 : -1;
+    lastQuery = query;
+    for (const [r, c] of hits) cellElement(r, c)?.classList.add("hit");
+  }
+  if (hits.length) {
+    cellElement(...(hits[hitIndex] ?? [-1, -1]))?.classList.remove("current");
+    hitIndex = (hitIndex + (previous ? -1 : 1) + hits.length) % hits.length;
+    const target = cellElement(...hits[hitIndex]);
+    target?.classList.add("current");
+    target?.scrollIntoView({ block: "center", inline: "center" });
+  }
+  post({ type: "find", current: hits.length ? hitIndex + 1 : 0, total: hits.length, done: true });
+}
+
+host?.addEventListener("message", event => {
+  const m = event.data ?? {};
+  switch (m.type) {
+    case "find": find(String(m.query ?? ""), !!m.previous); break;
+    case "sheet": if (workbook) show((active + (m.delta > 0 ? 1 : -1) + workbook.sheets.length) % workbook.sheets.length); break;
+    case "zoom":
+      if (m.value === "in") zoom = Math.min(4, Math.round((zoom + 0.1) * 10) / 10);
+      else if (m.value === "out") zoom = Math.max(0.5, Math.round((zoom - 0.1) * 10) / 10);
+      else if (typeof m.value === "number") zoom = Math.min(4, Math.max(0.5, m.value));
+      scroller.style.zoom = String(zoom);
+      state();
+      break;
+    case "theme": document.documentElement.dataset.theme = m.dark ? "dark" : "light"; break;
+    case "focus": scroller.focus(); break;
+  }
+});
+
+try {
+  const response = await fetch(DATA_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error("unavailable");
+  workbook = await response.json();
+  if (!workbook?.sheets?.length) throw new Error("empty");
+  post({ type: "loaded", sheets: workbook.sheets.length });
+  show(0);
+} catch {
+  post({ type: "error", kind: "unavailable" });
+}
