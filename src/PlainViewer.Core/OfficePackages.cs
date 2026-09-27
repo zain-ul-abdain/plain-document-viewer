@@ -39,6 +39,7 @@ public static class OfficePackages
             throw new DocumentException($"This file is named {extension}, but its contents are not a {kind}. Open it with an application for its actual format.");
 
         int removed = 0;
+        bool ownsOutput = false;
         try
         {
             using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
@@ -49,7 +50,11 @@ public static class OfficePackages
                 throw new DocumentException($"This {kind} contains macros. Files with macros are not supported yet, and macros would never run here. Save it without macros to view it.");
 
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-            using var target = new ZipArchive(new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.None), ZipArchiveMode.Create);
+            // Only clean up files this invocation actually created. CreateNew can fail because
+            // another file already exists, including when the caller passes the source path.
+            using var outputStream = new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            ownsOutput = true;
+            using var target = new ZipArchive(outputStream, ZipArchiveMode.Create);
             foreach (var entry in zip.Entries)
             {
                 if (entry.FullName.EndsWith('/')) continue;
@@ -62,9 +67,9 @@ public static class OfficePackages
                 else input.CopyTo(destination);
             }
         }
-        catch (InvalidDataException) { Discard(output); throw Damaged(kind); }
-        catch (XmlException) { Discard(output); throw Damaged(kind); }
-        catch { Discard(output); throw; }
+        catch (InvalidDataException) { if (ownsOutput) Discard(output); throw Damaged(kind); }
+        catch (XmlException) { if (ownsOutput) Discard(output); throw Damaged(kind); }
+        catch { if (ownsOutput) Discard(output); throw; }
         if (File.GetLastWriteTimeUtc(path) != modified || new FileInfo(path).Length != length)
         { Discard(output); throw new DocumentException("The file changed while it was being opened. Wait until it has finished saving, then open it again."); }
         return new DocumentView
@@ -89,19 +94,23 @@ public static class OfficePackages
         { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersFromEntities = 1024, IgnoreComments = true, CloseInput = false });
         using var writer = XmlWriter.Create(output, new XmlWriterSettings { Encoding = new UTF8Encoding(false), CloseOutput = false });
         bool inInstruction = false;
-        while (reader.Read())
+        bool advance = true;
+        while (advance ? reader.Read() : !reader.EOF)
         {
+            advance = true;
             switch (reader.NodeType)
             {
                 case XmlNodeType.XmlDeclaration:
                     writer.WriteStartDocument(reader.GetAttribute("standalone") == "yes");
                     break;
                 case XmlNodeType.Element:
-                    if (mode == Mode.Relationships && reader.LocalName == "Relationship" && reader.GetAttribute("TargetMode") == "External"
-                        && !(reader.GetAttribute("Type") ?? "").EndsWith("/hyperlink", StringComparison.Ordinal))
+                    if (mode == Mode.Relationships && reader.LocalName == "Relationship" && IsExternalRelationship(reader)
+                        && !IsAllowedHyperlink(reader))
                     {
                         removed++;
-                        if (!reader.IsEmptyElement) reader.Skip();
+                        // Skip leaves the reader on the following node. Do not read again and
+                        // lose a neighbouring relationship or its closing parent element.
+                        if (!reader.IsEmptyElement) { reader.Skip(); advance = false; }
                         continue;
                     }
                     bool empty = reader.IsEmptyElement;
@@ -141,6 +150,19 @@ public static class OfficePackages
         var first = instruction.TrimStart().Split([' ', '\t', '\\', '"'], 2)[0];
         return FetchingFields.Contains(first, StringComparer.OrdinalIgnoreCase);
     }
+
+    private static bool IsExternalRelationship(XmlReader reader)
+    {
+        string target = reader.GetAttribute("Target") ?? "";
+        return string.Equals(reader.GetAttribute("TargetMode"), "External", StringComparison.OrdinalIgnoreCase)
+            || target.StartsWith("\\\\", StringComparison.Ordinal) || target.StartsWith("//", StringComparison.Ordinal)
+            // A single leading slash addresses a part within the OPC package, not the host filesystem.
+            || (!target.StartsWith("/", StringComparison.Ordinal) && Uri.TryCreate(target, UriKind.Absolute, out _));
+    }
+
+    private static bool IsAllowedHyperlink(XmlReader reader) =>
+        (reader.GetAttribute("Type") ?? "").EndsWith("/hyperlink", StringComparison.Ordinal)
+        && LinkPolicy.CanOpen(reader.GetAttribute("Target"));
 
     private sealed class LimitedStream(Stream inner, long limit) : Stream
     {

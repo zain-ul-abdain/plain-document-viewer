@@ -123,3 +123,25 @@ Zain chose a staged public release (finish blockers, private beta, public GitHub
 - **Office fidelity:** `scripts/compare-office.ps1` with `tests/fidelity` (20 public Word/PowerPoint documents whose PDFs Microsoft Office made; only URLs and hashes are in Git, `-Fetch` downloads them). The app's `--export-pdf` mode converts through the viewer's own pipeline.
 - **Windows Sandbox test ready:** `scripts/sandbox-test.ps1` needs Zain to enable the Windows Sandbox feature (administrator, restart).
 - **Codex:** your Office safety work in the main folder is still untouched and uncommitted; none of the files above overlap with it. Leave a note here when it is ready to commit.
+
+## Agent 1, 28 September 2026: Office safety changes ready
+
+Checked against master 2f2e8df and the low-integrity/LocalLow worker contract. Fixed the pending StartsWith overload and preserved package-root-relative relationship targets. Cleanup now deletes only an output this invocation created; it cannot delete an existing output or the source supplied as output. Relationship filtering no longer skips adjacent XML nodes, removes unsafe external hyperlinks, and preserves permitted web/email and internal targets.
+
+Verification: build.ps1 -Offline: 0 warnings/errors; test.ps1 -Offline: 74 passed, 0 failed, 2 large generated fixtures absent/skipped; test-markdown.ps1 -Offline: 14 passed; test-office-safety.ps1: 14 passed (including 3 actual low-integrity child-process tests writing under LocalLow); smoke-test.ps1: 16/16; security-smoke.ps1: 32/32, 0 recorded requests. WebDAV service stopped; SMB not observed. No new downloads, licence acceptance, signing, installer/firewall, performance or accessibility validation performed. User's successful Excel opening is recorded as a manual spot check, not full acceptance.
+
+Agent 2: please review and commit these exact nine files. This session did not stage, commit, or push:
+
+1. src/PlainViewer.Core/OfficePackages.cs
+2. tests/PlainViewer.OfficeSafety.Tests/PlainViewer.OfficeSafety.Tests.csproj
+3. tests/PlainViewer.OfficeSafety.Tests/Program.cs
+4. scripts/test-office-safety.ps1
+5. PlainViewer.slnx
+6. README.md
+7. docs/TASKS.md
+8. docs/TEST-RESULTS.md
+9. docs/HANDOFF.md
+
+TASKS.md also contains your earlier status updates; preserve them. Suggested neutral commit title: Preserve existing files during Office preparation and test low-integrity output. No attribution trailers. Please include test-office-safety.ps1 in package.ps1's test gate when editing that file; it remains yours.
+
+Claims released. Optional Markdown ordered-list starts, table alignment and horizontal code scrolling remain open. No MainWindow, installer, OfficeConverter, sandbox or measurement file was edited because Agent 2 owns the overlapping work. Coordinate a separate bounded renderer change before starting that task.

@@ -4,6 +4,8 @@ Windows x64, local .NET SDK 10.0.401, Release builds. Hardware/performance basel
 
 ## Executed
 
+- **Office preparation safety, 28 Sep 2026 (base 2f2e8df plus pending changes):** `build.ps1 -Offline` passed with 0 warnings/errors; `test.ps1 -Offline` 74 passed, 0 failed, with the absent generated 200 MB CSV and 500,000-row workbook skipped; `test-markdown.ps1 -Offline` 14 passed; `test-office-safety.ps1` 14 passed; `smoke-test.ps1` 16/16; `security-smoke.ps1` 32/32 with 0 recorded requests. The dedicated safety suite checks that an existing output or the source itself cannot be deleted by failure cleanup; incomplete output created by the current invocation is removed; relationship siblings and valid package-relative targets survive filtering; unsafe external hyperlinks are removed. Three tests spawn a child, verify low integrity, and run preparation under LocalLow (successful creation, existing-output collision, corrupt-input cleanup). The security listener's canary succeeded, but WebClient/WebDAV was stopped and SMB port 445 was not observed. No installer/firewall, additional fidelity, performance, or manual accessibility checks were performed in this run. This does not replace the earlier large-file measurements.
+
 - User manually confirmed MD and TXT files work on 2026-09-27. This confirms those user checks, not the full accessibility or corpus checklist.
 - `scripts/test-markdown.ps1 -Offline`: 14 new regressions passed: visible entities, safe decoded text, soft/hard breaks, email targets, combined emphasis, literal inline/display math, currency, code, unsafe links/images and front-matter offsets. Original 22 tests and six WPF smoke fixtures rerun successfully after this change.
 

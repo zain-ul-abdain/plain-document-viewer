@@ -20,6 +20,7 @@ Use Windows with the .NET 10 SDK, installed normally or under `.tools/dotnet`. S
 .\scripts\build.ps1
 .\scripts\test.ps1
 .\scripts\test-markdown.ps1
+.\scripts\test-office-safety.ps1
 .\scripts\smoke-test.ps1
 .\scripts\run.ps1
 .\scripts\run.ps1 -File "$PWD\tests\corpus\complex.markdown"
