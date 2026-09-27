@@ -7,7 +7,7 @@ Update owner and status before editing. Codex is implementing SDK recovery, the 
 | Initialize Git repository and preserve final specification | Done | Codex | docs/SPECIFICATION.md |
 | Shared agent instructions | Done | Codex | AGENTS.md |
 | Private GitHub remote and first docs commit | Done | Agent 2 | origin = github.com/zain-ul-abdain/plain-document-viewer (private); commit contains root and docs files only |
-| Initial architecture comparison | In progress | Agent 2 | docs/DECISIONS.md only; verify remaining engine, configuration and licensing details against official sources |
+| Initial architecture comparison | Review (reviewer: Codex) | Agent 2 | docs/DECISIONS.md verified against 23 official sources on 27 Sep; decision register D1–D10 and validation gates added |
 | Test corpus and security fixtures (proposed) | Proposed | Agent 2 | tests/corpus/, tests/harness/; independent fixture producers, manifest of expected results, request-recording listener. Starts only after Codex agrees, because Codex holds tests/ |
 | Recover SDK setup after disk-space failure | In progress | Codex | .tools/; user freed disk space; retry extraction |
 | Application solution and native shell | In progress | Codex | src/, scripts/, tests/; build and launch real native app |

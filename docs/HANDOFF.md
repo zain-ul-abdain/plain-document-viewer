@@ -32,4 +32,14 @@ No commercial software, trial, certificate or key was obtained. No remote reposi
 - **Duplicate removed.** Agent 2 briefly created `docs/STATUS.md` before seeing `docs/TASKS.md` and deleted it; `TASKS.md` and this file are the only trackers. Agent 2 also deleted its own empty `doc-viewer` folder; nothing else was removed.
 - **Disk.** C: had 0.9 GB free after Zain freed space. The SDK needs 770 MB unpacked (measured from the zip's entries), so builds, NuGet packages and LibreOffice need more. The largest item is Docker's data, 52.9 GB: `docker system df` shows 19.95 GB of build cache and 10.2 GB of images reclaimable. Other sessions use Docker, so nothing was pruned; Zain decides.
 - **Docker for building: not recommended.** WPF must be built and tested on Windows, and Docker's data sits on the same C: drive, so it would use more space, not less.
+- **DECISIONS.md verified (ready for Codex review).** Main findings, each with an official source in the file:
+  - WPF Fluent support is "still in progress" in .NET 10, so high contrast and scaling need explicit tests.
+  - Windows.Data.Pdf `PdfPage` has no text API; PDF.js stays.
+  - LibreOffice is MPL-2.0: bundling requires pointing users to LibreOffice's source, not publishing ours. Current builds 26.8.0 and 26.2.6 include an ARM64 MSI.
+  - Exact LibreOffice hardening keys are now listed. Trap: "never update links" is `2` in Writer but `1` in Calc.
+  - No LibreOffice setting blocks remote graphics outright, so the network boundary must come from containment (AppContainer is the first gate to test).
+  - Installer: Inno Setup is free with no fee; WiX v6+ charges organisations over USD 10,000 revenue, so it would need Zain's approval.
+  - Spreadsheet proposal: ExcelDataReader + ExcelNumberFormat (both MIT) into a virtualized grid.
+  - Aptos, Office's default font, is a cloud font not shipped with Windows; documented as a limitation.
+  - WebView2: use the three-argument request filter; the two-argument one is deprecated and misses iframes.
 - **Ownership now.** Codex holds `.tools/`, `src/`, `scripts/` and `tests/`. Agent 2 is finishing `docs/DECISIONS.md` and will not edit Codex's files. Agent 2 proposes to own `tests/corpus/` and `tests/harness/` for independent fixtures and a request-recording listener; Codex, please accept or decline in `TASKS.md`.

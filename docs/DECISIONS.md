@@ -1,44 +1,131 @@
 # Technology decisions
 
-Status: implementation foundation; research checked 2026-09-27. No commercial trials or licences obtained. No engine fidelity, installer size, or first-open estimates below are measurements.
+Status: initial draft by Codex, 27 September 2026. Facts verified against official sources by Agent 2 on 27 September 2026 (source list at the end, each with the date checked). No commercial trial, key or licence was obtained. Nothing below is a measurement unless it says "measured".
 
 ## Selected direction
 
-Use .NET 10 and WPF for the Windows shell, with a core library independent of UI. WPF provides native keyboard, text selection, accessibility, and virtualized controls. Use its Fluent theme. Build a small development preview first; the production release requires the full acceptance gates in SPECIFICATION.md.
+Use .NET 10 and WPF for the Windows shell, with a core library independent of UI. WPF provides native keyboard, text selection, accessibility, and virtualized controls, and it builds with the .NET SDK alone, without Visual Studio. Use its Fluent theme. Build a small development preview first; the production release requires the full acceptance gates in SPECIFICATION.md.
 
 Use a hybrid renderer: Markdig for Markdown syntax mapped to safe native display elements; a dedicated streaming spreadsheet reader and grid; PDF.js in a tightly restricted local WebView2 surface for PDFs; LibreOffice conversion for DOCX/PPTX only after worker isolation and disabled external-content behavior are verified. The PDF/Office paths are recommendations, not currently enabled integrations. Do not distribute an insecure conversion shortcut.
 
-## Options
+## Decision register
+
+| ID | Decision | Status | Main reason |
+|---|---|---|---|
+| D1 | .NET 10 + WPF shell with the Fluent theme | Accepted | Builds with the SDK alone; mature UI Automation. Microsoft says Fluent support "is still in progress" in .NET 10 [S1], so high-contrast and per-control styling must be tested, not assumed |
+| D2 | Hybrid rendering, one engine per format family (table below) | Accepted | No single free engine meets fidelity, grid, search and safety needs together |
+| D3 | LibreOffice, headless, converts DOCX/PPTX (and optional DOC/PPT/RTF/ODT/ODP) to PDF inside the isolated worker | Accepted, gated on the isolation tests in "Validation gates" | Only free engine with broad Word/PowerPoint layout support, including old binary formats. MPL-2.0 does not require publishing this app's source [S4] |
+| D4 | PDF.js (Apache-2.0) in WebView2 displays PDFs and LibreOffice output | Accepted | Gives text layer, search and selection. Windows.Data.Pdf only renders page images; `PdfPage` has no text API [S9] |
+| D5 | Spreadsheets: ExcelDataReader (MIT) + ExcelNumberFormat (MIT) feeding a virtualized WPF grid | Proposed | Forward-only, row-by-row reader; exposes merged cells, column widths and number-format strings; covers .xlsx and old .xls [S10, S11]. Formula evaluation is not part of its API; cached-value behaviour must be proven by fixtures |
+| D6 | Markdown: Markdig (BSD-2-Clause, CommonMark 0.31.2, pipe tables, task lists) with raw HTML parsing disabled, rendered to native WPF elements | Accepted | Parser is CommonMark-compliant and lets HTML parsing be switched off [S12] |
+| D7 | Installer: Inno Setup, per-user, EXE | Proposed | Free for commercial use, no fee [S7]. WiX v6+ requires organisations with more than USD 10,000 annual revenue to pay an Open Source Maintenance Fee [S8], which needs Zain's approval |
+| D8 | Bundle OFL-1.1 fallback fonts for LibreOffice: Carlito (Calibri metrics), Caladea (Cambria), Liberation Sans/Serif/Mono (Arial, Times New Roman, Courier New) | Proposed | Metric-compatible substitutes keep line breaks and page counts closer [S13–S15] |
+| D9 | WebView2 Evergreen runtime (preinstalled on Windows 11), not the Fixed Version | Proposed | Fixed Version adds "over 250 MB" [S2]. Windows 11 ships the Evergreen runtime; the installer still checks for it |
+| D10 | No commercial SDK in v1 | Accepted unless Zain decides otherwise | Costs and contract terms below; the free stack covers the required formats if the gates pass |
+
+## Engine per format
+
+| Format | Engine | Search and copy | Status |
+|---|---|---|---|
+| PDF | PDF.js in WebView2 | Yes, through the PDF.js text layer | Not implemented |
+| DOCX, PPTX | LibreOffice → PDF → PDF.js | Yes, if the converted PDF has text | Not implemented; gated |
+| XLSX, XLS | ExcelDataReader → virtualized grid | Cell text copy; search in the core library | Not implemented |
+| CSV, TXT | Core streaming parsers → grid or text view | Yes | Codex implementing |
+| Markdown | Markdig AST → WPF FlowDocument | Yes, native text | Codex implementing |
+| RTF, ODT, ODP, DOC, PPT (optional) | LibreOffice → PDF | As PDF | Optional; decided by fixtures |
+| ODS (optional) | LibreOffice → XLSX, recalculation off → grid | As grid | Optional |
+
+## Options compared
 
 | Approach | Fidelity and old formats | Grid, text and accessibility | Distribution, cost and maintenance | Size, speed and exposure |
 |---|---|---|---|---|
-| LibreOffice plus PDF viewer | Broad import coverage; Word/slide layout needs independent Office comparisons. Old DOC/XLS/PPT require corpus validation. | PDF text layer can enable search/copy; conversion loses spreadsheet grid and tabs. Accessibility depends on output tagging and viewer. | MPL-2.0 distribution and third-party notices/source obligations must be audited for the bundled binaries; this does not automatically require publishing our separate app. Active upstream project. | Largest expected bundle; cold conversion overhead. No measured size or time yet. Large native parser surface; conversion must be isolated and offline. |
-| Syncfusion | Document SDKs cover multiple Office formats; verify each product's legacy and rendering capabilities in public docs before selection. | Separate spreadsheet/viewer components may be required. Search and accessibility need component-specific validation. | Community eligibility is conditional, not assumed. Commercial pricing/redistribution require an approved quote or qualifying licence. Maintained product suite. | Size and cold-start unknown without an approved evaluation. Proprietary parsing still needs isolation. |
-| Aspose | Words and other format products provide document processing; per-product rendering fidelity and binary formats need tests. | Processing APIs alone do not provide our complete interactive grid/UI. | Paid licensing; exact total and redistribution terms unresolved. Maintained commercial products. No trial downloaded. | Size/performance unmeasured. Multiple SDKs and parser surfaces. |
-| Apryse | PDF and Office conversion capabilities depend on selected modules. Legacy format scope requires vendor confirmation. | Viewer features may reduce custom PDF work; spreadsheet grid still requires validation. | Modular commercial pricing; exact cost requires quote and approval. Maintained SDK. | Bundle/performance unknown; native conversion and viewer need isolation. |
-| Separate open-source libraries | Markdig covers Markdown syntax; Open XML parsing reads structure, not faithful Word/slide pagination. PDF.js renders PDFs. Old Office binaries need additional engines. | Best control over cached spreadsheet values and virtualized grid. Search and accessibility must be implemented per view. | Audit each pinned package and transitive licence. Markdig BSD-2-Clause; PDF.js Apache-2.0. No per-seat charge anticipated. | Smaller individual components, but higher implementation cost. Streaming and limits require deliberate design; not inherently safer. |
+| LibreOffice plus PDF viewer | Broad import coverage; Word/slide layout needs independent Office comparisons. Old DOC/XLS/PPT require corpus validation. | PDF text layer enables search and copy; conversion loses spreadsheet grid and tabs, so spreadsheets use D5. Accessibility depends on output tagging and viewer. | MPL-2.0 (with LGPLv3+ and Apache-2.0 parts). Distributing the binaries requires telling users how to get LibreOffice's source; a "Larger Work" may use its own terms [S4]. Current releases: 26.8.0 (Fresh), 26.2.6 (Still), with x86-64 and ARM64 Windows builds [S5]. | Largest bundle; download size not published on the download page, measure it. Cold conversion overhead. Large native parser surface; must run isolated and offline. |
+| Syncfusion | Document SDKs cover multiple Office formats; legacy support per product must be checked. | Separate spreadsheet/viewer components may be required. | Community Licence only for organisations under USD 1 million revenue, 5 or fewer developers, 10 or fewer employees, never more than USD 3 million outside capital, and not government-related [S16]. Accepting it is a contract, so it needs Zain's approval. | Size and cold start unknown without an approved evaluation. Proprietary parsing still needs isolation. |
+| Aspose | Words, Cells and Slides are separate products. | Processing APIs alone do not provide the interactive grid/UI. | Aspose.Words for .NET alone: USD 1,199 per developer for one deployment location, USD 3,597 per developer for unlimited locations (OEM) [S17]. Cells and Slides are priced separately. | Size/performance unmeasured. Multiple SDKs and parser surfaces. |
+| Apryse | PDF and Office conversion depend on selected modules. | Viewer features may reduce custom PDF work; grid still needed. | Quote-based modular pricing [S18]. | Bundle/performance unknown. |
+| Separate open-source libraries | Markdig covers Markdown; Open XML parsing reads structure, not faithful Word/slide pagination. PDF.js renders PDFs. Old Office binaries need another engine. | Best control over cached spreadsheet values and virtualized grid. | Audit each pinned package and transitive licence. No per-seat charge. | Smaller components, higher implementation cost. |
 
-## Pitfalls and release gates
+## Verified configuration details
 
-- Windows.Data.Pdf renders pages; its documented API does not supply the text-search/selection layer needed here. Do not choose it as the sole viewer engine.
+### LibreOffice profile (private per conversion, seeded before first start)
+
+Keys and values checked in LibreOffice's own configuration schema [S6]:
+
+| Setting | Path | Value to set | Default |
+|---|---|---|---|
+| Macro security level | `/org.openoffice.Office.Common/Security/Scripting/MacroSecurityLevel` | `3` (Very High) | `2` |
+| Disable all macro execution (Basic, BeanShell, JavaScript, Python) | `/org.openoffice.Office.Common/Security/Scripting/DisableMacrosExecution` | `true` | `false` |
+| Block links from documents outside trusted locations | `/org.openoffice.Office.Common/Security/Scripting/BlockUntrustedRefererLinks` | `true` | `false` |
+| Writer: update links on load | `/org.openoffice.Office.Writer/Content/Update/Link` | **`2` = never** (0 always, 1 on request) | `1` |
+| Calc: update links on load | `/org.openoffice.Office.Calc/Content/Update/Link` | **`1` = never** (0 always, 2 on request) | `2` |
+| Calc: recalculate OOXML on load | `/org.openoffice.Office.Calc/Formula/Load/OOXMLRecalcMode` | `1` = never | `1` |
+| Calc: recalculate ODF on load | `/org.openoffice.Office.Calc/Formula/Load/ODFRecalcMode` | `1` = never | `1` |
+| Lock file beside the document | `/org.openoffice.Office.Common/Load/UseDocumentOOoLockFile` | `false` | `true` |
+| System file locking | `/org.openoffice.Office.Common/Load/UseDocumentSystemFileLocking` | `false` | `true` |
+
+**Trap:** "never" is `2` for Writer but `1` for Calc. Copying one value to both leaves Calc on "update on request".
+
+Command line [S3]: `soffice --headless --norestore --nologo --nodefault --nolockcheck -env:UserInstallation=file:///<private profile> --convert-to pdf --outdir <private dir> <private copy>`. The input is always a private snapshot, so any lock file lands in private storage even if a setting is missed.
+
+No schema key was found that blocks remote graphics outright. Preferences are therefore not the network boundary: the worker's containment must block network access (see gates), and the remote-image, remote-template and network-share fixtures must prove it.
+
+### WebView2 lockdown
+
+- Register `AddWebResourceRequestedFilter("*", All, <all source kinds>)` using the three-argument overload; the two-argument overload is deprecated and "does not behave as expected for iframes" [S19]. Deny every request that is not the app's own virtual host. Service and shared workers raise the event environment-wide.
+- Also cancel `NavigationStarting` for anything but the app page, handle `NewWindowRequested` and `DownloadStarting` by cancelling, and disable developer tools in release builds.
+- Serve PDF.js assets through `SetVirtualHostNameToFolderMapping`, and give PDF bytes to the page directly; never give the page a file path.
+- PDF.js: keep `enableXfa` false (its default) [S20]. Set `standardFontDataUrl` and `cMapUrl` to local app assets so no font data is fetched remotely. Confirm the scripting and eval options in the pinned PDF.js version before release.
+
+### Fonts
+
+- Office's current default font, Aptos, is a Microsoft 365 cloud font downloaded on demand; it is not part of Windows [S21]. Documents that use it render with a substitute in any Office-free viewer. No metric-compatible free substitute is known, so this is a documented limitation.
+- Carlito is "metric-compatible with Calibri" (OFL-1.1) [S13]. Liberation fonts cover Arial, Times New Roman and Courier New (OFL-1.1) [S14]. Caladea (OFL-1.1) is based on Cambo with new metrics [S15]; the Cambria match must be checked with fixtures, not assumed.
+
+### Isolation mechanisms available
+
+- **Job objects:** a per-process committed-memory limit (`JOB_OBJECT_LIMIT_PROCESS_MEMORY`), a job-wide limit, and kill-on-job-close [S22]. Kill-on-close ensures LibreOffice child processes die with the worker.
+- **AppContainer:** restricts files, registry, network and credentials; network access must be granted explicitly, and credentials cannot be used to reach other resources [S23]. This is the only listed mechanism that blocks network and network-share access at the OS level. Whether LibreOffice runs inside an AppContainer is unknown and is the first gate below.
+
+## Validation gates (release blockers)
+
+1. **LibreOffice in AppContainer.** Run a conversion inside an AppContainer with no network capability. If it works, that is the network boundary. If it does not, fall back to a job object, the hardened profile and a low-integrity token, document that network blocking then relies on configuration, and ask Zain before shipping.
+2. **Hostile fixtures.** Remote image, remote template, external workbook link, UNC and WebDAV paths, XML external entity, ZIP bomb: zero network requests and no files beside the source.
+3. **Fluent theme.** Check high contrast, 100–300% scaling and every control used.
+4. **Spreadsheet values.** Formulas with and without cached results show the cached value or "Result unavailable"; nothing recalculates.
+5. **Sizes and timings.** Measure the LibreOffice bundle, installer size and cold/warm first-page times.
+6. **ARM64.** LibreOffice publishes an ARM64 Windows build [S5] and .NET supports ARM64; untested.
+
+## Pitfalls (from the first draft, still apply)
+
 - Office preview handlers are not a reliable Office-free dependency. Do not depend on installed Office or shell preview handlers.
-- LibreOffice must receive a private copy and a private profile, with macro execution, updates and external content disabled. Block network access at the worker boundary, not only with preferences. Lock files must stay inside private storage. Exact configuration and hostile fixtures are pending.
-- Spreadsheets must use a grid. Parse cached values only; no formula evaluator. Use disk indexing and virtualized rows for large workbooks; merged-cell layout and style fidelity require dedicated implementation.
 - Markdown must create only trusted native UI objects from syntax nodes, never instantiate XAML/HTML from the file. Image references never cause file or network reads. Unsafe link schemes are inert text. HTML is displayed literally.
-- PDF.js needs local assets and a text layer; WebView2 must block external requests, popups and navigation. PDF scripting/attachments/actions must be disabled. Fixed runtime offline redistribution and process isolation are not yet validated.
-- Missing fonts alter Office layout. Candidate fallback families: Carlito, Caladea and Liberation; verify exact font files and OFL notices before bundling. No fonts bundled yet; never download document-referenced fonts.
-- Prefer an offline per-user EXE installer, subject to verifying the chosen installer tool's current licence. No installer engine has been downloaded. Only register acceptance-tested formats and never overwrite defaults. ARM64 is untested.
+- Only register acceptance-tested formats and never overwrite defaults.
 - No production signing certificate will be bought. Unsigned preview builds are allowed; distribution signing is a later documented step.
 
-## Official sources
+## Sources (all checked 27 September 2026)
 
-- WPF/.NET: https://learn.microsoft.com/en-us/dotnet/desktop/wpf/ and https://devblogs.microsoft.com/dotnet/announcing-dotnet-10/
-- LibreOffice licensing: https://www.libreoffice.org/licenses/
-- Syncfusion eligibility: https://www.syncfusion.com/products/communitylicense
-- Aspose licence: https://docs.aspose.com/words/net/licensing/ and pricing https://purchase.aspose.com/pricing/total
-- Apryse pricing: https://apryse.com/en-au/pricing
-- Markdig and licence: https://github.com/xoofx/markdig
-- PDF.js viewer/API: https://mozilla.github.io/pdf.js/getting_started/ and https://mozilla.github.io/pdf.js/api/
-- Windows.Data.Pdf: https://learn.microsoft.com/en-us/uwp/api/windows.data.pdf.pdfdocument
+- [S1] What's new in WPF for .NET 10 (page dated 10 Feb 2026): https://learn.microsoft.com/en-us/dotnet/desktop/wpf/whats-new/net100
+- [S2] Distribute your app and the WebView2 Runtime: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution
+- [S3] LibreOffice command-line parameters: https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html
+- [S4] LibreOffice licences: https://www.libreoffice.org/about-us/licenses/
+- [S5] LibreOffice download page (26.8.0 and 26.2.6; x86-64 and aarch64 MSI): https://www.libreoffice.org/download/download-libreoffice/
+- [S6] LibreOffice configuration schema: https://raw.githubusercontent.com/LibreOffice/core/master/officecfg/registry/schema/org/openoffice/Office/Common.xcs, `.../Writer.xcs`, `.../Calc.xcs`
+- [S7] Inno Setup licence: https://jrsoftware.org/files/is/license.txt
+- [S8] WiX Open Source Maintenance Fee: https://docs.firegiant.com/wix/osmf/ and https://github.com/wixtoolset/issues/issues/8974
+- [S9] Windows.Data.Pdf.PdfPage members: https://learn.microsoft.com/en-us/uwp/api/windows.data.pdf.pdfpage
+- [S10] ExcelDataReader: https://github.com/ExcelDataReader/ExcelDataReader
+- [S11] ExcelNumberFormat: https://github.com/andersnm/ExcelNumberFormat
+- [S12] Markdig: https://github.com/xoofx/markdig
+- [S13] Carlito: https://github.com/googlefonts/carlito
+- [S14] Liberation fonts: https://github.com/liberationfonts/liberation-fonts
+- [S15] Caladea: https://github.com/huertatipografica/Caladea
+- [S16] Syncfusion Community Licence: https://www.syncfusion.com/products/communitylicense
+- [S17] Aspose.Words for .NET pricing: https://purchase.aspose.com/pricing/words/net
+- [S18] Apryse pricing: https://apryse.com/en-au/pricing
+- [S19] CoreWebView2.AddWebResourceRequestedFilter: https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.addwebresourcerequestedfilter
+- [S20] PDF.js API, getDocument parameters: https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib.html
+- [S21] Cloud fonts in Office: https://support.microsoft.com/en-us/office/cloud-fonts-in-office-f7b009fe-037f-45ed-a556-b5fe6ede6adb
+- [S22] JOBOBJECT_EXTENDED_LIMIT_INFORMATION: https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_extended_limit_information
+- [S23] AppContainer isolation: https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation
 
-Unresolved items are research/implementation tasks, not verified promises. Independent Office files, cold/warm timing measurements, native containment, renderer configuration, dependency redistribution audit and installer tests are release blockers.
+Estimates and unverified items are labelled as such. Independent Office files, cold/warm timing measurements, native containment, renderer configuration, dependency redistribution audit and installer tests remain release blockers.
