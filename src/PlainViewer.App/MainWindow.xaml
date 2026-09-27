@@ -1,0 +1,32 @@
+<Window x:Class="PlainViewer.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Plain Viewer · Development preview" Width="1100" Height="760" MinWidth="680" MinHeight="480" AllowDrop="True" Drop="FileDropped">
+ <DockPanel Margin="16">
+  <StackPanel DockPanel.Dock="Top">
+   <WrapPanel Margin="0,0,0,12">
+    <Button Content="Open file" Click="OpenClicked" Padding="16,8" Margin="0,0,8,0" AutomationProperties.Name="Open file" />
+    <Button x:Name="CancelButton" Content="Cancel" Click="CancelClicked" IsEnabled="False" Margin="0,0,8,0" Padding="10,6" />
+    <Button Content="−" Click="ZoomOut" Padding="12,6" AutomationProperties.Name="Zoom out" />
+    <Button x:Name="ZoomButton" Content="100%" Click="ResetZoom" Padding="10,6" AutomationProperties.Name="Reset zoom" />
+    <Button Content="+" Click="ZoomIn" Padding="12,6" Margin="0,0,12,0" AutomationProperties.Name="Zoom in" />
+    <ComboBox x:Name="ThemeChoice" Width="100" SelectedIndex="0" SelectionChanged="ThemeChanged" AutomationProperties.Name="Theme"><ComboBoxItem>System</ComboBoxItem><ComboBoxItem>Light</ComboBoxItem><ComboBoxItem>Dark</ComboBoxItem></ComboBox>
+    <Button Content="About" Click="AboutClicked" Margin="8,0,0,0" Padding="12,6" />
+   </WrapPanel>
+   <WrapPanel Margin="0,0,0,12">
+    <TextBox x:Name="FindBox" Width="200" Margin="0,0,6,0" Padding="8,5" AutomationProperties.Name="Find text" KeyDown="FindKeyDown" />
+    <Button x:Name="PreviousButton" Content="Previous" Click="PreviousMatch" Margin="0,0,4,0" />
+    <Button x:Name="NextButton" Content="Next" Click="NextMatch" Margin="0,0,12,0" />
+    <CheckBox x:Name="SourceToggle" Content="Markdown source" VerticalAlignment="Center" Visibility="Collapsed" Checked="ViewChanged" Unchecked="ViewChanged" Margin="0,0,12,0" />
+    <ComboBox x:Name="EncodingChoice" Width="125" SelectedIndex="0" SelectionChanged="OptionsChanged" AutomationProperties.Name="Text encoding"><ComboBoxItem>Auto</ComboBoxItem><ComboBoxItem>UTF-8</ComboBoxItem><ComboBoxItem>UTF-16 LE</ComboBoxItem><ComboBoxItem>UTF-16 BE</ComboBoxItem><ComboBoxItem>Windows-1252</ComboBoxItem></ComboBox>
+    <ComboBox x:Name="DelimiterChoice" Width="110" SelectedIndex="0" SelectionChanged="OptionsChanged" AutomationProperties.Name="CSV delimiter" Margin="8,0,0,0"><ComboBoxItem>Auto</ComboBoxItem><ComboBoxItem>Comma</ComboBoxItem><ComboBoxItem>Semicolon</ComboBoxItem><ComboBoxItem>Tab</ComboBoxItem></ComboBox>
+   </WrapPanel>
+   <ProgressBar x:Name="Progress" Height="3" IsIndeterminate="True" Visibility="Collapsed" />
+  </StackPanel>
+  <TextBlock x:Name="Status" DockPanel.Dock="Bottom" Margin="0,12,0,0" TextWrapping="Wrap" Text="Development preview · Read only · No files are uploaded" />
+  <Grid>
+   <TextBlock x:Name="Welcome" Text="Open a document&#10;&#10;Text, CSV and Markdown preview&#10;PDF and Office viewing are being built.&#10;&#10;Drop a local file here or press Ctrl+O." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="22" />
+   <TextBox x:Name="TextView" Visibility="Collapsed" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" Padding="20" AutomationProperties.Name="Read-only document text" />
+   <RichTextBox x:Name="MarkdownDisplay" Visibility="Collapsed" IsReadOnly="True" IsDocumentEnabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="20" AutomationProperties.Name="Rendered Markdown document" />
+   <DataGrid x:Name="CsvGrid" Visibility="Collapsed" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" EnableRowVirtualization="True" EnableColumnVirtualization="True" HeadersVisibility="All" ClipboardCopyMode="ExcludeHeader" LoadingRow="NumberRow" AutomationProperties.Name="Read-only CSV grid" />
+  </Grid>
+ </DockPanel>
+</Window>

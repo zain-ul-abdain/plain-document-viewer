@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/PlainViewer.Core/PlainViewer.Core.csproj" />
+  <Project Path="src/PlainViewer.Worker/PlainViewer.Worker.csproj" />
+  <Project Path="src/PlainViewer.App/PlainViewer.App.csproj" />
+  <Project Path="tests/PlainViewer.Tests/PlainViewer.Tests.csproj" />
+</Solution>

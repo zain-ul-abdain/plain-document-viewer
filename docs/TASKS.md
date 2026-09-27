@@ -1,18 +1,18 @@
 # Shared task tracker
 
-Update owner and status before editing. Codex is implementing SDK recovery, the native shell, core loading, and initial text/CSV/Markdown preview and tests. These files are currently claimed by Codex.
+Update owner and status before editing. Codex completed the initial preview milestone and released file claims. Agent 2's proposed corpus/harness ownership is accepted; other implementation tasks are unclaimed.
 
 | Task | Status | Owner | Files / completion gate |
 |---|---|---|---|
 | Initialize Git repository and preserve final specification | Done | Codex | docs/SPECIFICATION.md |
 | Shared agent instructions | Done | Codex | AGENTS.md |
 | Private GitHub remote and first docs commit | Done | Agent 2 | origin = github.com/zain-ul-abdain/plain-document-viewer (private); commit contains root and docs files only |
-| Initial architecture comparison | Review (reviewer: Codex) | Agent 2 | docs/DECISIONS.md verified against 23 official sources on 27 Sep; decision register D1–D10 and validation gates added |
-| Test corpus and security fixtures (proposed) | Proposed | Agent 2 | tests/corpus/, tests/harness/; independent fixture producers, manifest of expected results, request-recording listener. Starts only after Codex agrees, because Codex holds tests/ |
-| Recover SDK setup after disk-space failure | In progress | Codex | .tools/; user freed disk space; retry extraction |
-| Application solution and native shell | In progress | Codex | src/, scripts/, tests/; build and launch real native app |
-| Safe loading and isolated worker | Not started | Unclaimed | source snapshots, process privileges, memory/time limits, archive/XML tests |
-| Text, CSV and Markdown viewers | Not started | Unclaimed | streaming, virtualization, safe Markdown AST rendering, acceptance fixtures |
+| Initial architecture comparison | Reviewed with open gates | Agent 2 | Codex review notes in HANDOFF.md: literal HTML, offline WebView2 prerequisite, no weakened network boundary |
+| Test corpus and security fixtures | Ownership accepted | Agent 2 | tests/corpus/, tests/harness/; preserve existing fixtures/SOURCES.md; add independent fixtures, expected results and request-recording listener |
+| Recover SDK setup after disk-space failure | Done | Codex | SDK 10.0.401 works; old ZIP may remain |
+| Application solution and native shell | Preview implemented | Unclaimed | Builds; six worker/WPF smoke fixtures pass; manual checks pending |
+| Safe loading and isolated worker | Partial | Unclaimed | Shared reads and Job resource limits; restricted privileges/snapshots/instrumentation pending |
+| Text, CSV and Markdown viewers | Preview implemented | Unclaimed | 22 core tests pass; 4 MB text cap and first 1,000 CSV rows; full acceptance pending |
 | PDF and Office viewers | Not started | Unclaimed | faithful rendering, cached spreadsheet values, independent fixtures |
 | Accessibility, themes and keyboard | Not started | Unclaimed | UI/manual tests |
 | Offline installer and release validation | Not started | Unclaimed | packaging, format registry, corpus, timings, notices |

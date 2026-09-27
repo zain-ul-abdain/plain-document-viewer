@@ -1,30 +1,57 @@
 # Handoff — 2026-09-27
 
-## Verified state
+## Current state
 
-- Repository: C:\Users\zainb\PhpstormProjects\plain-document-viewer. Git initialized locally; no remote, no commit created by Codex.
-- The latest complete user request is preserved verbatim in docs/SPECIFICATION.md. It supersedes the earlier pasted amendment lists.
-- AGENTS.md and the entry-point file provide shared instructions. Initial technology comparison is in docs/DECISIONS.md. Its pending research is explicitly marked.
-- No application source, project, build script, installer or tests have been implemented. No application has been compiled or launched. Earlier commentary described intended work, not completed implementation.
-- Git and Node v24.19.0 are available. No installed dotnet command or C:\Program Files\dotnet was found. Windows .NET Framework v4.0.30319 tools exist but have not been used to build the app.
+Repository: C:\Users\zainb\PhpstormProjects\plain-document-viewer. Agent 2 created the private origin and committed research in d01dc84 while Codex implemented the preview. User authorized continuing after freeing disk space. Docker was discussed and not recommended for this native WPF app.
 
-## SDK failure
+Codex implemented the .NET 10 WPF shell, core, separate worker, tests, fixtures and scripts. Text/CSV/Markdown development preview builds and passes tests. Full v1 and required PDF/Office viewing remain unfinished. Read SPECIFICATION.md, DECISIONS.md, SUPPORT.md and TEST-RESULTS.md before continuing.
 
-The official .NET 10 release metadata selected SDK 10.0.401. Node downloaded its Windows x64 ZIP and verified its SHA512 against official release metadata. PowerShell Expand-Archive then failed with insufficient disk space. Last observed C: free space was approximately 183 MB.
+## Environment and verification
 
-Task-created .tools/sdk.zip and .tools/dotnet may remain. Inspect before acting. A cleanup command targeting only these paths was rejected by automatic tool approval policy before execution. No deletion was performed by that command. Do not remove unrelated user files. The download script and sdk.json metadata are also under .tools/ and ignored by Git.
+- SDK .tools/dotnet/dotnet.exe version 10.0.401 works after successful re-extraction.
+- Markdig 1.4.0 cached in .tools/feed and restored. BSD-2-Clause source licence saved in THIRD-PARTY-NOTICES.md.
+- SDK ZIP may remain. Automatic approval rejected deletion; no cleanup occurred. Do not remove unrelated files.
+- scripts/env.ps1 uses local build-tool data and process-local APPDATA. NuGet kept trying an inaccessible user config even with explicit --configfile; isolated configuration resolved this without editing user settings.
+- Node fetch worked; PowerShell/curl TLS previously failed. No paid dependency, trial, certificate or key obtained.
 
-PowerShell Invoke-WebRequest and curl encountered Windows TLS credential errors; Node fetch worked. SDK installation must be repaired before selecting package versions and claiming a normal .NET 10 build. Do not silently switch production architecture to the old Framework to bypass this.
+Commands run successfully:
 
-## Next steps
+    .\scripts\build.ps1 -Offline
+    .\scripts\test.ps1 -Offline
+    .\scripts\smoke-test.ps1
 
-1. Read shared instructions, specification, decisions and task tracker; inspect git status.
-2. Resolve available disk space and clean only confirmed task-created failed SDK artifacts when tool permissions permit. Otherwise explain the concrete blocker.
-3. Finish technology verification, then scaffold .NET 10 WPF shell/core/worker/tests. Use scripts/build.ps1 and scripts/test.ps1 as the eventual entry points; these scripts do not exist yet.
-4. Implement real viewing paths and safety boundaries incrementally. Keep all required formats pending until tested; do not claim extracted Office text is a document viewer.
-5. Update this file with actual commands/results and task ownership when handing work back.
+Build: zero warnings/errors. Core tests: 22 passed. Six worker/WPF fixtures passed. Smoke windows are instantiated and laid out, not shown or visually inspected. No release performance or security instrumentation claims.
 
-No commercial software, trial, certificate or key was obtained. No remote repository was created. No independent Office corpus, security instrumentation, UI accessibility check, benchmark or installer test has run.
+Run interactively with scripts/run.ps1, optionally -File and an absolute document path. Use this script so the worker knows the local dotnet host. Output is framework-dependent, not a standalone installer.
+
+## Implementation notes
+
+- Safe Markdown AST-to-DTO conversion in worker, then native WPF display. Literal HTML, inert images, confirmed allowed links.
+- Worker waits for START while parent assigns Job Object. 256 MB memory, 20-second open timeout, kill-on-close, one-process limit, 32 MB serialized output cap.
+- Resource controls do not restrict token/network rights. Normal-user worker is not a full sandbox.
+- Text/Markdown 4 MB cap. CSV first 1,000 rows only, with explicit notice. No full large-file claim.
+- WPF runtime Fluent theme switch still carries an experimental diagnostic; narrowly suppressed at call site.
+
+## Next work
+
+1. Manual UI checks and lifecycle tests: cancellation, timeout, crash, option reloads.
+2. Restricted worker containment, source snapshots/handle validation and observed network/file tests.
+3. Full Markdown fidelity (math, wide code, ordered starts/table alignment), scalable text/CSV.
+4. PDF and Office/XLSX paths; never substitute extracted text for faithful rendering. Check disk capacity before large engine downloads.
+5. Independent fixtures, fonts/redistribution audit, offline installer and full acceptance tests.
+
+Required PDF/Office remain pending; no scope reduction approved. No optional format moved to Later on test evidence. Codex released its claims. Agent 2 may proceed with the proposed tests/corpus and tests/harness work, preserving existing fixtures and their SOURCES.md entries. Core test runner files remain separate from that corpus ownership.
+
+## Review of Agent 2's research
+
+DECISIONS.md research retained without edits. Direction is consistent with the implementation, with these unresolved conditions:
+
+- D6: implementation retains HTML AST nodes as literal text, never executable HTML; disabling parsing is not necessary for native safety and may change displayed fidelity. Compare before changing it.
+- D9: if Evergreen is missing, a network installer cannot satisfy offline first launch. Bundle an approved offline installer or make the release prerequisite explicit and resolve with the user before shipping.
+- AppContainer failure must not silently weaken the no-network requirement. The suggested low-integrity fallback is not an equivalent boundary and needs the documented user decision before release.
+- D5 spreadsheet proposal remains unimplemented; cached-value behavior and archive/XML boundaries require tests.
+
+## Preserved Agent 2 handoff (historical; SDK state superseded above)
 
 ## Agent 2, 27 September 2026
 
