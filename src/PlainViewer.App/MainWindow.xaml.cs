@@ -24,6 +24,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent(); PreviewKeyDown += WindowKeyDown;
         Closed += (_, _) => { loading?.Cancel(); };
+        // The status line is a live region: screen readers announce loading, errors and search results as they change.
+        var statusText = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
+        EventHandler announce = (_, _) => System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(Status)
+            ?.RaiseAutomationEvent(System.Windows.Automation.Peers.AutomationEvents.LiveRegionChanged);
+        statusText.AddValueChanged(Status, announce);
+        Closed += (_, _) => statusText.RemoveValueChanged(Status, announce);
         WebPane.StateChanged += ShowWebStatus;
         WebPane.FindResult += (current, total, finished) => { if (finished) Status.Text = total == 0 ? "No matches." : $"Match {Math.Max(current, 1)} of {total}."; };
         WebPane.LinkRequested += address =>
@@ -150,9 +156,12 @@ public partial class MainWindow : Window
         }
         else if (document.Kind == "markdown" && SourceToggle.IsChecked != true)
         {
-            var flow = new FlowDocument { PagePadding = new Thickness(18), FontFamily = new FontFamily("Segoe UI"), FontSize = 16 * zoom };
+            // Refill the existing document rather than replacing it: a screen reader that queried the window while the
+            // file was loading (as Narrator does) keeps reading the original document object, which would stay empty.
+            var flow = MarkdownDisplay.Document;
+            flow.Blocks.Clear(); flow.PagePadding = new Thickness(18); flow.FontFamily = new FontFamily("Segoe UI"); flow.FontSize = 16 * zoom;
             foreach (var block in document.Blocks) flow.Blocks.Add(Render(block));
-            MarkdownDisplay.Document = flow; MarkdownDisplay.Visibility = Visibility.Visible;
+            MarkdownDisplay.Visibility = Visibility.Visible;
         }
         else { TextView.Text = document.Text; TextView.Visibility = Visibility.Visible; }
         lastQuery = ""; matchIndex = -1; ApplyZoom();

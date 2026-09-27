@@ -1,0 +1,60 @@
+# Runs inside Windows Sandbox (started by sandbox-test.ps1). Writes C:\Test\results\results.txt and done.txt,
+# then shuts the sandbox down. Everything here happens in the throwaway sandbox, not on the host PC.
+$results = 'C:\Test\results'
+$log = Join-Path $results 'results.txt'
+$failures = [System.Collections.Generic.List[string]]::new()
+function Log([string]$message) { Add-Content -LiteralPath $log -Value $message }
+function Expect([bool]$condition, [string]$what) { if ($condition) { Log "PASS $what" } else { Log "FAIL $what"; $failures.Add($what) } }
+function Run([string]$exe, [string[]]$arguments, [string]$output) {
+  $quoted = @($arguments | ForEach-Object { '"' + $_ + '"' })
+  $process = Start-Process -FilePath $exe -ArgumentList $quoted -Wait -PassThru -NoNewWindow -RedirectStandardOutput $output -RedirectStandardError "$output.err"
+  return $process.ExitCode
+}
+
+try {
+  $rules = 'Plain Viewer - block network - '
+  $webView2 = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue).pv
+  Log "Clean machine: Windows $([Environment]::OSVersion.Version); C++ runtime in System32: $(Test-Path "$env:WINDIR\System32\vcruntime140.dll"); WebView2: $webView2; network adapters up: $(@(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up').Count)"
+
+  # Local copies: the app refuses files it cannot treat as local, and mapped folders are read-only.
+  $corpus = Join-Path $env:USERPROFILE 'corpus'
+  Copy-Item -LiteralPath 'C:\Test\input\corpus' -Destination $corpus -Recurse
+  $setup = Get-ChildItem 'C:\Test\input' -Filter 'PlainViewer-Setup-*.exe' | Select-Object -First 1
+  $start = Get-Date
+  $install = Start-Process -FilePath $setup.FullName -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/MERGETASKS="openwith,firewall"', "/LOG=`"$results\install.log`""
+  Expect ($install.ExitCode -eq 0) "install (exit $($install.ExitCode), $([math]::Round(((Get-Date) - $start).TotalSeconds)) s)"
+  $dir = Join-Path $env:LOCALAPPDATA 'Programs\Plain Viewer'
+  $app = Join-Path $dir 'PlainViewer.exe'
+  Expect (Test-Path -LiteralPath $app) 'app installed'
+  Expect (Test-Path -LiteralPath "$env:USERPROFILE\AppData\LocalLow\PlainViewer\LibreOffice\profile\user\plainviewer-ready.txt") 'converter prepared during install'
+  foreach ($name in 'document worker (out)', 'converter (out)', 'converter launcher (in)', 'converter scripting (out)') {
+    & netsh advfirewall firewall show rule name="$rules$name" | Out-Null
+    Expect ($LASTEXITCODE -eq 0) "firewall rule '$name'"
+  }
+  Expect (Test-Path 'HKCU:\Software\Classes\PlainViewer.docx') '"Open with" registered'
+
+  $open = @('simple.txt', 'complex.txt', 'simple.csv', 'complex.csv', 'simple.md', 'complex.markdown', 'pdf\simple.pdf', 'pdf\complex.pdf',
+    'pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\simple.xlsx', 'xlsx\complex.xlsx', 'docx\simple.docx', 'docx\complex-20-pages.docx',
+    'docx\attack-remote-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx', 'pptx\simple.pptx', 'pptx\complex.pptx',
+    'pptx\attack-remote-image.pptx') | ForEach-Object { Join-Path $corpus $_ }
+  $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx', 'xlsx\macro.xlsm',
+    'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\damaged-truncated.docx', 'docx\macro.docm',
+    'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx', 'pptx\macro.pptm') | ForEach-Object { '!' + (Join-Path $corpus $_) }
+  $code = Run $app (@('--smoke-test') + $open + $refuse) (Join-Path $results 'smoke.txt')
+  Get-Content (Join-Path $results 'smoke.txt') | ForEach-Object { Log "  $_" }
+  Expect ($code -eq 0) "smoke test in the installed app: $($open.Count) opened, $($refuse.Count) refused (exit $code)"
+
+  $uninstall = Start-Process -FilePath (Join-Path $dir 'unins000.exe') -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
+  Start-Sleep -Seconds 3
+  Expect ($uninstall.ExitCode -eq 0) "uninstall (exit $($uninstall.ExitCode))"
+  Expect (-not (Test-Path -LiteralPath $dir)) 'app folder removed'
+  Expect (-not (Test-Path -LiteralPath "$env:LOCALAPPDATA\PlainViewer") -and -not (Test-Path -LiteralPath "$env:USERPROFILE\AppData\LocalLow\PlainViewer")) 'private data removed'
+  & netsh advfirewall firewall show rule name="${rules}converter (out)" | Out-Null
+  Expect ($LASTEXITCODE -ne 0) 'firewall rules removed'
+  Expect (-not (Test-Path 'HKCU:\Software\Classes\PlainViewer.docx')) '"Open with" removed'
+}
+catch { Log "FAIL unexpected error: $($_.Exception.Message)"; $failures.Add('unexpected error') }
+finally {
+  Set-Content -LiteralPath (Join-Path $results 'done.txt') -Value $(if ($failures.Count -eq 0) { 'PASS' } else { 'FAIL' })
+  shutdown.exe /s /t 5
+}
