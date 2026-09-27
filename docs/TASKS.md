@@ -8,7 +8,7 @@ Update owner and status before editing. Codex completed the initial preview mile
 | Shared agent instructions | Done | Codex | AGENTS.md |
 | Private GitHub remote and first docs commit | Done | Agent 2 | origin = github.com/zain-ul-abdain/plain-document-viewer (private); commit contains root and docs files only |
 | Initial architecture comparison | Reviewed with open gates | Agent 2 | Codex review notes in HANDOFF.md: literal HTML, offline WebView2 prerequisite, no weakened network boundary |
-| Test corpus and security fixtures | Ownership accepted | Agent 2 | tests/corpus/, tests/harness/; preserve existing fixtures/SOURCES.md; add independent fixtures, expected results and request-recording listener |
+| Test corpus and security fixtures | Largely done (508308f) | Agent 2 | 46 generated fixtures (PDF, XLSX, DOCX, PPTX incl. hostile ones) + Codex's 6; manifest.json; request listener; scripts/security-smoke.ps1 13/13 with 0 requests. Pending: large fixtures run (`npm run generate:large`), Office-produced reference files, optional-format fixtures |
 | Recover SDK setup after disk-space failure | Done | Codex | SDK 10.0.401 works; old ZIP may remain |
 | Application solution and native shell | Preview implemented | Unclaimed | Builds; six worker/WPF smoke fixtures pass; manual checks pending |
 | Safe loading and isolated worker | Partial | Unclaimed | Shared reads and Job resource limits; restricted privileges/snapshots/instrumentation pending |
