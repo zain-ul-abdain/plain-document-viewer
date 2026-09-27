@@ -91,12 +91,36 @@ internal sealed class DocumentWebView : Border
         if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == AppHost) return;   // served from the app's own folder
         if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == DocumentHost && uri.AbsolutePath == "/" + resource && bytes is not null)
         {
-            e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(new MemoryStream(bytes, false), 200, "OK",
-                $"Content-Type: {contentType}\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: https://{AppHost}");
+            e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(new MemoryStream(bytes, false), 200, "OK", JsonHeaders(contentType));
+            return;
+        }
+        // Rows and searches of large sheets, answered from the row stores on a background thread.
+        if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == DocumentHost && Data is { } data && uri.AbsolutePath is "/rows" or "/find")
+        {
+            var deferral = e.GetDeferral();
+            var environment = web.CoreWebView2.Environment;
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            string path = uri.AbsolutePath;
+            _ = Task.Run(() =>
+            {
+                try { return data(path, query); }
+                catch (Exception ex) when (ex is InvalidDataException or IOException or ArgumentException or FormatException or OverflowException or ObjectDisposedException) { return null; }
+            }).ContinueWith(task => Dispatcher.InvokeAsync(() =>
+            {
+                e.Response = task.Result is { } body
+                    ? environment.CreateWebResourceResponse(new MemoryStream(body, false), 200, "OK", JsonHeaders("application/json; charset=utf-8"))
+                    : environment.CreateWebResourceResponse(null, 404, "Not found", "");
+                deferral.Complete();
+            }), TaskScheduler.Default);
             return;
         }
         Block(e);
     }
+
+    private static string JsonHeaders(string type) => $"Content-Type: {type}\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: https://{AppHost}";
+
+    // Set by the window for large sheets: answers "/rows" and "/find" requests from the spreadsheet page.
+    public Func<string, System.Collections.Specialized.NameValueCollection, byte[]?>? Data { get; set; }
 
     private void Block(CoreWebView2WebResourceRequestedEventArgs e)
     {

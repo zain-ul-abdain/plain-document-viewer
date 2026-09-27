@@ -26,7 +26,11 @@ public static class Spreadsheets
         [46] = "[h]:mm:ss", [47] = "mmss.0", [48] = "##0.0E+0", [49] = "@"
     };
 
-    public static DocumentView Load(string path, CultureInfo? culture = null)
+    // Excel's own row limit; sheets streamed to a row store may be this long.
+    public const int MaxStoredRows = 1_048_576;
+
+    // With storeFolder, sheets longer than MaxRowsPerSheet (or beyond the cell budget) stream to row stores there.
+    public static DocumentView Load(string path, CultureInfo? culture = null, string? storeFolder = null)
     {
         culture ??= CultureInfo.CurrentCulture;
         TextFiles.ValidateLocalPath(path);
@@ -55,7 +59,7 @@ public static class Spreadsheets
             using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
             // Sheet XML compresses well, so the total is generous; the ratio check still stops ZIP bombs.
             ArchiveSafety.Validate(zip, maximumBytes: 4L * 1024 * 1024 * 1024, maximumEntries: 10000, maximumRatio: 500);
-            view = new Reader(zip, culture).Read();
+            view = new Reader(zip, culture, storeFolder).Read();
         }
         catch (InvalidDataException) { throw Damaged(); }
         catch (XmlException) { throw Damaged(); }
@@ -66,7 +70,7 @@ public static class Spreadsheets
 
     private static DocumentException Damaged() => new("This workbook is damaged or incomplete, so it cannot be shown. Try another copy of the file.");
 
-    private sealed class Reader(ZipArchive zip, CultureInfo culture)
+    private sealed class Reader(ZipArchive zip, CultureInfo culture, string? storeFolder)
     {
         private readonly Dictionary<string, NumberFormat> formats = [];
         private readonly Dictionary<int, string> customFormats = [];
@@ -107,13 +111,15 @@ public static class Spreadsheets
                 if (state is "hidden" or "veryHidden") { hidden++; continue; }
                 if (!workbookRels.TryGetValue(id, out var rel)) continue;
                 if (!rel.Type.EndsWith("/worksheet", StringComparison.Ordinal)) { notes.Add($"The chart sheet \"{name}\" is not shown in this version."); continue; }
-                view.Sheets.Add(ReadSheet(name, rel.Target));
+                view.Sheets.Add(ReadSheet(name, rel.Target, view.Sheets.Count));
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
             if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
             if (formulasWithoutResult > 0)
                 notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");
-            if (truncated) notes.Add($"Preview limit: only the first {MaxRowsPerSheet:N0} rows and {MaxColumns} columns of each sheet, up to {MaxCellsPerWorkbook:N0} cells in total, are shown.");
+            if (truncated) notes.Add(storeFolder is null
+                ? $"Preview limit: only the first {MaxRowsPerSheet:N0} rows and {MaxColumns} columns of each sheet, up to {MaxCellsPerWorkbook:N0} cells in total, are shown."
+                : $"Only the first {MaxColumns} columns and {MaxStoredRows:N0} rows of each sheet are shown.");
             view.Notice = string.Join(" ", notes);
             return view;
         }
@@ -221,14 +227,18 @@ public static class Spreadsheets
             }
         }
 
-        private SheetData ReadSheet(string name, string part)
+        private SheetData ReadSheet(string name, string part, int index)
         {
             var sheet = new SheetData { Name = name };
             var rows = new SortedDictionary<int, List<(int Column, string Text, char Align)>>();
             var widths = new List<(int Min, int Max, double Width, bool Hidden)>();
             double defaultWidth = 8.43;
-            int maxRow = 0, maxColumn = 0, rowNumber = 0;
+            int maxRow = 0, maxColumn = 0, rowNumber = 0, stored = 0;
             bool firstView = true, stopped = false;
+            // A long sheet switches to streaming its rows (in order) into a row store; rows read so far go first.
+            RowStoreWriter? store = null;
+            try
+            {
             using var r = Open(part);
             r.MoveToContent();
             while (!r.EOF)
@@ -256,15 +266,20 @@ public static class Spreadsheets
                         break;
                     case "row":
                         rowNumber = int.TryParse(r.GetAttribute("r"), out int rn) ? rn : rowNumber + 1;
-                        if (rowNumber > MaxRowsPerSheet || cellBudget <= 0 || stopped)
+                        if (store is null && !stopped && storeFolder is not null && (rowNumber > MaxRowsPerSheet || cellBudget <= 0))
+                            store = StartStore(index, rows, ref stored);
+                        if (stopped || (store is null ? rowNumber > MaxRowsPerSheet || cellBudget <= 0 : rowNumber > MaxStoredRows))
                         {
                             truncated = true; stopped = true;
                             r.Skip(); continue;                       // keep scanning for merges after the data
                         }
+                        if (store is not null && rowNumber <= stored)
+                            throw new DocumentException("This workbook lists the rows of a large sheet out of order, which this viewer cannot show.");
                         if (r.GetAttribute("hidden") is "1" or "true") sheet.HiddenRows.Add(rowNumber);
                         if (r.IsEmptyElement) break;
-                        var cells = ReadRow(r, rowNumber, ref maxColumn);
-                        if (cells.Count > 0) { rows[rowNumber] = cells; maxRow = Math.Max(maxRow, rowNumber); }
+                        var cells = ReadRow(r, rowNumber, ref maxColumn, limited: store is null);
+                        if (store is not null) Store(store, ref stored, rowNumber, cells);
+                        else if (cells.Count > 0) { rows[rowNumber] = cells; maxRow = Math.Max(maxRow, rowNumber); }
                         continue;                                    // ReadRow leaves the reader after </row>
                     case "mergeCell":
                         if (r.GetAttribute("ref") is { } reference && TryRange(reference, out var range)) sheet.Merges.Add(range);
@@ -272,7 +287,16 @@ public static class Spreadsheets
                 }
                 r.Read();
             }
+            if (store is not null)
+            {
+                store.Complete();
+                sheet.Store = $"sheet{index}";
+                sheet.FrozenRows = Math.Min(sheet.FrozenRows, maxRow);   // the header rows come from the first rows
+            }
+            }
+            finally { store?.Dispose(); }
 
+            int totalRows = sheet.Store.Length > 0 ? stored : 0;
             maxRow = Math.Max(maxRow, sheet.FrozenRows);
             maxColumn = Math.Max(maxColumn, sheet.FrozenColumns);
             foreach (var (row, cells) in rows)
@@ -291,16 +315,41 @@ public static class Spreadsheets
                     if (c >= span.Min && c <= span.Max) width = span.Hidden ? 0 : span.Width >= 0 ? span.Width : width;
                 sheet.ColumnWidths.Add(Math.Round(width, 2));
             }
-            sheet.Merges = sheet.Merges.Where(m => m[0] < maxRow && m[1] < maxColumn)
-                .Select(m => new[] { m[0], m[1], Math.Min(m[2], maxRow - 1), Math.Min(m[3], maxColumn - 1) }).ToList();
-            if (sheet.Rows.Count == 0) sheet.Notice = "This sheet is empty.";
+            totalRows = Math.Max(totalRows, maxRow);
+            sheet.RowCount = sheet.Store.Length > 0 ? stored : sheet.Rows.Count;
+            sheet.Merges = sheet.Merges.Where(m => m[0] < totalRows && m[1] < maxColumn)
+                .Select(m => new[] { m[0], m[1], Math.Min(m[2], totalRows - 1), Math.Min(m[3], maxColumn - 1) }).ToList();
+            if (sheet.RowCount == 0) sheet.Notice = "This sheet is empty.";
             return sheet;
         }
 
         private static string[] Empty(int count) { var row = new string[count]; Array.Fill(row, ""); return row; }
 
-        // Reads one <row>; returns its cells and leaves the reader positioned after </row>.
-        private List<(int, string, char)> ReadRow(XmlReader r, int rowNumber, ref int maxColumn)
+        private RowStoreWriter StartStore(int index, SortedDictionary<int, List<(int Column, string Text, char Align)>> rows, ref int stored)
+        {
+            var store = new RowStoreWriter(storeFolder!, $"sheet{index}");
+            try { foreach (var (row, cells) in rows) Store(store, ref stored, row, cells); }
+            catch { store.Dispose(); throw; }
+            return store;
+        }
+
+        private static readonly string[] EmptyStoredRow = [""];
+
+        // Appends Excel row `row` (after empty rows for any gap) as [alignment, cell, cell, ...].
+        private static void Store(RowStoreWriter store, ref int stored, int row, List<(int Column, string Text, char Align)> cells)
+        {
+            while (stored < row - 1) { store.Add(EmptyStoredRow); stored++; }
+            int width = cells.Count == 0 ? 0 : cells.Max(cell => cell.Column) + 1;
+            var fields = new string[width + 1]; var align = new char[width];
+            Array.Fill(fields, ""); Array.Fill(align, 'l');
+            foreach (var (column, text, a) in cells) { fields[column + 1] = text; align[column] = a; }
+            fields[0] = new string(align);
+            store.Add(fields); stored++;
+        }
+
+        // Reads one <row>; returns its cells and leaves the reader positioned after </row>. `limited`: count cells
+        // against the workbook's in-memory budget (rows streamed to a row store are not limited by it).
+        private List<(int, string, char)> ReadRow(XmlReader r, int rowNumber, ref int maxColumn, bool limited)
         {
             var cells = new List<(int, string, char)>();
             int column = -1;
@@ -324,10 +373,10 @@ public static class Spreadsheets
                             r.Read();
                         }
                     }
-                    if (column < MaxColumns && cellBudget > 0)
+                    if (column < MaxColumns && (!limited || cellBudget > 0))
                     {
                         string text = Display(type, value, inline, formula, style, out char align);
-                        if (text.Length > 0) { cells.Add((column, text, align)); maxColumn = Math.Max(maxColumn, column + 1); cellBudget--; }
+                        if (text.Length > 0) { cells.Add((column, text, align)); maxColumn = Math.Max(maxColumn, column + 1); if (limited) cellBudget--; }
                     }
                     else truncated = true;
                 }

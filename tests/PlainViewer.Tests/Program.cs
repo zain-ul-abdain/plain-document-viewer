@@ -129,6 +129,44 @@ try
     // Spreadsheets: every xlsx/xlsm fixture in tests/corpus/manifest.json is checked against its expected result.
     string corpus = FindCorpus();
     var culture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+
+    // Large sheets: past 10,000 rows the reader streams every row to a row store (first rows stay in the view).
+    string Workbook(string name, IEnumerable<string> rows, string after = "")
+    {
+        string path = Path.Combine(root, name);
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        void Part(string entry, string xml) { using var writer = new StreamWriter(zip.CreateEntry(entry).Open()); writer.Write(xml); }
+        Part("_rels/.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"r1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
+        Part("xl/workbook.xml", "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Big\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+        Part("xl/_rels/workbook.xml.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>");
+        Part("xl/worksheets/sheet1.xml", "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" + string.Concat(rows) + "</sheetData>" + after + "</worksheet>");
+        return path;
+    }
+    string Cell(string reference, string text) => $"<c r=\"{reference}\" t=\"inlineStr\"><is><t>{text}</t></is></c>";
+    Test("Workbook sheets past 10,000 rows stream to a row store", () => {
+        var rows = Enumerable.Range(1, 12_000).Select(n => n == 11_000 ? $"<row r=\"{n}\" hidden=\"1\">{Cell($"A{n}", "hidden")}</row>"
+            : n == 11_500 ? "" : $"<row r=\"{n}\">{Cell($"A{n}", $"r{n}")}{(n == 12_000 ? Cell($"C{n}", "Hello end") : "")}</row>");
+        string file = Workbook("big.xlsx", rows, "<mergeCells count=\"1\"><mergeCell ref=\"A11990:B11991\"/></mergeCells>");
+        string folder = NewFolder("store-sheet");
+        var sheet = Spreadsheets.Load(file, culture, folder).Sheets[0];
+        using var store = RowStore.Open(folder, sheet.Store);
+        var last = store.Read(11_999, 1)[0];
+        Check(sheet.Store == "sheet0" && sheet.RowCount == 12_000 && store.Count == 12_000 && sheet.Rows.Count == 10_000);
+        Check(store.Read(9_999, 1)[0][1] == "r10000" && store.Read(11_499, 1)[0].Length == 1 && last[0] == "lll" && last[1] == "r12000" && last[3] == "Hello end");
+        Check(sheet.HiddenRows.Contains(11_000) && sheet.Merges.Any(m => m.SequenceEqual(new[] { 11_989, 0, 11_990, 1 })));
+        Check(string.IsNullOrEmpty(Spreadsheets.Load(file, culture).Sheets[0].Store));   // without a folder: the 10,000-row preview as before
+    });
+    Test("Rows of a large sheet out of order are refused", () => {
+        var rows = Enumerable.Range(1, 10_002).Select(n => $"<row r=\"{(n == 10_002 ? 10_001 : n)}\">{Cell($"A{n}", "x")}</row>");
+        Throws<DocumentException>(() => Spreadsheets.Load(Workbook("unordered.xlsx", rows), culture, NewFolder("store-unordered"))); });
+    string largeXlsx = Path.Combine(corpus, "generated", "xlsx-large-500k-rows.xlsx");
+    if (File.Exists(largeXlsx))
+        Test("500,000-row workbook fixture streams to a row store", () => {
+            string folder = NewFolder("store-large-xlsx");
+            var sheet = Spreadsheets.Load(largeXlsx, culture, folder).Sheets[0];
+            using var store = RowStore.Open(folder, sheet.Store);
+            Check(sheet.RowCount == 500_001 && store.Read(500_000, 1)[0][6] == "Hello last row"); });
+    else Console.WriteLine("SKIP 500,000-row workbook fixture (run npm run generate:large in tests/corpus/generate)");
     using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "manifest.json")));
     var errorWords = new Dictionary<string, string[]> {
         ["damaged"] = ["damaged", "too large to open safely"], ["empty"] = ["empty"], ["password"] = ["password"],

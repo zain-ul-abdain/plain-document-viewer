@@ -53,4 +53,8 @@ public sealed class SheetData
     public List<int> HiddenRows { get; set; } = [];         // Excel row numbers
     public List<int[]> Merges { get; set; } = [];           // [firstRow, firstColumn, lastRow, lastColumn], zero-based
     public string Notice { get; set; } = "";
+    // Large sheets: every row is in a RowStore named Store (each stored row is [alignment, cell, cell, ...]);
+    // Rows then holds only the first rows, for the first screen. RowCount is the sheet's full row count.
+    public string Store { get; set; } = "";
+    public int RowCount { get; set; }
 }

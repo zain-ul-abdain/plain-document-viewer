@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? loading;
     // CSV and large text: rows on disk in a work folder written by the worker; deleted when replaced or closed.
     private RowStore? rowStore;
+    private Dictionary<int, RowStore> sheetStores = [];   // large spreadsheet sheets, by sheet position
     private string? rowStoreFolder;
     private StoreSearch? storeSearch;
     private int storeMatch = -1;
@@ -28,7 +29,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent(); PreviewKeyDown += WindowKeyDown;
-        Closed += (_, _) => { loading?.Cancel(); ReplaceRowStore(null, null); };
+        Closed += (_, _) => { loading?.Cancel(); ReplaceRowStore(null, null, null); };
         // The status line is a live region: screen readers announce loading, errors and search results as they change.
         var statusText = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         EventHandler announce = (_, _) => System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(Status)
@@ -134,7 +135,7 @@ public partial class MainWindow : Window
         loading?.Cancel(); var operation = new CancellationTokenSource(); loading = operation;
         CancelButton.IsEnabled = true; Progress.Visibility = Visibility.Visible; Status.Text = "Opening document…";
         var stopwatch = Stopwatch.StartNew();
-        string? work = null; RowStore? opened = null;
+        string? work = null; RowStore? opened = null; var openedSheets = new Dictionary<int, RowStore>();
         try
         {
             DocumentView loaded;
@@ -144,13 +145,23 @@ public partial class MainWindow : Window
             {
                 work = OfficeConverter.NewWorkFolder();
                 loaded = await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), work, operation.Token);
-                // The store name comes from the worker, so only the one name it may use is accepted.
+                // Store names and counts come from the worker, so only the names it may use are accepted, and each
+                // store must hold exactly the rows the worker reported.
                 if (loaded.Store.Length > 0) opened = loaded.Store == "rows" ? RowStore.Open(work, "rows") : throw new InvalidDataException("Unexpected worker output.");
+                if (opened is not null && opened.Count != loaded.RowCount) throw new InvalidDataException("Unexpected worker output.");
+                for (int i = 0; i < loaded.Sheets.Count; i++)
+                {
+                    if (loaded.Sheets[i].Store is not { Length: > 0 } name) continue;
+                    var sheetStore = openedSheets[i] = name == $"sheet{i}" ? RowStore.Open(work, name) : throw new InvalidDataException("Unexpected worker output.");
+                    if (sheetStore.Count != loaded.Sheets[i].RowCount) throw new InvalidDataException("Unexpected worker output.");
+                }
             }
             if (loading != operation) return;
+            bool stores = opened is not null || openedSheets.Count > 0;
+            ReplaceRowStore(opened, openedSheets, stores ? work : null);
+            if (stores) { opened = null; openedSheets = []; work = null; }
             if (loaded.Kind == "sheet") await LoadSheets(loaded, operation.Token);
             if (loading != operation) return;
-            ReplaceRowStore(opened, opened is null ? null : work); if (opened is not null) { opened = null; work = null; }
             document = loaded; Title = Path.GetFileName(currentPath) + " · Plain Viewer preview";
             openSeconds = stopwatch.Elapsed.TotalSeconds;
             string size = rowStore is null ? "" : $"{document.RowCount:N0} {(document.Kind == "lines" ? "lines" : "rows")} · ";
@@ -165,17 +176,44 @@ public partial class MainWindow : Window
         }
         finally
         {
-            opened?.Dispose(); if (work is not null) OfficeConverter.Delete(work);
+            opened?.Dispose(); foreach (var store in openedSheets.Values) store.Dispose();
+            if (work is not null) OfficeConverter.Delete(work);
             if (loading == operation) { CancelButton.IsEnabled = false; Progress.Visibility = Visibility.Collapsed; }
             operation.Dispose(); if (loading == operation) loading = null;
         }
     }
-    private void ReplaceRowStore(RowStore? store, string? folder)
+    private void ReplaceRowStore(RowStore? store, Dictionary<int, RowStore>? sheets, string? folder)
     {
         storeSearch?.Dispose(); storeSearch = null; storeMatch = -1;
         CsvGrid.ItemsSource = null;
-        rowStore?.Dispose(); if (rowStoreFolder is not null) OfficeConverter.Delete(rowStoreFolder);
+        var previous = sheetStores; sheetStores = sheets ?? [];
+        WebPane.Data = sheetStores.Count > 0 ? SheetRequest : null;
+        rowStore?.Dispose(); foreach (var old in previous.Values) old.Dispose();
+        if (rowStoreFolder is not null) OfficeConverter.Delete(rowStoreFolder);
         rowStore = store; rowStoreFolder = folder;
+    }
+
+    // Answers the spreadsheet page's requests for rows and searches of large sheets. Runs on a background thread.
+    private byte[]? SheetRequest(string path, System.Collections.Specialized.NameValueCollection query)
+    {
+        if (!int.TryParse(query["sheet"], out int sheet) || !sheetStores.TryGetValue(sheet, out var store)) return null;
+        if (path == "/rows")
+        {
+            int start = int.Parse(query["start"] ?? ""), count = int.Parse(query["count"] ?? "");
+            if (count is < 0 or > 2000 || start < 0 || start > store.Count - count) return null;
+            return System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { start, rows = store.Read(start, count) });
+        }
+        string needle = query["q"] ?? "";
+        if (needle.Length is 0 or > 1000) return null;
+        var hits = new List<int[]>(); int total = 0;
+        for (int start = 0; start < store.Count; start += 4096)
+        {
+            var rows = store.Read(start, Math.Min(4096, store.Count - start));
+            for (int i = 0; i < rows.Length; i++)
+                for (int c = 1; c < rows[i].Length; c++)                         // field 0 is the row's alignment
+                    if (rows[i][c].Contains(needle, StringComparison.OrdinalIgnoreCase)) { total++; if (hits.Count < 10_000) hits.Add([start + i, c - 1]); }
+        }
+        return System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { total, hits });
     }
     private void Display()
     {
