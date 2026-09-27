@@ -1,0 +1,19 @@
+# Test fixtures must stay byte-for-byte: encodings, line endings and offsets are what they test.
+tests/corpus/** -text
+# Binary formats and bundled assets are never converted.
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.doc binary
+*.xls binary
+*.ppt binary
+*.odt binary
+*.ods binary
+*.odp binary
+*.wasm binary
+*.bcmap binary
+*.pfb binary
+*.ttf binary
+*.icc binary
+*.png binary

@@ -1,0 +1,8 @@
+:root { color-scheme: light; --background: #e8e8e8; }
+:root[data-theme="dark"] { color-scheme: dark; --background: #202020; }
+html, body { margin: 0; height: 100%; background: var(--background); overflow: hidden; }
+#viewerContainer { position: absolute; inset: 0; overflow: auto; outline: none; }
+#viewerContainer:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
+/* Pages keep their own colors in every theme; only the surrounding area follows the app theme. */
+.pdfViewer .page { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+@media (forced-colors: active) { .pdfViewer .page { forced-color-adjust: none; border: 1px solid CanvasText; } }

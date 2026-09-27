@@ -1,0 +1,55 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R /Annots [6 0 R 7 0 R 8 0 R 9 0 R] >>
+endobj
+4 0 obj
+<< /Length 274 >>
+stream
+BT /F1 14 Tf 72 740 Td 18 TL
+(Hello link test) Tj T*
+(1. Launch calc.exe \(must never run\)) Tj T*
+(2. Network share by UNC path \(must not open\)) Tj T*
+(3. file: URL to another machine \(must not open\)) Tj T*
+(4. Web address \(may open only after confirmation\)) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Link /Rect [72 716 400 732] /Border [0 0 1] /A << /S /Launch /F (C:\\Windows\\System32\\calc.exe) /Win << /F (calc.exe) >> >> >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Link /Rect [72 698 400 714] /Border [0 0 1] /A << /S /URI /URI (\\\\127.0.0.1@47831\\share\\pdf-unc.txt) >> >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Link /Rect [72 680 400 696] /Border [0 0 1] /A << /S /URI /URI (file://127.0.0.1@47831/share/pdf-file-url.txt) >> >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Link /Rect [72 662 400 678] /Border [0 0 1] /A << /S /URI /URI (http://127.0.0.1:47831/pdf-links/web) >> >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000281 00000 n 
+0000000606 00000 n 
+0000000676 00000 n 
+0000000846 00000 n 
+0000000998 00000 n 
+0000001156 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1305
+%%EOF

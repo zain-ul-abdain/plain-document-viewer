@@ -19,16 +19,40 @@ public partial class MainWindow : Window
     private string lastQuery = "";
     private int matchIndex = -1;
     private WindowState savedState;
+    private double openSeconds;
     public MainWindow()
     {
         InitializeComponent(); PreviewKeyDown += WindowKeyDown;
         Closed += (_, _) => { loading?.Cancel(); };
+        PdfPane.StateChanged += ShowPdfStatus;
+        PdfPane.FindResult += (current, total, finished) => { if (finished) Status.Text = total == 0 ? "No matches." : $"Match {Math.Max(current, 1)} of {total}."; };
+        PdfPane.LinkRequested += address =>
+        {
+            if (LinkPolicy.CanOpen(address)) OpenLink(address);
+            else Status.Text = "This link was not opened because it is not a web or email address.";
+        };
+        PdfPane.AskPassword = AskPdfPassword;
     }
     private static string Choice(ComboBox box) => ((ComboBoxItem)box.SelectedItem).Content.ToString()!;
+    private static bool IsPdf(string path) => string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
     internal async Task VerifyPreviewAsync(string path)
     {
+        if (IsPdf(path))
+        {
+            // WebView2 needs a real window handle, so the smoke test shows the window off-screen.
+            WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show();
+        }
         currentPath = path; await LoadCurrent();
         if (document is null) throw new InvalidOperationException(Status.Text);
+        if (document.Kind == "pdf")
+        {
+            if (PdfPane.Pages < 1) throw new InvalidOperationException("PDF reported no pages.");
+            var (_, total) = await PdfFind("Hello");
+            if (total < 1) throw new InvalidOperationException("PDF text search found no match for 'Hello'.");
+            ZoomBy(1); ZoomBy(0);
+            if (PdfPane.BlockedRequests != 0) throw new InvalidOperationException($"PDF view attempted {PdfPane.BlockedRequests} blocked request(s).");
+            return;
+        }
         Measure(new Size(1100, 760)); Arrange(new Rect(0, 0, 1100, 760)); UpdateLayout();
         if (document.Kind == "markdown" && MarkdownDisplay.Document.Blocks.Count == 0) throw new InvalidOperationException("No Markdown blocks rendered.");
         if (document.Kind == "csv" && CsvGrid.Items.Count != document.Rows.Count) throw new InvalidOperationException("CSV row count mismatch.");
@@ -40,7 +64,7 @@ public partial class MainWindow : Window
     }
     private void OpenClicked(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.pdf;*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
         if (dialog.ShowDialog(this) == true) OpenPath(dialog.FileName);
     }
     public void OpenPath(string path)
@@ -56,10 +80,13 @@ public partial class MainWindow : Window
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            var loaded = await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), operation.Token);
+            var loaded = IsPdf(currentPath) ? await LoadPdf(currentPath, operation.Token)
+                : await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), operation.Token);
             if (loading != operation) return;
             document = loaded; Title = Path.GetFileName(currentPath) + " · Plain Viewer preview";
-            Display(); Status.Text = $"Read only · {document.Encoding} · Opened in {stopwatch.Elapsed.TotalSeconds:F2}s. {document.Notice}";
+            openSeconds = stopwatch.Elapsed.TotalSeconds;
+            Display(); Status.Text = $"Read only · {document.Encoding} · Opened in {openSeconds:F2}s. {document.Notice}";
+            if (document.Kind == "pdf") ShowPdfStatus();
         }
         catch (OperationCanceledException) { if (loading == operation) Status.Text = "Opening cancelled. Choose a file to try again."; }
         catch (Exception ex)
@@ -78,6 +105,11 @@ public partial class MainWindow : Window
         if (document is null) return;
         Welcome.Visibility = Visibility.Collapsed; TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
         SourceToggle.Visibility = document.Kind == "markdown" ? Visibility.Visible : Visibility.Collapsed;
+        bool pdf = document.Kind == "pdf";
+        PdfPane.Visibility = pdf ? Visibility.Visible : Visibility.Collapsed;
+        PageControls.Visibility = pdf ? Visibility.Visible : Visibility.Collapsed;
+        EncodingChoice.IsEnabled = !pdf;
+        if (pdf) { DelimiterChoice.IsEnabled = false; lastQuery = ""; matchIndex = -1; PdfPane.FocusDocument(); return; }
         DelimiterChoice.IsEnabled = document.Kind == "csv";
         if (document.Kind == "csv")
         {
@@ -150,6 +182,7 @@ public partial class MainWindow : Window
     private void Find(bool previous)
     {
         if (document is null || FindBox.Text.Length == 0) return;
+        if (document.Kind == "pdf") { Status.Text = "Searching…"; PdfPane.Find(FindBox.Text, previous); lastQuery = FindBox.Text; return; }
         string query = FindBox.Text; var hits = new List<int>();
         if (document.Kind == "csv")
         {
@@ -196,31 +229,100 @@ public partial class MainWindow : Window
     private static string ColumnName(int index) { string name = ""; for (int value = index + 1; value > 0; value = (value - 1) / 26) name = (char)('A' + (value - 1) % 26) + name; return name; }
     private void ApplyZoom() { TextView.FontSize = 16 * zoom; CsvGrid.FontSize = 14 * zoom; MarkdownDisplay.FontSize = 16 * zoom; if (document?.Kind == "markdown") MarkdownDisplay.Document.FontSize = 16 * zoom; ZoomButton.Content = $"{zoom:P0}"; }
     private void ChangeZoom(double value) { zoom = Math.Clamp(value, 0.5, 3); if (document?.Kind == "markdown") Display(); else ApplyZoom(); }
-    private void ZoomIn(object s, RoutedEventArgs e) => ChangeZoom(zoom + 0.1);
-    private void ZoomOut(object s, RoutedEventArgs e) => ChangeZoom(zoom - 0.1);
-    private void ResetZoom(object s, RoutedEventArgs e) => ChangeZoom(1);
+    private void ZoomBy(int direction)
+    {
+        if (document?.Kind == "pdf") { PdfPane.Zoom(direction > 0 ? "in" : direction < 0 ? "out" : 1.0); return; }
+        ChangeZoom(direction == 0 ? 1 : zoom + 0.1 * direction);
+    }
+    private void ZoomIn(object s, RoutedEventArgs e) => ZoomBy(1);
+    private void ZoomOut(object s, RoutedEventArgs e) => ZoomBy(-1);
+    private void ResetZoom(object s, RoutedEventArgs e) => ZoomBy(0);
+    private void FitWidth(object s, RoutedEventArgs e) => PdfPane.Zoom("page-width");
+    private void FitPage(object s, RoutedEventArgs e) => PdfPane.Zoom("page-fit");
+    private void PageBoxKeyDown(object s, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        if (int.TryParse(PageBox.Text.Trim(), out int page) && page >= 1 && page <= PdfPane.Pages) { PdfPane.GoToPage(page); PdfPane.FocusDocument(); }
+        else Status.Text = $"Enter a page number from 1 to {PdfPane.Pages}.";
+        e.Handled = true;
+    }
+    private async Task<DocumentView> LoadPdf(string path, CancellationToken cancellation)
+    {
+        var data = await Task.Run(() => PdfFiles.Snapshot(path), cancellation);
+        // Show the PDF area before loading so PDF.js can measure the page width.
+        Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
+        PdfPane.Visibility = Visibility.Visible;
+        await PdfPane.Load(data, IsDarkTheme(), cancellation);
+        return new DocumentView { Kind = "pdf", Encoding = "PDF" };
+    }
+    private void ShowPdfStatus()
+    {
+        if (document?.Kind != "pdf") return;
+        PageCount.Text = $"of {PdfPane.Pages}";
+        if (!PageBox.IsKeyboardFocused) PageBox.Text = PdfPane.Page.ToString();
+        ZoomButton.Content = $"{PdfPane.Scale:P0}";
+        Status.Text = $"Read only · PDF · Page {PdfPane.Page} of {PdfPane.Pages} · Opened in {openSeconds:F2}s";
+    }
+    private async Task<(int Current, int Total)> PdfFind(string query)
+    {
+        var result = new TaskCompletionSource<(int, int)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Handler(int current, int total, bool finished) { if (finished) result.TrySetResult((current, total)); }
+        PdfPane.FindResult += Handler;
+        try { PdfPane.Find(query, false); return await result.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
+        finally { PdfPane.FindResult -= Handler; }
+    }
+    private string? AskPdfPassword(bool incorrect)
+    {
+        var box = new PasswordBox { Margin = new Thickness(0, 10, 0, 14), MinWidth = 280 };
+        System.Windows.Automation.AutomationProperties.SetName(box, "PDF password");
+        var ok = new Button { Content = "Open", IsDefault = true, Padding = new Thickness(16, 6, 16, 6), Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(16, 6, 16, 6) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(ok); buttons.Children.Add(cancel);
+        var panel = new StackPanel { Margin = new Thickness(20) };
+        panel.Children.Add(new TextBlock { Text = incorrect ? "That password is not correct. Try again." : "This PDF is protected. Enter its password to view it.", TextWrapping = TextWrapping.Wrap, MaxWidth = 320 });
+        panel.Children.Add(box); panel.Children.Add(buttons);
+        var dialog = new Window { Title = "Password required", Owner = IsVisible ? this : null, Content = panel, SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false };
+        ok.Click += (_, _) => dialog.DialogResult = true;
+        dialog.Loaded += (_, _) => box.Focus();
+        // The password goes straight to PDF.js; it is never stored or logged.
+        return dialog.ShowDialog() == true ? box.Password : null;
+    }
+    private bool IsDarkTheme()
+    {
+        string choice = ThemeChoice.SelectedItem is ComboBoxItem ? Choice(ThemeChoice) : "System";
+        if (choice != "System") return choice == "Dark";
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        return key?.GetValue("AppsUseLightTheme") is int light && light == 0;
+    }
     private void NextMatch(object s, RoutedEventArgs e) => Find(false);
     private void PreviousMatch(object s, RoutedEventArgs e) => Find(true);
     private void FindKeyDown(object s, KeyEventArgs e) { if (e.Key == Key.Enter) Find(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)); }
     private void ViewChanged(object s, RoutedEventArgs e) => Display();
-    private void OptionsChanged(object s, SelectionChangedEventArgs e) { if (IsLoaded && currentPath is not null) _ = LoadCurrent(); }
+    private void OptionsChanged(object s, SelectionChangedEventArgs e) { if (IsLoaded && currentPath is not null && document?.Kind != "pdf") _ = LoadCurrent(); }
     private void CancelClicked(object s, RoutedEventArgs e) => loading?.Cancel();
     // WPF still marks runtime Fluent theme switching experimental in this SDK.
 #pragma warning disable WPF0001
-    private void ThemeChanged(object s, SelectionChangedEventArgs e) { if (ThemeChoice is not null) ThemeMode = Choice(ThemeChoice) switch { "Dark" => ThemeMode.Dark, "Light" => ThemeMode.Light, _ => ThemeMode.System }; }
+    private void ThemeChanged(object s, SelectionChangedEventArgs e)
+    {
+        if (ThemeChoice is null) return;
+        ThemeMode = Choice(ThemeChoice) switch { "Dark" => ThemeMode.Dark, "Light" => ThemeMode.Light, _ => ThemeMode.System };
+        if (document?.Kind == "pdf") PdfPane.SetTheme(IsDarkTheme());
+    }
 #pragma warning restore WPF0001
     private void NumberRow(object s, DataGridRowEventArgs e) => e.Row.Header = (e.Row.GetIndex() + 1).ToString();
     private void FileDropped(object s, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] files) foreach (var file in files) OpenPath(file); }
-    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, "Plain Viewer — development preview\n\nRead-only text, CSV and Markdown. PDF and Office rendering are pending.\n\nMarkdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
+    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, "Plain Viewer — development preview\n\nRead-only PDF, text, CSV and Markdown. Word, Excel and PowerPoint rendering are pending.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
     private void WindowKeyDown(object s, KeyEventArgs e)
     {
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         if (ctrl && e.Key == Key.O) OpenClicked(s, e);
         else if (ctrl && e.Key == Key.F) FindBox.Focus();
         else if (ctrl && e.Key == Key.W) Close();
-        else if (ctrl && (e.Key == Key.Add || e.Key == Key.OemPlus)) ChangeZoom(zoom + 0.1);
-        else if (ctrl && (e.Key == Key.Subtract || e.Key == Key.OemMinus)) ChangeZoom(zoom - 0.1);
-        else if (ctrl && (e.Key == Key.D0 || e.Key == Key.NumPad0)) ChangeZoom(1);
+        else if (ctrl && (e.Key == Key.Add || e.Key == Key.OemPlus)) ZoomBy(1);
+        else if (ctrl && (e.Key == Key.Subtract || e.Key == Key.OemMinus)) ZoomBy(-1);
+        else if (ctrl && (e.Key == Key.D0 || e.Key == Key.NumPad0)) ZoomBy(0);
         else if (e.Key == Key.F3) Find(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         else if (e.Key == Key.F11) { if (WindowStyle == WindowStyle.None) { WindowStyle = WindowStyle.SingleBorderWindow; WindowState = savedState; } else { savedState = WindowState; WindowStyle = WindowStyle.None; WindowState = WindowState.Maximized; } }
         else return;

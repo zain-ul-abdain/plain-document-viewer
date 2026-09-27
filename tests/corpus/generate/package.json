@@ -1,0 +1,18 @@
+{
+  "name": "plain-viewer-corpus-generator",
+  "private": true,
+  "description": "Generates test fixtures with producers independent of the viewer's rendering engines. Development-only; never shipped.",
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "generate:large": "node generate.mjs --large"
+  },
+  "dependencies": {
+    "docx": "9.7.2",
+    "exceljs": "4.4.0",
+    "jszip": "3.10.2",
+    "officecrypto-tool": "0.0.19",
+    "pdfkit": "0.20.2",
+    "pptxgenjs": "4.0.1"
+  }
+}

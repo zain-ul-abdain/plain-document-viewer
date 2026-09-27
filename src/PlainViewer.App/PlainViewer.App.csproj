@@ -2,5 +2,8 @@
   <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><AssemblyName>PlainViewer</AssemblyName></PropertyGroup>
   <ItemGroup><ProjectReference Include="../PlainViewer.Core/PlainViewer.Core.csproj" /><ProjectReference Include="../PlainViewer.Worker/PlainViewer.Worker.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
   <ItemGroup><Content Include="../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <!-- PDF view: WebView2 SDK plus PDF.js 6.3.289 (Apache-2.0) served from the app's own folder. -->
+  <ItemGroup><PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" /></ItemGroup>
+  <ItemGroup><Content Include="Assets/**" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <Target Name="CopyWorker" AfterTargets="Build"><ItemGroup><WorkerFiles Include="../PlainViewer.Worker/bin/$(Configuration)/net10.0/*" /></ItemGroup><Copy SourceFiles="@(WorkerFiles)" DestinationFolder="$(OutDir)worker" /></Target>
 </Project>

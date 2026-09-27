@@ -42,6 +42,25 @@ try
     Test("Wrong extension content rejected", () => { string path = Path.Combine(root, "fake.txt"); File.WriteAllText(path, "%PDF-1.7"); Throws<DocumentException>(() => TextFiles.Load(path)); });
     Test("Empty text is valid", () => { string path = Path.Combine(root, "empty.txt"); File.WriteAllText(path, ""); Check(TextFiles.Load(path).Text == ""); });
     Test("CSV preview explicitly reports truncation", () => { string path = Path.Combine(root, "large.csv"); File.WriteAllLines(path, Enumerable.Range(0, 1500).Select(i => i + ",001")); var view = TextFiles.Load(path); Check(view.Rows.Count == 1000 && view.Notice.Contains("1,000")); });
+    // PDF snapshot. PDF.js parses inside WebView2; these cover the host-side checks only.
+    Test("PDF snapshot copies bytes and leaves the original unchanged", () => {
+        string path = Path.Combine(root, "doc.pdf"); File.WriteAllBytes(path, Encoding.ASCII.GetBytes("%PDF-1.7\n%%EOF\n"));
+        byte[] before = SHA256.HashData(File.ReadAllBytes(path)); var names = Directory.GetFiles(root);
+        Check(PdfFiles.Snapshot(path).AsSpan().SequenceEqual(File.ReadAllBytes(path)));
+        Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path)))); Check(names.SequenceEqual(Directory.GetFiles(root))); });
+    Test("PDF header accepted after leading bytes, rejected after 1024", () => {
+        Check(PdfFiles.HasPdfHeader(Encoding.ASCII.GetBytes(new string(' ', 500) + "%PDF-1.4")));
+        Check(!PdfFiles.HasPdfHeader(Encoding.ASCII.GetBytes(new string(' ', 1100) + "%PDF-1.4"))); });
+    Test("PDF empty and mislabelled files give clear errors", () => {
+        string empty = Path.Combine(root, "empty.pdf"); File.WriteAllBytes(empty, []);
+        string text = Path.Combine(root, "text.pdf"); File.WriteAllText(text, "not a pdf");
+        try { PdfFiles.Snapshot(empty); throw new Exception("no error"); } catch (DocumentException ex) { Check(ex.Message.Contains("empty")); }
+        try { PdfFiles.Snapshot(text); throw new Exception("no error"); } catch (DocumentException ex) { Check(ex.Message.Contains("not a PDF")); } });
+    Test("PDF can be read while another program has it open for writing", () => {
+        string path = Path.Combine(root, "open.pdf"); File.WriteAllBytes(path, Encoding.ASCII.GetBytes("%PDF-1.7\n"));
+        using var handle = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+        Check(PdfFiles.Snapshot(path).Length == 9); });
+    Test("PDF network path rejected before access", () => Throws<DocumentException>(() => PdfFiles.Snapshot(@"\\nonexistent.invalid\share\secret.pdf")));
 }
 finally { Directory.Delete(root, true); }
 Console.WriteLine($"Results: {passed} passed, {failed} failed. No UI, Office fidelity, network instrumentation or release performance checks were run.");
