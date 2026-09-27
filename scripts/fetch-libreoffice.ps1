@@ -1,5 +1,6 @@
 # Downloads the pinned LibreOffice release, verifies it against the SHA-256 published by The Document Foundation,
-# and unpacks it (administrative extract, no system-wide install) into .tools\libreoffice-<version>.
+# unpacks it (administrative extract, no system-wide install) into .tools\libreoffice-<version>, and trims it for
+# shipping with trim-libreoffice.ps1.
 # LibreOffice converts Word and PowerPoint files to PDF for display. It is MPL-2.0 licensed; see THIRD-PARTY-NOTICES.md.
 param([string]$Version = '26.2.6')
 $ErrorActionPreference = 'Stop'
@@ -38,8 +39,6 @@ if ($process.ExitCode -ne 0) { throw "Unpacking failed (msiexec exit code $($pro
 Remove-Item $msi -Force
 Remove-Item (Join-Path $target $name) -Force -ErrorAction SilentlyContinue
 
-# The unpacked Fonts folder is meant for C:\Windows\Fonts; LibreOffice also loads fonts from share\fonts\truetype.
-$fonts = Join-Path $target 'share\fonts\truetype'
-New-Item -ItemType Directory -Force -Path $fonts | Out-Null
-Copy-Item (Join-Path $target 'Fonts\*') $fonts -Force
+# Moves the fonts where LibreOffice loads them, adds the C++ runtime and removes what the viewer never uses.
+& (Join-Path $PSScriptRoot 'trim-libreoffice.ps1') -Path $target
 Write-Output "LibreOffice $Version unpacked to $target"

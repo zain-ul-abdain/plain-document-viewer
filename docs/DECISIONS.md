@@ -18,7 +18,7 @@ Use a hybrid renderer: Markdig for Markdown syntax mapped to safe native display
 | D4 | PDF.js (Apache-2.0) in WebView2 displays PDFs and LibreOffice output | Accepted | Gives text layer, search and selection. Windows.Data.Pdf only renders page images; `PdfPage` has no text API [S9] |
 | D5 | Spreadsheets: ExcelDataReader (MIT) + ExcelNumberFormat (MIT) feeding a virtualized WPF grid | Proposed | Forward-only, row-by-row reader; exposes merged cells, column widths and number-format strings; covers .xlsx and old .xls [S10, S11]. Formula evaluation is not part of its API; cached-value behaviour must be proven by fixtures |
 | D6 | Markdown: Markdig (BSD-2-Clause, CommonMark 0.31.2, pipe tables, task lists) rendered to native WPF elements; HTML nodes stay in the AST and are shown as literal text | Accepted (revised after Codex review) | CommonMark-compliant parser [S12]. Keeping HTML nodes as literal text is safe because nothing instantiates HTML or XAML, and it preserves layout better than switching HTML parsing off. Compare fidelity before changing it |
-| D7 | Installer: Inno Setup, per-user, EXE | Proposed | Free for commercial use, no fee [S7]. WiX v6+ requires organisations with more than USD 10,000 annual revenue to pay an Open Source Maintenance Fee [S8], which needs Zain's approval |
+| D7 | Installer: Inno Setup, per-user, EXE | Implemented 27 Sep 2026 with Inno Setup 7.1.0 (Zain approved the download): `installer/PlainViewer.iss`, `scripts/package.ps1`, see RELEASING.md | EXE rather than MSIX: LibreOffice inside an MSIX container is untested, and an EXE installs per user without administrator rights. The licence allows commercial use without a fee [S7], but since 2025 the authors ask commercial users with annual revenue above USD 5,000 to buy a commercial licence, "not strictly required" [S7b]; Zain decides. WiX v6+ requires organisations with more than USD 10,000 annual revenue to pay an Open Source Maintenance Fee [S8] |
 | D8 | Bundle OFL-1.1 fallback fonts for LibreOffice: Carlito (Calibri metrics), Caladea (Cambria), Liberation Sans/Serif/Mono (Arial, Times New Roman, Courier New) | Proposed | Metric-compatible substitutes keep line breaks and page counts closer [S13–S15] |
 | D9 | WebView2 Evergreen runtime (preinstalled on Windows 11), not the Fixed Version | Proposed; open question for Zain | Fixed Version adds "over 250 MB" [S2]. Windows 11 ships the Evergreen runtime, but the installer must still check for it. If it is missing, an online bootstrapper cannot meet the offline-first-launch requirement (Codex review). Options: bundle Microsoft's offline Evergreen Standalone Installer, or state the runtime as an explicit prerequisite. Zain decides before release |
 | D10 | No commercial SDK in v1 | Accepted unless Zain decides otherwise | Costs and contract terms below; the free stack covers the required formats if the gates pass |
@@ -95,7 +95,7 @@ No schema key was found that blocks remote graphics outright. Preferences are th
 2. **Hostile fixtures.** Remote image, remote template, external workbook link, UNC and WebDAV paths, XML external entity, ZIP bomb: zero network requests and no files beside the source.
 3. **Fluent theme.** Check high contrast, 100–300% scaling and every control used.
 4. **Spreadsheet values.** Formulas with and without cached results show the cached value or "Result unavailable"; nothing recalculates.
-5. **Sizes and timings.** Measure the LibreOffice bundle, installer size and cold/warm first-page times.
+5. **Sizes and timings.** Measured 27 Sep 2026 (x64, version 0.1.0): LibreOffice 1,557 MB unpacked, 722 MB after `trim-libreoffice.ps1`; app with .NET included 142 MB; installer 200 MB; installed 869 MB; silent install 40 s including the converter pre-warm (8 s on a fresh profile). Cold/warm first-page times on reference hardware still pending (`scripts/measure.ps1`).
 6. **ARM64.** LibreOffice publishes an ARM64 Windows build [S5] and .NET supports ARM64; untested.
 
 ## Pitfalls (from the first draft, still apply)
@@ -114,6 +114,7 @@ No schema key was found that blocks remote graphics outright. Preferences are th
 - [S5] LibreOffice download page (26.8.0 and 26.2.6; x86-64 and aarch64 MSI): https://www.libreoffice.org/download/download-libreoffice/
 - [S6] LibreOffice configuration schema: https://raw.githubusercontent.com/LibreOffice/core/master/officecfg/registry/schema/org/openoffice/Office/Common.xcs, `.../Writer.xcs`, `.../Calc.xcs`
 - [S7] Inno Setup licence: https://jrsoftware.org/files/is/license.txt
+- [S7b] Inno Setup commercial licences (request to commercial users, "not strictly required"): https://jrsoftware.org/isorder.php
 - [S8] WiX Open Source Maintenance Fee: https://docs.firegiant.com/wix/osmf/ and https://github.com/wixtoolset/issues/issues/8974
 - [S9] Windows.Data.Pdf.PdfPage members: https://learn.microsoft.com/en-us/uwp/api/windows.data.pdf.pdfpage
 - [S10] ExcelDataReader: https://github.com/ExcelDataReader/ExcelDataReader

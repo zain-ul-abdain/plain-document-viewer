@@ -1,8 +1,9 @@
 # Opens hostile fixtures in the real app while a local listener records any network request they cause.
 # Fails if a fixture opens that should be refused, is refused without a clear message, or causes a request.
-. "$PSScriptRoot\env.ps1"
-$app = Join-Path $repoRoot 'src\PlainViewer.App\bin\Release\net10.0-windows\PlainViewer.dll'
-if (-not (Test-Path $app)) { throw 'Run scripts/build.ps1 first.' }
+# -App tests an installed or published PlainViewer.exe instead of the development build.
+param([string]$App)
+if ($App) { $ErrorActionPreference = 'Stop'; $repoRoot = Split-Path $PSScriptRoot -Parent } else { . "$PSScriptRoot\env.ps1" }
+. "$PSScriptRoot\app.ps1"
 $node = (Get-Command node -ErrorAction Stop).Source
 $log = Join-Path ([IO.Path]::GetTempPath()) "plainviewer-requests-$PID.jsonl"
 $corpus = Join-Path $repoRoot 'tests\corpus'
@@ -31,8 +32,8 @@ try {
   }
   if (-not $ready) { throw 'The request listener did not start, so the network check cannot be trusted.' }
 
-  & $Dotnet $app --smoke-test @arguments
-  if ($LASTEXITCODE -ne 0) { throw 'Security smoke test failed: see the messages above.' }
+  $code = Invoke-PlainViewer $App (@('--smoke-test') + $arguments)
+  if ($code -ne 0) { throw 'Security smoke test failed: see the messages above.' }
 }
 finally { Stop-Process -Id $listener.Id -Force -ErrorAction SilentlyContinue }
 

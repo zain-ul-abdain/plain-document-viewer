@@ -31,7 +31,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## .NET and WPF
 
-This development build uses a separately installed .NET 10 runtime. The SDK under .tools is a development dependency, not part of a distributable installer. Preserve the runtime notices when preparing a self-contained distribution.
+Development builds use a separately installed .NET 10 runtime; the SDK under .tools is a development dependency only.
+
+The installer (`scripts/package.ps1`) ships the .NET 10.0.12 runtime and Windows Desktop runtime (including WPF) inside the app folder, from the official Microsoft packages `Microsoft.NETCore.App.Runtime.win-x64` and `Microsoft.WindowsDesktop.App.Runtime.win-x64` on nuget.org (both signed by Microsoft Corporation and nuget.org; signatures verified with `dotnet nuget verify`). Copyright (c) .NET Foundation and Contributors. Licensed under the MIT License. The runtime's licence and its third-party notices are copied from the runtime package into the installed app as `licenses\dotnet\LICENSE.TXT` and `licenses\dotnet\THIRD-PARTY-NOTICES.TXT`. WPF's third-party notices: https://github.com/dotnet/wpf/blob/main/THIRD-PARTY-NOTICES.TXT
+
+## Inno Setup 7.1.0 (installer)
+
+The installer is built with Inno Setup. Copyright (C) 1997-2026 Jordan Russell. Portions Copyright (C) 2000-2026 Martijn Laan. https://jrsoftware.org/ . Its licence allows use for any purpose, including commercial applications; the installer keeps Inno Setup's own copyright notices. Since 2025 the authors ask commercial users (organisations or individuals with annual revenue above USD 5,000) to buy a commercial licence; they state this is not strictly required. Whether to buy one is recorded as an open decision in `docs/RELEASING.md`.
 
 ## Microsoft Edge WebView2 SDK 1.0.4191.47
 
@@ -106,3 +112,5 @@ LibreOffice is licensed under the Mozilla Public License, version 2.0, with part
 Source code for this exact version is available from The Document Foundation at https://download.documentfoundation.org/libreoffice/src/26.2.6/ . When LibreOffice is included in a Plain Viewer installer, this notice, its licence files and this source location must be distributed with it (MPL-2.0 section 3.2).
 
 Fonts copied from LibreOffice's own font folder (for example Carlito, Caladea, Liberation, DejaVu and Amiri) keep their licences, which are included in LibreOffice's `readmes` and licence files.
+
+The copy in the installer (`libreoffice` folder) is trimmed by `scripts/trim-libreoffice.ps1`: interface translations, spelling and thesaurus data, the two Java extensions, offline help and non-default icon themes are removed; no remaining file is modified, and every licence and readme file is kept. Microsoft Visual C++ runtime DLLs that LibreOffice's own installer ships for the system folder (`System64`) are placed in `libreoffice\program` instead (app-local deployment); they are Microsoft redistributable files distributed as part of LibreOffice.

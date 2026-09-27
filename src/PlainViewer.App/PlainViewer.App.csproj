@@ -5,5 +5,10 @@
   <!-- PDF view: WebView2 SDK plus PDF.js 6.3.289 (Apache-2.0) served from the app's own folder. -->
   <ItemGroup><PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" /></ItemGroup>
   <ItemGroup><Content Include="Assets/**" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <!-- Two tiny documents OfficeConverter.Prewarm converts once to build LibreOffice's profile (from the generated test corpus). -->
+  <ItemGroup>
+    <Content Include="../../tests/corpus/docx/simple.docx" Link="Assets/prewarm/prewarm-word.docx" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../tests/corpus/pptx/simple.pptx" Link="Assets/prewarm/prewarm-slides.pptx" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <Target Name="CopyWorker" AfterTargets="Build"><ItemGroup><WorkerFiles Include="../PlainViewer.Worker/bin/$(Configuration)/net10.0/*" /></ItemGroup><Copy SourceFiles="@(WorkerFiles)" DestinationFolder="$(OutDir)worker" /></Target>
 </Project>

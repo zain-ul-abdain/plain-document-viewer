@@ -13,6 +13,9 @@ internal static class OfficeConverter
 {
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(2);
     private static string AppData => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PlainViewer");
+    private static string Profile => Path.Combine(AppData, "LibreOffice", "profile");
+    // Written once LibreOffice has built the profile; holds the LibreOffice build it was built with.
+    private static string ReadyMarker => Path.Combine(Profile, "user", "plainviewer-ready.txt");
 
     public static string? FindLibreOffice()
     {
@@ -62,35 +65,94 @@ internal static class OfficeConverter
         string soffice = FindLibreOffice() ?? throw new DocumentException("Word and PowerPoint viewing needs the document converter, which is not installed. Reinstall Plain Viewer to add it.");
         string output = Path.Combine(work, "out"), temp = Path.Combine(work, "tmp");
         Directory.CreateDirectory(output); Directory.CreateDirectory(temp);
-        // One conversion at a time across all Plain Viewer windows, because they share one LibreOffice profile.
-        using var gate = new Semaphore(1, 1, @"Local\PlainViewer.LibreOffice");
-        bool acquired = false;
+        using var gate = await Acquire(cancellation);
+        PrepareProfile();
+        int exit = await Task.Run(() => RunLimited(soffice, $"{CommonArguments} --convert-to pdf --outdir \"{output}\" \"{input}\"", temp, cancellation), cancellation);
+        string pdf = Path.Combine(output, Path.GetFileNameWithoutExtension(input) + ".pdf");
+        if (exit != 0 || !File.Exists(pdf) || new FileInfo(pdf).Length == 0)
+            throw new DocumentException("This document could not be prepared for viewing. It may be damaged or use features this viewer cannot show. Try another copy of the file.");
+        MarkReady(soffice);
+        return await File.ReadAllBytesAsync(pdf, cancellation);
+    }
+
+    // Builds the private LibreOffice profile before the first Word or PowerPoint file is opened. A new profile adds
+    // about 10 seconds to LibreOffice's first conversion, and starting LibreOffice alone does not do that work, so this
+    // converts two tiny bundled documents (copies of the test corpus's simple.docx and simple.pptx). Runs with the same
+    // limits and settings as a conversion. Returns true when the profile is ready (already, or now).
+    public static async Task<bool> Prewarm(CancellationToken cancellation = default)
+    {
+        string? soffice = FindLibreOffice();
+        if (soffice is null) return false;
+        if (IsReady(soffice)) return true;
+        using var gate = await Acquire(cancellation);
+        if (IsReady(soffice)) return true;   // another window finished it while this one waited
+        // A profile without the marker may be half-built (for example, the app was closed during a pre-warm): start again.
+        try { Directory.Delete(Profile, true); } catch (DirectoryNotFoundException) { }
+        string work = NewWorkFolder(), output = Path.Combine(work, "out"), temp = Path.Combine(work, "tmp");
+        string samples = Path.Combine(AppContext.BaseDirectory, "Assets", "prewarm");
         try
         {
-            await Task.Run(() => { while (!gate.WaitOne(200)) cancellation.ThrowIfCancellationRequested(); acquired = true; }, cancellation);
-            string profile = PrepareProfile();
-            string arguments = $"--headless --norestore --nologo --nodefault --nolockcheck \"-env:UserInstallation={FileUrl(profile)}\" --convert-to pdf --outdir \"{output}\" \"{input}\"";
-            int exit = await Task.Run(() => RunLimited(soffice, arguments, temp, cancellation), cancellation);
-            string pdf = Path.Combine(output, Path.GetFileNameWithoutExtension(input) + ".pdf");
-            if (exit != 0 || !File.Exists(pdf) || new FileInfo(pdf).Length == 0)
-                throw new DocumentException("This document could not be prepared for viewing. It may be damaged or use features this viewer cannot show. Try another copy of the file.");
-            return await File.ReadAllBytesAsync(pdf, cancellation);
+            Directory.CreateDirectory(output); Directory.CreateDirectory(temp);
+            PrepareProfile();
+            string[] names = ["prewarm-word.docx", "prewarm-slides.pptx"];
+            string inputs = string.Join(' ', names.Select(name => $"\"{Path.Combine(samples, name)}\""));
+            int exit = await Task.Run(() => RunLimited(soffice, $"{CommonArguments} --convert-to pdf --outdir \"{output}\" {inputs}", temp, cancellation), cancellation);
+            if (exit != 0 || !names.All(name => File.Exists(Path.Combine(output, Path.ChangeExtension(name, ".pdf"))))) return false;
+            MarkReady(soffice);
+            return true;
         }
-        finally { if (acquired) gate.Release(); }
+        finally { Delete(work); }
+    }
+
+    private static string CommonArguments => $"--headless --norestore --nologo --nodefault --nolockcheck \"-env:UserInstallation={FileUrl(Profile)}\"";
+
+    // One LibreOffice run at a time across all Plain Viewer windows, because they share one profile.
+    private static async Task<IDisposable> Acquire(CancellationToken cancellation)
+    {
+        var gate = new Semaphore(1, 1, @"Local\PlainViewer.LibreOffice");
+        try
+        {
+            await Task.Run(() => { while (!gate.WaitOne(200)) cancellation.ThrowIfCancellationRequested(); }, cancellation);
+            return new Held(gate);
+        }
+        catch { gate.Dispose(); throw; }
+    }
+
+    private sealed class Held(Semaphore gate) : IDisposable
+    {
+        public void Dispose() { gate.Release(); gate.Dispose(); }
+    }
+
+    // The LibreOffice build and folder the profile was made with; a different LibreOffice gets a fresh profile.
+    private static string Stamp(string soffice)
+    {
+        string program = Path.GetDirectoryName(soffice)!;
+        string build = File.ReadLines(Path.Combine(program, "version.ini")).FirstOrDefault(line => line.StartsWith("buildid=", StringComparison.Ordinal)) ?? "";
+        return build + "\n" + program;
+    }
+
+    private static bool IsReady(string soffice)
+    {
+        try { return File.Exists(ReadyMarker) && File.ReadAllText(ReadyMarker) == Stamp(soffice); }
+        catch (IOException) { return false; }
+    }
+
+    private static void MarkReady(string soffice)
+    {
+        try { if (!IsReady(soffice)) File.WriteAllText(ReadyMarker, Stamp(soffice)); }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
     private static string FileUrl(string path) => "file:///" + path.Replace('\\', '/');
 
-    private static string PrepareProfile()
+    private static void PrepareProfile()
     {
-        string profile = Path.Combine(AppData, "LibreOffice", "profile");
-        string user = Path.Combine(profile, "user");
+        string user = Path.Combine(Profile, "user");
         Directory.CreateDirectory(user);
         // Rewritten before every run: restores the hardened settings and clears LibreOffice's history.
         File.WriteAllText(Path.Combine(user, "registrymodifications.xcu"), HardenedSettings(), new UTF8Encoding(false));
         foreach (var leftover in new[] { "backup", "temp" })
             try { Directory.Delete(Path.Combine(user, leftover), true); } catch (DirectoryNotFoundException) { } catch (IOException) { }
-        return profile;
     }
 
     // Values checked against LibreOffice's configuration schema (see DECISIONS.md). "Never" is 2 for Writer and 1 for Calc.

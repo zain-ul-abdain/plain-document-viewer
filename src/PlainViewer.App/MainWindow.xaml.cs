@@ -379,7 +379,8 @@ public partial class MainWindow : Window
 #pragma warning restore WPF0001
     private void NumberRow(object s, DataGridRowEventArgs e) => e.Row.Header = (e.Row.GetIndex() + 1).ToString();
     private void FileDropped(object s, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] files) foreach (var file in files) OpenPath(file); }
-    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, "Plain Viewer — development preview\n\nRead-only PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), text, CSV and Markdown.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Word and PowerPoint files are converted to PDF by LibreOffice (MPL-2.0). Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
+    private static string Version => typeof(MainWindow).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
+    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, $"Plain Viewer {Version} — development preview\n\nRead-only PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), text, CSV and Markdown.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Word and PowerPoint files are converted to PDF by LibreOffice (MPL-2.0). Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\nThe parser worker has resource limits but is not yet a low-privilege security sandbox.", "About Plain Viewer");
     private void WindowKeyDown(object s, KeyEventArgs e)
     {
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);

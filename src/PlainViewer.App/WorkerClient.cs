@@ -18,10 +18,17 @@ internal static class WorkerClient
     private static async Task<DocumentView> Run(string[] arguments, CancellationToken cancellation)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        string worker = Path.Combine(AppContext.BaseDirectory, "worker", "PlainViewer.Worker.dll");
-        string host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
-        var start = new ProcessStartInfo(host) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
-        start.ArgumentList.Add(worker); foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        var start = new ProcessStartInfo { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
+        // Installed builds carry .NET with them and ship the worker as an .exe beside the app. Development builds run
+        // the worker DLL with the local .NET host that scripts/env.ps1 sets.
+        string published = Path.Combine(AppContext.BaseDirectory, "PlainViewer.Worker.exe");
+        if (File.Exists(published) && File.Exists(Path.ChangeExtension(published, ".dll"))) start.FileName = published;
+        else
+        {
+            start.FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "worker", "PlainViewer.Worker.dll"));
+        }
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new DocumentException("The document worker could not start. Rebuild the application and try again.");
         try
         {
