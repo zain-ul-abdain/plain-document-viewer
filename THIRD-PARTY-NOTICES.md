@@ -96,3 +96,13 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## LibreOffice 26.2.6 (document converter for Word and PowerPoint files)
+
+Development builds use an unmodified copy unpacked by `scripts/fetch-libreoffice.ps1` from the official Windows x86-64 installer (SHA-256 `f9877032fd908beb9c0ddf06df4af5c2e85f419c42e14876c4cce5aae5fb2660`, as published by download.documentfoundation.org). It is run as a separate program and is not linked into Plain Viewer.
+
+LibreOffice is licensed under the Mozilla Public License, version 2.0, with parts under the GNU Lesser General Public License v3+, the Apache License 2.0 and other open-source licences; see https://www.libreoffice.org/about-us/licenses/. Its own licence texts and third-party notices ship with it (`license.txt`, `LICENSE.html`, `NOTICE`, and the `readmes` folder).
+
+Source code for this exact version is available from The Document Foundation at https://download.documentfoundation.org/libreoffice/src/26.2.6/ . When LibreOffice is included in a Plain Viewer installer, this notice, its licence files and this source location must be distributed with it (MPL-2.0 section 3.2).
+
+Fonts copied from LibreOffice's own font folder (for example Carlito, Caladea, Liberation, DejaVu and Amiri) keep their licences, which are included in LibreOffice's `readmes` and licence files.
