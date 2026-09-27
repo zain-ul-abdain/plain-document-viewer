@@ -6,10 +6,14 @@ import path from "node:path";
 import { CORPUS, manifestEntries, SAFE_RULES } from "./lib.mjs";
 import { generatePdf } from "./pdf.mjs";
 import { generateXlsx } from "./xlsx.mjs";
+import { generateDocx } from "./docx.mjs";
+import { generatePptx } from "./pptx.mjs";
 
 const large = process.argv.includes("--large");
 await generatePdf({ large });
 await generateXlsx({ large });
+await generateDocx();
+await generatePptx();
 
 // Codex's hand-written fixtures (tests/corpus/*.txt|csv|md|markdown) keep their own provenance table in SOURCES.md.
 const codexLicence = "Authored for this project by Codex (see SOURCES.md)";
@@ -48,6 +52,8 @@ function describe(e) {
   if (x.result === "password") return "Asks for the password; opens with it";
   const parts = [];
   if (x.pages) parts.push(`${x.pages} page${x.pages === 1 ? "" : "s"}`);
+  if (x.slides) parts.push(`${x.slides} slide${x.slides === 1 ? "" : "s"}`);
+  if (x.sheets) parts.push(`sheets ${x.sheets.join(", ")}`);
   if (x.text?.length) parts.push(`text "${x.text[0]}"`);
   return `Opens; ${parts.join(", ")}${e.category === "attack" ? "; no network request" : ""}`;
 }

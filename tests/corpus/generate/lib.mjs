@@ -86,3 +86,78 @@ export function textStream(lines) {
 }
 
 export const SAFE_RULES = { network: "none", sourceUnchanged: true, filesBesideSource: "none" };
+
+export const FIXED_DATE = new Date(Date.UTC(2026, 8, 27));
+
+// Office files embed the current time (ZIP entry dates, docProps/core.xml). Rewrite both with a fixed date so
+// regenerated fixtures are identical.
+export async function stableZip(buffer, edit) {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(buffer);
+  const core = zip.file("docProps/core.xml");
+  if (core) {
+    const xml = (await core.async("string")).replace(/(<dcterms:(?:created|modified)[^>]*>)[^<]*(<)/g, `$1${FIXED_DATE.toISOString().replace(/\.\d+Z$/, "Z")}$2`);
+    zip.file("docProps/core.xml", xml);
+  }
+  // Some libraries give relationships random IDs (for example docx hyperlinks); number them instead.
+  const ids = new Map();
+  const names = Object.keys(zip.files).filter(n => !zip.files[n].dir && /\.(xml|rels)$/.test(n));
+  for (const name of names) for (const id of (await zip.file(name).async("string")).match(/rId[a-z0-9_-]{12,}/g) ?? []) if (!ids.has(id)) ids.set(id, `rIdStable${ids.size + 1}`);
+  if (ids.size) for (const name of names) {
+    const text = await zip.file(name).async("string");
+    const fixed = text.replace(/rId[a-z0-9_-]{12,}/g, id => ids.get(id) ?? id);
+    if (fixed !== text) zip.file(name, fixed);
+  }
+  // Embedded Office files (such as a chart's workbook) carry their own timestamps.
+  for (const name of Object.keys(zip.files).filter(n => /\.(xlsx|docx|pptx)$/.test(n) && !zip.files[n].dir))
+    zip.file(name, await stableZip(await zip.file(name).async("nodebuffer")));
+  if (edit) await edit(zip);
+  zip.forEach((_, file) => { file.date = FIXED_DATE; });
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
+}
+
+// Shared ways to break an Office file, used by every Office format so each gets the same coverage.
+export async function officeVariants({ format, folder, simple, complex, mainPart, textPart = mainPart, macroType, macroExtension, producer, licence }) {
+  const { default: JSZip } = await import("jszip");
+  const { default: officeCrypto } = await import("officecrypto-tool");
+  const { default: CFB } = await import("cfb");
+  const rec = (name, category, expect, extra = {}) => record({ id: `${format}-${name}`, file: `${folder}/${name}.${name === "macro" ? macroExtension : format}`, format: name === "macro" ? macroExtension : format, category, producer, licence, expect, rules: SAFE_RULES, ...extra });
+
+  write(`${folder}/password.${format}`, officeCrypto.encrypt(simple, { password: "viewer-test" }));
+  rec("password", "password", { result: "error", error: "password" }, { password: "viewer-test", producer: `${producer}, encrypted with officecrypto-tool ${packageVersion("officecrypto-tool")}` });
+
+  const container = CFB.utils.cfb_new();
+  CFB.utils.cfb_add(container, format === "docx" ? "WordDocument" : "PowerPoint Document", Buffer.from("Container only; not a real binary document."));
+  write(`${folder}/old-format-renamed.${format}`, Buffer.from(CFB.write(container, { type: "buffer" })));
+  rec("old-format-renamed", "wrong-extension", { result: "error", error: "mismatch" }, { producer: `cfb ${packageVersion("cfb")} (Node)` });
+
+  write(`${folder}/damaged-truncated.${format}`, complex.subarray(0, Math.floor(complex.length * 0.5)));
+  rec("damaged-truncated", "damaged", { result: "error", error: "damaged" }, { producer: `${producer}, then truncated` });
+  write(`${folder}/zero-byte.${format}`, Buffer.alloc(0));
+  rec("zero-byte", "empty", { result: "error", error: "empty" }, { producer: "generator (empty file)" });
+  write(`${folder}/not-a-document.${format}`, `Plain text saved with a .${format} name.\r\n`);
+  rec("not-a-document", "wrong-extension", { result: "error", error: "mismatch" }, { producer: "generator (text)" });
+
+  const macro = await JSZip.loadAsync(simple);
+  macro.file(mainPart.replace(/[^/]+$/, "vbaProject.bin"), Buffer.from("Placeholder, not real VBA."), { date: FIXED_DATE });
+  const types = await macro.file("[Content_Types].xml").async("string");
+  macro.file("[Content_Types].xml", types.replace(/(PartName="\/[^"]+" ContentType=")[^"]+main\+xml"/, `$1${macroType}"`)
+    .replace("</Types>", '<Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>'), { date: FIXED_DATE });
+  write(`${folder}/macro.${macroExtension}`, await macro.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  rec("macro", "unsupported", { result: "error", error: "unsupported" }, { producer: `${producer}, repackaged with JSZip` });
+
+  const bomb = await JSZip.loadAsync(simple);
+  bomb.file(`${mainPart.split("/")[0]}/media/bomb.bin`, Buffer.alloc(300 * 1024 * 1024), { date: FIXED_DATE, compression: "DEFLATE", compressionOptions: { level: 9 } });
+  bomb.forEach((_, f) => { f.date = FIXED_DATE; });
+  write(`${folder}/attack-zip-bomb.${format}`, await bomb.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  rec("attack-zip-bomb", "attack", { result: "error", error: "damaged" }, { producer: `${producer}, repackaged with JSZip`, notes: "Must be refused by archive limits without decompressing the 300 MB entry." });
+
+  const xxe = await JSZip.loadAsync(simple);
+  const main = await xxe.file(textPart).async("string");
+  const root = main.match(/<([a-z]+:[A-Za-z]+)[\s>]/)[1];
+  const doctype = `<!DOCTYPE ${root} [<!ENTITY remote SYSTEM "${LISTENER}/${format}-xxe/entity"><!ENTITY local SYSTEM "file:///C:/Windows/win.ini">]>`;
+  xxe.file(textPart, main.replace(/^(<\?xml[^>]*\?>)/, `$1${doctype}`).replace(/Hello/, "&remote;&local;Hello"), { date: FIXED_DATE });
+  write(`${folder}/attack-xxe.${format}`, await xxe.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  rec("attack-xxe", "attack", { result: "error", error: "damaged" }, { producer: `${producer}, edited with JSZip`,
+    notes: "Either refuse the file or show it without resolving either entity. Any request under /" + format + "-xxe/ is a failure." });
+}

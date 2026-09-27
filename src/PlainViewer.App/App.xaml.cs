@@ -13,8 +13,17 @@ public partial class App : Application
                 foreach (var file in e.Args.Skip(1))
                 {
                     var preview = new MainWindow();
-                    await preview.VerifyPreviewAsync(file);
-                    Console.WriteLine("PASS native view and worker: " + System.IO.Path.GetFileName(file));
+                    // A leading "!" means the file must be refused with a clear message (damaged, hostile, protected...).
+                    if (file.StartsWith('!'))
+                    {
+                        string message = await preview.VerifyRefusedAsync(file[1..]);
+                        Console.WriteLine($"PASS refused {System.IO.Path.GetFileName(file[1..])}: {message}");
+                    }
+                    else
+                    {
+                        await preview.VerifyPreviewAsync(file);
+                        Console.WriteLine("PASS native view and worker: " + System.IO.Path.GetFileName(file));
+                    }
                     preview.Close();
                 }
                 Shutdown(0);

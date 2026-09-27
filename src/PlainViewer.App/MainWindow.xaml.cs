@@ -37,6 +37,17 @@ public partial class MainWindow : Window
     private static bool IsPdf(string path) => string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
     private static bool IsWorkbook(string path) => Path.GetExtension(path).ToLowerInvariant() is ".xlsx" or ".xlsm" or ".xltx" or ".xltm" or ".xlsb";
     private bool InWebPane => document?.Kind is "pdf" or "sheet";
+    internal async Task<string> VerifyRefusedAsync(string path)
+    {
+        if (IsPdf(path) || IsWorkbook(path))
+        { WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show(); }
+        currentPath = path; await LoadCurrent();
+        if (document is not null) throw new InvalidOperationException($"Expected {Path.GetFileName(path)} to be refused, but it opened.");
+        if (string.IsNullOrWhiteSpace(Status.Text) || Status.Text.StartsWith("The document could not open", StringComparison.Ordinal))
+            throw new InvalidOperationException($"{Path.GetFileName(path)} was refused without a specific message: {Status.Text}");
+        if (WebPane.BlockedRequests != 0) throw new InvalidOperationException($"The document view attempted {WebPane.BlockedRequests} blocked request(s).");
+        return Status.Text;
+    }
     internal async Task VerifyPreviewAsync(string path)
     {
         if (IsPdf(path) || IsWorkbook(path))

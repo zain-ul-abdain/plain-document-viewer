@@ -153,6 +153,7 @@ export async function generateXlsx({ large }) {
   {
     const zip = await JSZip.loadAsync(fs.readFileSync(path.join(CORPUS, "xlsx", "simple.xlsx")));
     zip.file("xl/media/bomb.bin", Buffer.alloc(300 * 1024 * 1024), { date, compression: "DEFLATE", compressionOptions: { level: 9 } });
+    zip.forEach((_, f) => { f.date = date; });
     write("xlsx/attack-zip-bomb.xlsx", await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
     record({ id: "attack-xlsx-zip-bomb", file: "xlsx/attack-zip-bomb.xlsx", format: "xlsx", category: "attack", producer: `${producer}, repackaged with JSZip`, licence,
       expect: { result: "error", error: "damaged" }, rules: SAFE_RULES, notes: "Must be refused by the archive limits without decompressing the 300 MB entry." });
