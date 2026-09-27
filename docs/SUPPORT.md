@@ -7,7 +7,7 @@ No format is release-certified. The Open dialog labels implemented formats as a 
 | TXT | Read-only Unicode, encoding override, search/copy/zoom | 4 MB cap; streaming, complete encoding corpus and accessibility |
 | CSV | Quoted/multiline records, delimiter override, string values, virtualized WPF grid, loaded-row search | First 1,000 rows only; full disk-backed virtualization and 200 MB test |
 | MD / MARKDOWN | Markdig CommonMark plus tables/tasks mapped to native WPF; headings, emphasis, entities, lists, tables, quotes, literal math as code, source toggle, search/copy | Wide code wraps; ordered starts/table alignment not preserved; uncommon syntax, large corpus and accessibility pending |
-| PDF | Pending | Real renderer, text layer, secure configuration, independent corpus |
+| PDF | Development preview: PDF.js 6.3.289 in a locked-down WebView2; continuous pages, text-layer search with match count, selection and copy, page number with go-to-page, fit width and fit page, zoom, theme, password prompt; web and email links need confirmation, other link types are refused; every non-app request is blocked and counted | Manual visual and Narrator checks; 500-page test (`npm run generate:large`); OS-level network observation with the request listener; thumbnails not provided (page field instead); replace the Liberation Sans 1.x fonts bundled by PDF.js with OFL 2.x |
 | DOCX / PPTX | Pending | Conversion, offline isolation, fonts, Office reference corpus |
 | XLSX | Pending | Cached-value reader, disk indexing, sheet grid/styles/merged cells |
 | DOC / XLS / PPT / RTF / ODT / ODS / ODP | Optional, unevaluated | No engine enabled; none moved to Later based on tests |
