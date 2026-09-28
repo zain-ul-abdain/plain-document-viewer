@@ -1,9 +1,10 @@
 # Builds the offline installer artifacts\installer\PlainViewer-Setup-<version>-x64.exe (see docs/RELEASING.md).
 # 1. Runs the test scripts (skip with -SkipTests).
 # 2. Publishes the app and its worker with .NET included (x64, no .NET install needed on the user's PC).
-# 3. Packs them with the trimmed LibreOffice using Inno Setup, and writes the installer's SHA-256 beside it.
+# 3. Packs them with the trimmed LibreOffice and Microsoft's WebView2 offline installer using Inno Setup, and writes
+#    the installer's SHA-256 beside it.
 # The version comes from Directory.Build.props. Needs .tools\dotnet, .tools\feed with the .NET runtime packs,
-# .tools\libreoffice-<version> (scripts\fetch-libreoffice.ps1) and .tools\innosetup-7.1.0.
+# .tools\libreoffice-<version> (scripts\fetch-libreoffice.ps1), .tools\innosetup-7.1.0 and .tools\webview2.
 param([switch]$SkipTests, [string]$LibreOfficeVersion = '26.2.6')
 . "$PSScriptRoot\env.ps1"
 $version = ([xml](Get-Content -Raw (Join-Path $repoRoot 'Directory.Build.props'))).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
@@ -16,6 +17,13 @@ $output = Join-Path $repoRoot 'artifacts\installer'
 if (-not (Test-Path -LiteralPath (Join-Path $libreOffice 'program\soffice.exe'))) { throw 'LibreOffice is missing: run scripts\fetch-libreoffice.ps1.' }
 if (Test-Path -LiteralPath (Join-Path $libreOffice 'System64')) { throw 'LibreOffice is not trimmed: run scripts\trim-libreoffice.ps1.' }
 if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup 7 is missing: expected $iscc" }
+# Bundled for PCs without the runtime (DECISIONS.md D9). Must come straight from Microsoft, signed by Microsoft.
+$webView2 = Join-Path $repoRoot '.tools\webview2\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+if (-not (Test-Path -LiteralPath $webView2)) { throw 'The WebView2 offline installer is missing: see docs/RELEASING.md, one-time setup step 6.' }
+$signature = Get-AuthenticodeSignature -LiteralPath $webView2
+if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike 'CN=Microsoft Corporation,*') {
+  throw "The WebView2 installer is not validly signed by Microsoft Corporation ($($signature.Status)); download it again from Microsoft."
+}
 
 if (-not $SkipTests) {
   & "$PSScriptRoot\build.ps1" -Offline
@@ -46,7 +54,7 @@ foreach ($file in 'PlainViewer.exe', 'PlainViewer.Worker.exe', 'PlainViewer.Work
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-& $iscc /Qp "/DAppVersion=$version" "/DPublishDir=$publish" "/DLibreOfficeDir=$libreOffice" "/DOutputDir=$output" (Join-Path $repoRoot 'installer\PlainViewer.iss')
+& $iscc /Qp "/DAppVersion=$version" "/DPublishDir=$publish" "/DLibreOfficeDir=$libreOffice" "/DWebView2Installer=$webView2" "/DOutputDir=$output" (Join-Path $repoRoot 'installer\PlainViewer.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup could not build the installer.' }
 $setup = Join-Path $output "PlainViewer-Setup-$version-x64.exe"
 $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()

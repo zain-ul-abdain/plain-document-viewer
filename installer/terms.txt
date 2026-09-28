@@ -1,0 +1,21 @@
+Plain Viewer: terms for this installer
+
+Please read these terms before you install.
+
+1. Plain Viewer
+
+Plain Viewer is pre-release software. It is provided "as is", without warranty of any kind, and to the extent the law allows, its authors are not liable for any damage that arises from using it. The licence under which Plain Viewer itself is published will be stated with its public release.
+
+2. Microsoft Edge WebView2 Runtime
+
+Plain Viewer shows PDF, Word, Excel and PowerPoint files with the Microsoft Edge WebView2 Runtime. This installer contains Microsoft's offline installer for the runtime. If the runtime is missing on this PC and you keep the option "Install the Microsoft Edge WebView2 Runtime" selected, it installs the runtime.
+
+The WebView2 Runtime is Microsoft software. Microsoft Corporation licenses it to you under the "Microsoft Software License Terms: Microsoft Edge WebView2 Runtime", not under these terms. If you install it, you agree to Microsoft's terms. Microsoft shows them on its WebView2 page when you choose to download the runtime:
+https://developer.microsoft.com/microsoft-edge/webview2/
+Microsoft's privacy statement: https://aka.ms/privacy
+
+Once installed, the WebView2 Runtime is a shared part of Windows. It updates itself through Microsoft's update service and stays installed when you uninstall Plain Viewer. Plain Viewer turns off the runtime's SmartScreen checks and never loads web content from the internet.
+
+3. Other components
+
+Plain Viewer includes other components, among them LibreOffice, PDF.js and the .NET runtime. Their licences and notices are in THIRD-PARTY-NOTICES.md and the "licenses" folder in the installation folder.

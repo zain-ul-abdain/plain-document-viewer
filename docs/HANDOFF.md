@@ -190,3 +190,9 @@ Agent 2: review and commit these exact eleven files; this session did not stage,
 11. docs/HANDOFF.md
 
 Suggested title: Preserve Markdown list starts and table alignment and scroll wide code. No attribution trailers. Claims released; MainWindow.xaml, OfficeConverter.cs, installer files and scripts remain untouched. Before packaging, investigate the intermittent open failure if it recurs and rerun the sandbox keyboard/high-contrast checks with the new code controls.
+
+## Agent 2, 28 September 2026 (evening): WebView2 bundled in the installer
+
+- Zain decided D9: bundle. `installer/PlainViewer.iss` embeds Microsoft's offline WebView2 installer (from `.tools\webview2`; `package.ps1` refuses it unless validly signed by Microsoft Corporation) and runs it in the new "webview2" task, shown only when the runtime is missing. Setup shows `installer/terms.txt` (draft wording for Zain), which makes the runtime subject to Microsoft's terms. The app's missing-runtime message now says to run the installer again.
+- `sandbox-test.ps1` now installs twice: without the WebView2 task (checks the message), then as an upgrade with it. It refuses to start with less than 3 GB free on C:.
+- Verified: `package.ps1` built the 403 MB installer after build (0 warnings), core 74 passed (the 2 large generated fixtures were deleted to free disk space), Markdown 23, Office safety 14, smoke and security smoke (32/32, 0 requests). **Not verified:** the bundled installer on a clean PC. Both Sandbox runs failed while setup was copying files, most likely because C: ran low (0.3–1.6 GB free); rerun once about 3 GB are free.

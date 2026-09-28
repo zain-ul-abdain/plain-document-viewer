@@ -59,7 +59,7 @@ internal sealed class DocumentWebView : Border
         catch (WebView2RuntimeNotFoundException)
         {
             throw new DocumentException("PDF, Word, Excel and PowerPoint files need the Microsoft Edge WebView2 Runtime, which is not installed on this PC. " +
-                "Text, CSV and Markdown files still open. Install the WebView2 Runtime from Microsoft (or ask your administrator), then open the file again.");
+                "Text, CSV and Markdown files still open. Run the Plain Viewer installer again (it includes the WebView2 Runtime), then open the file again.");
         }
         var core = web.CoreWebView2 ?? throw new DocumentException("The document view could not start. Check that Microsoft Edge WebView2 Runtime is installed.");
         var settings = core.Settings;

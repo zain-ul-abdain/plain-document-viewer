@@ -1,11 +1,11 @@
 # Tests the installer on a clean, throwaway Windows 11 (Windows Sandbox) with networking switched off:
 # install with "Open with" and firewall rules, open every smoke fixture, refuse the hostile/broken ones, uninstall,
 # and check that nothing is left; also keyboard-only use and high-contrast captures. Needs the Windows Sandbox feature
-# (Containers-DisposableClientVM). Windows Sandbox has no WebView2 Runtime: pass Microsoft's offline "Evergreen
-# Standalone Installer" (MicrosoftEdgeWebView2RuntimeInstallerX64.exe) as -WebView2Installer to test the PDF, Word,
-# PowerPoint and Excel views too; without it they are reported as not tested.
+# (Containers-DisposableClientVM) and about 3 GB free on the system drive (the sandbox's disk lives there). Windows
+# Sandbox has no WebView2 Runtime: the test first installs without it (checking the app's message), then installs
+# again, as an upgrade, with the runtime bundled in the installer.
 # The sandbox closes itself when done; results are printed and kept in artifacts\sandbox-test\<run>\results.
-param([string]$Installer, [string]$WebView2Installer, [int]$TimeoutMinutes = 30)
+param([string]$Installer, [int]$TimeoutMinutes = 30)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if (-not $Installer) {
@@ -14,6 +14,8 @@ if (-not $Installer) {
 }
 if (-not $Installer -or -not (Test-Path -LiteralPath $Installer)) { throw 'No installer found: run scripts\package.ps1 first.' }
 $sandbox = Join-Path $env:WINDIR 'System32\WindowsSandbox.exe'
+$free = (Get-PSDrive ($env:SystemDrive.TrimEnd(':'))).Free
+if ($free -lt 3GB) { throw "Only $([math]::Round($free / 1GB, 1)) GB free on $env:SystemDrive; the sandbox needs about 3 GB (setup fails part-way otherwise)." }
 if (-not (Test-Path -LiteralPath $sandbox)) {
   throw 'Windows Sandbox is not enabled. As administrator: Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All, then restart.'
 }
@@ -30,12 +32,6 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'sandbox-inner.ps1'), (Join-Path
 & robocopy (Join-Path $repoRoot 'tests\corpus') (Join-Path $inputs 'corpus') /E /XD generated node_modules generate /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw 'Copying the test files failed.' }
 
-# (Copying this PC's installed WebView2 Runtime into the sandbox and pointing WebView2 at it does not work: the
-# loader still reports no runtime, tried 28 Sep 2026 with both the variable and the policy override.)
-if ($WebView2Installer) {
-  if (-not (Test-Path -LiteralPath $WebView2Installer)) { throw "WebView2 installer not found: $WebView2Installer" }
-  Copy-Item -LiteralPath $WebView2Installer -Destination (Join-Path $inputs 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
-}
 
 $config = Join-Path $work 'test.wsb'
 @"

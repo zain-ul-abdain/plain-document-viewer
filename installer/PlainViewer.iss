@@ -1,7 +1,7 @@
 ; Plain Viewer offline installer (Inno Setup 7). Build it with scripts\package.ps1, which passes the defines below.
 ; Per-user install, no administrator rights. Upgrades install over the previous version (same AppId).
 #ifndef AppVersion
-  #error Run scripts\package.ps1: it passes AppVersion, PublishDir, LibreOfficeDir and OutputDir.
+  #error Run scripts\package.ps1: it passes AppVersion, PublishDir, LibreOfficeDir, WebView2Installer and OutputDir.
 #endif
 
 [Setup]
@@ -32,12 +32,15 @@ RestartApplications=no
 UninstallDisplayName=Plain Viewer
 UninstallDisplayIcon={app}\PlainViewer.exe
 SetupLogging=yes
+; Users accept these terms, which include Microsoft's terms for the bundled WebView2 Runtime (DECISIONS.md D9).
+LicenseFile=terms.txt
 ; Code signing needs a certificate (a decision for Zain; see docs/RELEASING.md). With one, add a SignTool
 ; directive here and SignedUninstaller=yes, so Windows SmartScreen stops warning about an unknown publisher.
 
 [Tasks]
 Name: openwith; Description: "Add Plain Viewer to ""Open with"" for PDF, Word, Excel, PowerPoint, CSV, text and Markdown files (your default apps do not change)"
 Name: firewall; Description: "Block the parts that read documents from the network with Windows Firewall (asks for administrator permission once)"
+Name: webview2; Description: "Install the Microsoft Edge WebView2 Runtime, which PDF, Word, Excel and PowerPoint files need (included; licensed by Microsoft)"; Check: not WebView2Installed
 Name: desktopicon; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [InstallDelete]
@@ -46,6 +49,9 @@ Type: filesandordirs; Name: "{app}\libreoffice"
 Type: filesandordirs; Name: "{app}\Assets"
 
 [Files]
+; Microsoft's signed offline WebView2 installer (package.ps1 checks the signature). Unpacked only when the runtime
+; is missing; it is already compressed, and in its own block it unpacks without the rest of the files.
+Source: "{#WebView2Installer}"; DestName: "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"; Flags: dontcopy nocompression solidbreak
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#LibreOfficeDir}\*"; DestDir: "{app}\libreoffice"; Excludes: "__pycache__,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -103,8 +109,8 @@ Type: filesandordirs; Name: "{localappdata}\PlainViewer"
 Type: filesandordirs; Name: "{%USERPROFILE}\AppData\LocalLow\PlainViewer"
 
 [Code]
-// PDF, Word, Excel and PowerPoint views need the Microsoft Edge WebView2 Runtime, which Windows 11 includes.
-// Registry check documented by Microsoft for the Evergreen runtime.
+// PDF, Word, Excel and PowerPoint views need the Microsoft Edge WebView2 Runtime. Windows 11 normally includes it,
+// but a clean Windows 11 may not. Registry check documented by Microsoft for the Evergreen runtime.
 function WebView2Installed: Boolean;
 var
   Version: String;
@@ -159,8 +165,32 @@ begin
     and (ResultCode = 0);
 end;
 
+// Runs Microsoft's offline installer: per-machine when setup is elevated, otherwise for the current user only.
+// It has no network access to do without. The runtime then keeps itself up to date and is not removed on uninstall.
+procedure InstallWebView2;
+var
+  ResultCode: Integer;
+  Detail: String;
+begin
+  WizardForm.StatusLabel.Caption := 'Installing the Microsoft Edge WebView2 Runtime...';
+  ExtractTemporaryFile('MicrosoftEdgeWebView2RuntimeInstallerX64.exe');
+  Detail := '';
+  if not Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'), '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Detail := SysErrorMessage(ResultCode)
+  else if ResultCode <> 0 then
+    Detail := 'error code ' + IntToStr(ResultCode)
+  else
+    Detail := 'it reported success, but the runtime is not registered';
+  Log('WebView2 Runtime installer finished: ' + IntToStr(ResultCode));
+  if not WebView2Installed then
+    SuppressibleMsgBox('The Microsoft Edge WebView2 Runtime could not be installed (' + Detail + '). Plain Viewer will open text, CSV and Markdown files, ' +
+      'but not PDF, Word, Excel or PowerPoint files. Run this installer again to retry.', mbError, MB_OK, IDOK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('webview2') then
+    InstallWebView2;
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('firewall') then
   begin
     RunElevated(FirewallCommand(True));
@@ -176,11 +206,3 @@ begin
     RunElevated(FirewallCommand(False));
 end;
 
-function InitializeSetup: Boolean;
-begin
-  Result := True;
-  if not WebView2Installed then
-    Result := SuppressibleMsgBox('Plain Viewer needs the Microsoft Edge WebView2 Runtime to show PDF, Word, Excel and PowerPoint files. ' +
-      'It is part of Windows 11 but is missing on this PC. Text, CSV and Markdown files will still open.' + #13#10#13#10 +
-      'Install Plain Viewer anyway?', mbConfirmation, MB_YESNO, IDYES) = IDYES;
-end;

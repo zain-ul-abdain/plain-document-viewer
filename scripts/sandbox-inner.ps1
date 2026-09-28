@@ -11,18 +11,29 @@ function Run([string]$exe, [string[]]$arguments, [string]$output) {
   return $process.ExitCode
 }
 
+function WebView2Version {
+  # Per-machine or per-user Evergreen runtime (the registry keys Microsoft documents).
+  $key = 'Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+  @((Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\$key" -ErrorAction SilentlyContinue).pv, (Get-ItemProperty "HKCU:\Software\$key" -ErrorAction SilentlyContinue).pv) |
+    Where-Object { $_ -and $_ -ne '0.0.0.0' } | Select-Object -First 1
+}
+function Install([string]$tasks, [string]$logName) {
+  $start = Get-Date
+  $process = Start-Process -FilePath $setup.FullName -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', "/MERGETASKS=`"$tasks`"", "/LOG=`"$results\$logName`""
+  return [pscustomobject]@{ ExitCode = $process.ExitCode; Seconds = [math]::Round(((Get-Date) - $start).TotalSeconds) }
+}
+
 try {
   $rules = 'Plain Viewer - block network - '
-  $webView2 = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue).pv
-  Log "Clean machine: Windows $([Environment]::OSVersion.Version); C++ runtime in System32: $(Test-Path "$env:WINDIR\System32\vcruntime140.dll"); WebView2: $webView2; network adapters up: $(@(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up').Count)"
+  Log "Clean machine: Windows $([Environment]::OSVersion.Version); C++ runtime in System32: $(Test-Path "$env:WINDIR\System32\vcruntime140.dll"); WebView2: $(WebView2Version); network adapters up: $(@(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up').Count)"
 
   # Local copies: the app refuses files it cannot treat as local, and mapped folders are read-only.
   $corpus = Join-Path $env:USERPROFILE 'corpus'
   Copy-Item -LiteralPath 'C:\Test\input\corpus' -Destination $corpus -Recurse
   $setup = Get-ChildItem 'C:\Test\input' -Filter 'PlainViewer-Setup-*.exe' | Select-Object -First 1
-  $start = Get-Date
-  $install = Start-Process -FilePath $setup.FullName -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/MERGETASKS="openwith,firewall"', "/LOG=`"$results\install.log`""
-  Expect ($install.ExitCode -eq 0) "install (exit $($install.ExitCode), $([math]::Round(((Get-Date) - $start).TotalSeconds)) s)"
+  # First without the bundled WebView2 Runtime, to check the app's message; the second install below adds it.
+  $install = Install 'openwith,firewall,!webview2' 'install.log'
+  Expect ($install.ExitCode -eq 0 -and -not (WebView2Version)) "install without the WebView2 option (exit $($install.ExitCode), $($install.Seconds) s)"
   $dir = Join-Path $env:LOCALAPPDATA 'Programs\Plain Viewer'
   $app = Join-Path $dir 'PlainViewer.exe'
   Expect (Test-Path -LiteralPath $app) 'app installed'
@@ -37,17 +48,12 @@ try {
   $code = Run $app @('--smoke-test', ('!' + (Join-Path $corpus 'pdf\simple.pdf'))) (Join-Path $results 'no-webview2.txt')
   $message = Get-Content (Join-Path $results 'no-webview2.txt') -Raw
   Expect ($code -eq 0 -and $message -match 'WebView2 Runtime') "without WebView2 a PDF is refused with a clear message"
-  # Windows Sandbox has no WebView2 Runtime. With Microsoft's offline installer (sandbox-test.ps1 -WebView2Installer)
-  # it is installed here and the PDF, Word, PowerPoint and Excel views are tested too; otherwise they are reported untested.
-  $webViews = $false
-  $webView2Setup = Get-ChildItem 'C:\Test\input' -Filter 'MicrosoftEdgeWebView2RuntimeInstaller*.exe' | Select-Object -First 1
-  if ($webView2Setup) {
-    $setupRun = Start-Process -FilePath $webView2Setup.FullName -ArgumentList '/silent', '/install' -Wait -PassThru
-    $version = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue).pv
-    $webViews = [bool]$version
-    Expect $webViews "WebView2 Runtime installed offline from Microsoft's installer (exit $($setupRun.ExitCode), version $version)"
-  }
-  else { Log 'NOT TESTED: PDF, Word, PowerPoint and Excel views (no WebView2 Runtime in Windows Sandbox; run sandbox-test.ps1 -WebView2Installer <file>)' }
+  # Installing again is an upgrade over the existing installation; this time with the bundled WebView2 Runtime.
+  $upgrade = Install 'openwith,firewall,webview2' 'upgrade.log'
+  $version = WebView2Version
+  $webViews = [bool]$version
+  Expect ($upgrade.ExitCode -eq 0 -and $webViews) "install again over it (upgrade) with the bundled WebView2 Runtime (exit $($upgrade.ExitCode), $($upgrade.Seconds) s, runtime $version)"
+  Expect (Test-Path -LiteralPath $app) 'app still installed after the upgrade'
   $native = 'simple.txt', 'complex.txt', 'simple.csv', 'complex.csv', 'simple.md', 'complex.markdown'
   $web = 'pdf\simple.pdf', 'pdf\complex.pdf', 'pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\simple.xlsx', 'xlsx\complex.xlsx',
     'docx\simple.docx', 'docx\complex-20-pages.docx', 'docx\attack-remote-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx',
