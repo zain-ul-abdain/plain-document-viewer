@@ -1,7 +1,7 @@
 # Tests the installer on a clean, throwaway Windows 11 (Windows Sandbox) with networking switched off:
 # install with "Open with" and firewall rules, open every smoke fixture, refuse the hostile/broken ones, uninstall,
 # and check that nothing is left; also keyboard-only use and high-contrast captures. Needs the Windows Sandbox feature
-# (Containers-DisposableClientVM) and about 3 GB free on the system drive (the sandbox's disk lives there). Windows
+# (Containers-DisposableClientVM) and about 8 GB free on the system drive (the sandbox's disk lives there). Windows
 # Sandbox has no WebView2 Runtime: the test first installs without it (checking the app's message), then installs
 # again, as an upgrade, with the runtime bundled in the installer.
 # The sandbox closes itself when done; results are printed and kept in artifacts\sandbox-test\<run>\results.
@@ -15,7 +15,8 @@ if (-not $Installer) {
 if (-not $Installer -or -not (Test-Path -LiteralPath $Installer)) { throw 'No installer found: run scripts\package.ps1 first.' }
 $sandbox = Join-Path $env:WINDIR 'System32\WindowsSandbox.exe'
 $free = (Get-PSDrive ($env:SystemDrive.TrimEnd(':'))).Free
-if ($free -lt 3GB) { throw "Only $([math]::Round($free / 1GB, 1)) GB free on $env:SystemDrive; the sandbox needs about 3 GB (setup fails part-way otherwise)." }
+# Measured 28 Sep 2026: a full run uses about 7 GB while the sandbox is open and returns it when the sandbox closes.
+if ($free -lt 8GB) { throw "Only $([math]::Round($free / 1GB, 1)) GB free on $env:SystemDrive; the sandbox needs about 8 GB (setup fails part-way otherwise)." }
 if (-not (Test-Path -LiteralPath $sandbox)) {
   throw 'Windows Sandbox is not enabled. As administrator: Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All, then restart.'
 }
