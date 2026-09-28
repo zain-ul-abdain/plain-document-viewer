@@ -38,7 +38,7 @@ Everything lives under `.tools` (not in Git):
        Start-Process "$dir\unins000.exe" -Wait -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES'
 
 5. Sign the installer once a code-signing certificate exists (open decision below).
-6. Publish the installer, its `.sha256` file and short release notes. Keep earlier installers.
+6. Publish the installer, its `.sha256` file and short release notes (add a section to `docs/RELEASE-NOTES.md`). Keep earlier installers. For the private beta, testers also get `docs/BETA.md` (guide) and `docs/BETA-FEEDBACK.md` (problem report form).
 
 Never change `AppId` in `installer/PlainViewer.iss`; it is how Windows recognises the same app for upgrades.
 

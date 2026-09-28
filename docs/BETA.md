@@ -1,0 +1,93 @@
+# Plain Viewer beta: a guide for testers
+
+Thank you for trying Plain Viewer. This is an early test version (0.1.0). It will have rough edges, and your reports help us find them.
+
+## What Plain Viewer is
+
+Plain Viewer opens documents so you can read them. It does nothing else.
+
+- **Read-only.** It never changes, renames, moves or deletes your files, and it never saves anything next to them. You cannot edit a document in it.
+- **Offline.** It never uses the internet. It does not upload your documents, send usage data or crash reports, or check for updates. It works the same with Wi-Fi switched off.
+- **No Microsoft Office needed.** It opens Word, Excel and PowerPoint files on its own.
+
+It opens these files: PDF (.pdf), Word (.docx), Excel (.xlsx), PowerPoint (.pptx), CSV (.csv), text (.txt) and Markdown (.md, .markdown). Older Office files (.doc, .xls, .ppt) and files with macros (.docm, .xlsm, .pptm) are not supported yet; Plain Viewer tells you so instead of opening them.
+
+## What you need
+
+- Windows 11 on a normal Intel or AMD PC (x64). PCs with ARM processors (for example some Surface and Snapdragon laptops) have not been tested.
+- About 1.3 GB of free disk space. Plain Viewer itself takes about 870 MB; the rest is for a Windows component it may install (see "WebView2" below) and for temporary copies while you view documents.
+- No administrator rights, unless you choose the optional firewall rules.
+
+## Installing
+
+1. Run `PlainViewer-Setup-0.1.0-x64.exe` (about 400 MB).
+2. **"Windows protected your PC".** Windows shows this blue warning because the installer is not yet signed with a publisher certificate. It does not mean a virus was found. Click **More info**, check that the file name is `PlainViewer-Setup-0.1.0-x64.exe`, then click **Run anyway**.
+3. **Smart App Control.** On some newly set-up Windows 11 PCs, Smart App Control is switched on. It may block the installer or Plain Viewer completely, with no "Run anyway" button. If that happens, please tell us rather than switching Smart App Control off just for this test (on many Windows versions it cannot be switched back on without resetting the PC).
+4. Read and accept the terms page.
+5. Choose the options (next section) and click **Install**. Installing takes one to two minutes. At the end it prepares the part that shows Word and PowerPoint files, so the first one you open is quick.
+
+Plain Viewer installs for your Windows account only, in `%LOCALAPPDATA%\Programs\Plain Viewer`, and adds a Start menu entry.
+
+If you were given a checksum (a long code in a `.sha256` file), you can check the download in PowerShell with `Get-FileHash PlainViewer-Setup-0.1.0-x64.exe`; the code shown should match.
+
+## The installer's options
+
+- **Add Plain Viewer to "Open with"** (on by default). Right-click a supported file in File Explorer and choose **Open with** > **Plain Viewer**. Your default apps do not change. If you want double-clicking to use Plain Viewer, choose it yourself in Windows Settings > Apps > Default apps.
+- **Block with Windows Firewall** (off by default). Adds firewall rules that stop the parts of Plain Viewer that read documents from reaching the network, as an extra safety layer. Windows asks once for administrator permission. The About button in Plain Viewer shows whether the rules are on. Uninstalling removes them.
+- **Install the Microsoft Edge WebView2 Runtime** (only shown if your PC lacks it; on by default). PDF, Word, Excel and PowerPoint files need this Windows component; most Windows 11 PCs already have it. It is Microsoft software under Microsoft's licence and stays installed if you remove Plain Viewer. Without it, Plain Viewer still opens text, CSV and Markdown files, and explains what is missing for the others.
+- **Create a desktop shortcut** (off by default).
+
+## What to try
+
+Please use your own everyday documents as well as any test files. Things worth trying:
+
+- **Each file type:** PDF, Word, Excel, PowerPoint, CSV, text and Markdown. Do they look like they do in the program that made them? Are tables, pictures, headers and footers in the right place?
+- **Opening files in different ways:** the Open button (or Ctrl+O), dragging a file onto the window, right-click > Open with, and double-click if you made Plain Viewer your default. Each file opens in its own window.
+- **Search:** Ctrl+F, type a word, press Enter. F3 goes to the next match, Shift+F3 to the previous one.
+- **Zoom:** Ctrl+Plus, Ctrl+Minus, Ctrl+0 to reset. For PDF, Word and PowerPoint also try fit to page and fit to width.
+- **Moving around:** Page Up, Page Down, Home, End; the page or slide number box; in Excel, the sheet tabs and Ctrl+Page Up / Ctrl+Page Down.
+- **Copying:** select text or cells and press Ctrl+C, then paste somewhere else.
+- **Markdown:** switch between the rendered view and "Markdown source".
+- **Text and CSV:** if characters look wrong, or columns are split in the wrong place, try the encoding and delimiter choices.
+- **Themes:** the theme box (System, Light, Dark), and Windows' own dark mode and contrast themes (Settings > Accessibility > Contrast themes). PDF, Word, Excel and PowerPoint keep their own colours; the rest follows the theme.
+- **Keyboard only:** can you do everything with Tab, the arrow keys, Enter and the shortcuts above? F11 switches full screen on and off; Ctrl+W closes the window.
+- **Screen scaling:** if you use 150%, 200% or more (Settings > System > Display > Scale), or move the window between two monitors, does everything stay sharp and readable?
+- **Narrator** or another screen reader, if you use one.
+- **Big files:** a long PDF (hundreds of pages), a large Excel file, a CSV of tens or hundreds of megabytes. The window should stay responsive and show progress; large searches can be cancelled.
+- **Awkward files:** a password-protected file, a damaged or half-downloaded file, an empty file, a file with the wrong extension, a file on OneDrive that is not downloaded. Plain Viewer should explain what happened in plain words rather than crash or show a blank window.
+
+## Known limitations in this version
+
+- **Word and PowerPoint** are shown by converting them to pages with LibreOffice, so they are close to, but not always exactly like, Microsoft Office: long Word documents can shift by a page, and fonts your PC does not have are replaced with the closest Windows font. Office's newer default font, Aptos, is not part of Windows. PowerPoint shows static slides: animations, transitions, sound and video do not play.
+- **Excel** shows the values saved in the file; it never recalculates formulas. If a formula has no saved result you see "Result unavailable" (open and save the file in a spreadsheet program to fix it). Cell colours, fonts, borders, charts, pictures and conditional formatting are not shown yet. Text does not spill into empty neighbouring cells. Hidden sheets stay hidden.
+- **PDF:** no page thumbnails; use the page number box instead.
+- **Markdown:** pictures are shown as their description, never loaded. Embedded HTML is shown as text. Math and diagrams are shown as code.
+- **Large text files** (over 4 MB) are shown as numbered lines without word wrap, and copying works on whole lines.
+- **CSV** files are limited to 512 columns and cannot be sorted or filtered.
+- **Links** are never opened automatically. Clicking a web or email link shows the full address and asks first; other kinds of links are shown as text only.
+- **Not tested yet:** Narrator, display scaling above 100%, and ARM64 PCs. The title bar says "Development preview".
+
+## Uninstalling
+
+Open Windows Settings > Apps > Installed apps, find **Plain Viewer**, click the three dots and choose **Uninstall**. This removes the program, its "Open with" entries, its firewall rules if you added them, and its private working folders. It never touches your documents. The Microsoft Edge WebView2 Runtime stays, because other programs share it.
+
+## Your privacy: what stays on your PC
+
+Nothing leaves your PC. Plain Viewer has no account, no sign-in, no usage statistics, no crash reporting and no update check.
+
+While a document is open, Plain Viewer may keep a private temporary copy of it in `%USERPROFILE%\AppData\LocalLow\PlainViewer`. It deletes the copy when you close the document, and cleans up leftovers the next time it starts if it ever crashed. It does not keep a list of the files you open.
+
+When you report a problem, you decide what to send. We never need the document itself unless you choose to share it.
+
+## Reporting a problem
+
+Use the feedback form (`BETA-FEEDBACK.md`, sent with this guide) and send it to the person who gave you the installer. One problem per form is easiest for us.
+
+Most helpful:
+
+- What you did, step by step, and what you expected to happen.
+- The exact message in the status line at the bottom of the window, or in any message box.
+- A screenshot (press Windows+Shift+S, select the area, then paste it into your email).
+- The file type and roughly how big it is. **Please do not send the document itself** unless you are happy to and it contains nothing private. If you can, make a harmless copy that shows the same problem.
+
+Good news is useful too: tell us which of your files looked right.
