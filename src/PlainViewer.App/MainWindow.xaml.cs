@@ -22,6 +22,8 @@ public partial class MainWindow : Window
     private StoreSearch? storeSearch;
     // Shown when opening fails in a way the app has no specific message for (the smoke test treats it as a failure).
     private const string UnexpectedError = "The document could not be opened because of an unexpected problem. Try again, or try another copy of the file.";
+    private Exception? unexpected;   // behind the last UnexpectedError; reported by the smoke test only
+    private string UnexpectedDetail => unexpected is null ? "" : $" ({unexpected.GetType().Name}: {unexpected.Message})";
     private int storeMatch = -1;
     private double zoom = 1;
     private string lastQuery = "";
@@ -73,7 +75,7 @@ public partial class MainWindow : Window
         currentPath = path; await LoadCurrent();
         if (document is not null) throw new InvalidOperationException($"Expected {Path.GetFileName(path)} to be refused, but it opened.");
         if (string.IsNullOrWhiteSpace(Status.Text) || Status.Text == UnexpectedError)
-            throw new InvalidOperationException($"{Path.GetFileName(path)} was refused without a specific message: {Status.Text}");
+            throw new InvalidOperationException($"{Path.GetFileName(path)} was refused without a specific message: {Status.Text}{UnexpectedDetail}");
         if (WebPane.BlockedRequests != 0) throw new InvalidOperationException($"The document view attempted {WebPane.BlockedRequests} blocked request(s).");
         return Status.Text;
     }
@@ -85,7 +87,7 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.Manual; Left = -32000; Top = -32000; ShowActivated = false; ShowInTaskbar = false; Show();
         }
         currentPath = path; await LoadCurrent();
-        if (document is null) throw new InvalidOperationException(Status.Text);
+        if (document is null) throw new InvalidOperationException(Status.Text + UnexpectedDetail);
         if (InWebPane)
         {
             if (WebPane.Pages < 1) throw new InvalidOperationException("The document reported no pages or sheets.");
@@ -216,7 +218,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             if (loading != operation) return;
-            Status.Text = ex is DocumentException ? ex.Message : UnexpectedError;
+            unexpected = ex is DocumentException || DiskSpace.IsFull(ex) ? null : ex;
+            Status.Text = ex is DocumentException ? ex.Message : DiskSpace.IsFull(ex) ? DiskSpace.Message : UnexpectedError;
         }
         finally
         {

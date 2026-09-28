@@ -29,6 +29,7 @@ catch (OutOfMemoryException) { response = new(null, "This file needs more memory
 catch (DecoderFallbackException) { response = new(null, "The text encoding could not be read. Choose a different encoding and try again."); }
 catch (UnauthorizedAccessException) { response = new(null, "The file cannot be read. Check its permissions or copy it to a local folder."); }
 catch (FileNotFoundException) { response = new(null, "The file was moved or deleted. Choose it again from its current location."); }
+catch (IOException ex) when (DiskSpace.IsFull(ex)) { response = new(null, DiskSpace.Message); }
 catch (IOException) { response = new(null, "The file could not be read. It may be locked, moved, or damaged. Close other applications and try again."); }
 catch (Exception) { response = new(null, "The file could not be displayed. Try another file or report this problem."); }
 Console.Write(JsonSerializer.Serialize(response));

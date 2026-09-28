@@ -25,6 +25,9 @@ try
     Test("CSV malformed quotes rejected", () => Throws<DocumentException>(() => Csv.Read(new StringReader("a,\"unfinished"), ',').ToList()));
     Test("CSV empty and trailing fields", () => { Check(!Csv.Read(new StringReader(""), ',').Any()); Check(Csv.Read(new StringReader("a,"), ',').Single().SequenceEqual(new[] { "a", "" })); });
     Test("CSV delimiter ignores quoted separators", () => Check(Csv.DetectDelimiter("\"a,b\";c\n") == ';'));
+    Test("Full disk recognised, other IO errors not", () => {
+        Check(DiskSpace.IsFull(new IOException("full", unchecked((int)0x80070070))) && DiskSpace.IsFull(new IOException("full", unchecked((int)0x80070027))));
+        Check(!DiskSpace.IsFull(new IOException("locked", unchecked((int)0x80070020))) && !DiskSpace.IsFull(new InvalidDataException("x"))); });
     Test("CSV column resource limit", () => Throws<DocumentException>(() => Csv.Read(new StringReader(new string(',', 600)), ',').ToList()));
     Test("UTF BOM and Windows-1252", () => { Check(TextFiles.Detect([255, 254, 65, 0]).Encoding.CodePage == 1200); Check(TextFiles.Detect([0x93, 65, 0x94]).Encoding.CodePage == 1252); });
     Test("UTF-16 heuristic", () => Check(TextFiles.Detect([65, 0, 66, 0, 67, 0]).Encoding.CodePage == 1200));
