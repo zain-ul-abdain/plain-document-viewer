@@ -227,3 +227,8 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - With Zain's approval the repository is now **public**, and https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.1.0 is a pre-release (tag v0.1.0 at fb3de9d) with the installer, its `.sha256`, BETA.md and BETA-FEEDBACK.md.
 - C: fell to about 60 MB free after the build because Windows grew its paging file during a low-memory moment (13.4 GB allocated); a restart normally shrinks it. Check free space before any build.
 - Still open for Zain: Narrator and scaling checks, Windows Sandbox rerun of this installer (needs about 8 GB free), where testers send reports, Inno Setup commercial licence, signing, ARM64. Old commit IDs may stay reachable on GitHub by direct ID until GitHub removes them; GitHub Support can purge them on request.
+
+## Agent 2, 29 September 2026 (later): reports through GitHub Issues; disk clean-up
+
+- Zain chose GitHub Issues for beta reports. New issue template `.github/ISSUE_TEMPLATE/problem-report.md` (same questions as `docs/BETA-FEEDBACK.md`, label `beta`); BETA.md and BETA-FEEDBACK.md point to https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose and warn that issues are public (no private details or documents). The v0.1.0 release text and its BETA.md and BETA-FEEDBACK.md files were replaced with these versions; the installer is unchanged.
+- Disk clean-up at Zain's request: worktree `bin`/`obj` folders, `artifacts\publish` and Temp items older than a day were deleted (about 500 MB; Temp\DockerDesktopUpdates left alone). The next build recreates the build outputs. C: had 0.56 GB free afterwards; a restart should shrink the 13.4 GB paging file.

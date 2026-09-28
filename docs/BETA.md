@@ -77,17 +77,25 @@ Nothing leaves your PC. Plain Viewer has no account, no sign-in, no usage statis
 
 While a document is open, Plain Viewer may keep a private temporary copy of it in `%USERPROFILE%\AppData\LocalLow\PlainViewer`. It deletes the copy when you close the document, and cleans up leftovers the next time it starts if it ever crashed. It does not keep a list of the files you open.
 
-When you report a problem, you decide what to send. We never need the document itself unless you choose to share it.
+When you report a problem, you decide what to write. Problem reports are public GitHub issues, so we never ask for the document itself.
 
 ## Reporting a problem
 
-Use the feedback form (`BETA-FEEDBACK.md`, sent with this guide) and send it to the person who gave you the installer. One problem per form is easiest for us.
+Report problems on GitHub: https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose
+
+1. Sign in to GitHub (a free account is enough).
+2. Choose **Problem report**. The form (the same questions as `BETA-FEEDBACK.md`) opens ready to fill in.
+3. Give it a short title, for example "Excel file shows wrong dates", fill in what you can, and click **Create**.
+
+One problem per report is easiest for us. Before creating a new one, have a quick look at the existing issues; if someone already reported the same thing, add a comment there instead.
+
+**Issues are public:** anyone on the internet can read them. Do not include names, addresses, account numbers or anything else private, in the text or in screenshots.
 
 Most helpful:
 
 - What you did, step by step, and what you expected to happen.
 - The exact message in the status line at the bottom of the window, or in any message box.
-- A screenshot (press Windows+Shift+S, select the area, then paste it into your email).
-- The file type and roughly how big it is. **Please do not send the document itself** unless you are happy to and it contains nothing private. If you can, make a harmless copy that shows the same problem.
+- A screenshot (press Windows+Shift+S, select the area, then paste it into the issue with Ctrl+V). Check it shows nothing private.
+- The file type and roughly how big it is. **Please do not attach the document itself** unless it contains nothing private: attachments on issues are public too. If you can, make a harmless copy that shows the same problem.
 
 Good news is useful too: tell us which of your files looked right.
