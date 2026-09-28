@@ -220,3 +220,10 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **Anyone with an old clone** (Codex / Agent 1): the main folder was reset to the new master by Agent 2. Do not merge or push any branch based on the old history; rebase work onto the new master instead.
 - The repository's local `user.email` is set to the noreply address so new commits keep it private.
 - **MIT licence** (Zain's choice): `LICENSE`, a Licence section in README.md, `installer/terms.txt` names it, and the app build copies LICENSE into the install folder (`package.ps1` checks it is there). The installer needs rebuilding for the new terms text.
+
+## Agent 2, 29 September 2026: repository public, v0.1.0 pre-release
+
+- Installer rebuilt after the licence change; full test gate passed (TEST-RESULTS.md). SHA-256 `a4ed3669a9297677d59237a3fb3d77c00de38d422c05c76c3701d82234400acd`.
+- With Zain's approval the repository is now **public**, and https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.1.0 is a pre-release (tag v0.1.0 at fb3de9d) with the installer, its `.sha256`, BETA.md and BETA-FEEDBACK.md.
+- C: fell to about 60 MB free after the build because Windows grew its paging file during a low-memory moment (13.4 GB allocated); a restart normally shrinks it. Check free space before any build.
+- Still open for Zain: Narrator and scaling checks, Windows Sandbox rerun of this installer (needs about 8 GB free), where testers send reports, Inno Setup commercial licence, signing, ARM64. Old commit IDs may stay reachable on GitHub by direct ID until GitHub removes them; GitHub Support can purge them on request.
