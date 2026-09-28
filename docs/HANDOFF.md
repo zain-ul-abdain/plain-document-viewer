@@ -55,7 +55,7 @@ DECISIONS.md research retained without edits. Direction is consistent with the i
 
 ## Agent 2, 27 September 2026
 
-- **Remote created.** Zain asked for a private GitHub repository: `https://github.com/zain-ul-abdain/plain-document-viewer`, added as `origin`. The first commit on `master` contains only root and docs files (`.gitignore`, `AGENTS.md`, `README.md`, `docs/`). Codex's `src/`, `scripts/`, `tests/` and `.tools/` were not staged. Repository rules are in the new "Repository" section of `AGENTS.md`.
+- **Remote created.** Zain asked for a private GitHub repository: `https://github.com/zain-ul-abdain/plain-document-viewer`, added as `origin`. The first commit on `master` contains only root and docs files (`.gitignore`, `AGENTS.md`, an agent entry-point file, `README.md`, `docs/`). Codex's `src/`, `scripts/`, `tests/` and `.tools/` were not staged. Repository rules are in the new "Repository" section of `AGENTS.md`.
 - **Duplicate removed.** Agent 2 briefly created `docs/STATUS.md` before seeing `docs/TASKS.md` and deleted it; `TASKS.md` and this file are the only trackers. Agent 2 also deleted its own empty `doc-viewer` folder; nothing else was removed.
 - **Disk.** C: had 0.9 GB free after Zain freed space. The SDK needs 770 MB unpacked (measured from the zip's entries), so builds, NuGet packages and LibreOffice need more. The largest item is Docker's data, 52.9 GB: `docker system df` shows 19.95 GB of build cache and 10.2 GB of images reclaimable. Other sessions use Docker, so nothing was pruned; Zain decides.
 - **Docker for building: not recommended.** WPF must be built and tested on Windows, and Docker's data sits on the same C: drive, so it would use more space, not less.
@@ -205,3 +205,10 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **New docs for testers:** `docs/BETA.md` (plain-English guide: what it is, requirements, SmartScreen and Smart App Control, installer options, what to try, known limitations, uninstall, privacy, reporting), `docs/BETA-FEEDBACK.md` (problem report form; asks testers not to send documents unless they choose to), `docs/RELEASE-NOTES.md` (0.1.0). RELEASING.md step 6 points to them.
 - **Nothing was uploaded or sent.** Zain distributes the installer and the two tester files. Open for Zain: how testers receive the installer (the repository is private), who testers send reports to (BETA.md says "the person who gave you the installer"), review of `installer/terms.txt`, and the earlier items (Narrator, scaling, history cleanup, Inno Setup licence, signing, ARM64).
 - Claims released.
+
+## Agent 2, 28 September 2026 (night): preparing to make the repository public
+
+- Zain decided to make the repository public, after cleaning up first: remove the second agent's name, rewrite the history, choose a licence, then switch to public and create a v0.1.0 release.
+- **Done in this commit:** the name is replaced with "Agent 2" in every tracked file (docs, four source/test comments, the corpus generator and SOURCES.md). The agent's entry-point file is no longer tracked; it stays on disk and is listed in `.git/info/exclude`. AGENTS.md now says: neutral commit titles, no prefixes or trailers. `git grep -i` finds no mention. Build 0 warnings, core tests 75 passed.
+- **Codex / Agent 1:** fast-forwarding deletes the untracked entry-point file from your folder; Agent 2 restored it in the main folder. Nothing else of yours changed.
+- **Next, waiting for Zain:** (1) switch the permission mode so the history rewrite can run (a backup bundle exists); the rewrite removes the name from old commit messages and old file versions and needs a force-push to master, after which both folders must be reset to the new master; (2) choose a licence; (3) then make the repository public and upload the v0.1.0 pre-release.

@@ -8,7 +8,7 @@ The preview has text, CSV, and rendered Markdown (.md and .markdown) views. Requ
 
 - `docs/SPECIFICATION.md`: complete user requirements.
 - `docs/DECISIONS.md`: proposed .NET 10/WPF hybrid rendering architecture.
-- `AGENTS.md`: shared Both agents working instructions.
+- `AGENTS.md`: shared working instructions for the agents that worked on this project.
 - `docs/TASKS.md`: ownership and implementation checklist.
 - `docs/HANDOFF.md`: actual environment state and next steps.
 

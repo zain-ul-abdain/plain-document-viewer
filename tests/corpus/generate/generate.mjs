@@ -41,7 +41,7 @@ fs.writeFileSync(path.join(CORPUS, "manifest.json"), JSON.stringify(manifest, nu
 const sourcesPath = path.join(CORPUS, "SOURCES.md");
 const start = "<!-- generated-fixtures:start -->", end = "<!-- generated-fixtures:end -->";
 const rows = manifestEntries().map(e => `| ${e.file} | ${e.category} | ${e.producer} | ${e.licence} | ${describe(e)} |`);
-const section = [start, "", "## Generated fixtures (Agent 2, tests/corpus/generate)", "",
+const section = [start, "", "## Generated fixtures (tests/corpus/generate)", "",
   "Produced by `tests/corpus/generate` with libraries independent of the viewer's rendering engines, so a pass says something about fidelity. Regenerate with `npm ci` then `npm run generate` in that folder. Full expected results are in `manifest.json`.", "",
   "| File | Category | Producer | Licence | Expected result |", "|---|---|---|---|---|", ...rows, "", end].join("\n");
 let sources = fs.readFileSync(sourcesPath, "utf8");

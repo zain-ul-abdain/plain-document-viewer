@@ -16,7 +16,7 @@ Large-file corpus, Office-produced fixtures, PDF/Office RTL comparisons and obse
 
 <!-- generated-fixtures:start -->
 
-## Generated fixtures (Agent 2, tests/corpus/generate)
+## Generated fixtures (tests/corpus/generate)
 
 Produced by `tests/corpus/generate` with libraries independent of the viewer's rendering engines, so a pass says something about fidelity. Regenerate with `npm ci` then `npm run generate` in that folder. Full expected results are in `manifest.json`.
 
