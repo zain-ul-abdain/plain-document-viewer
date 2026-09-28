@@ -17,6 +17,8 @@ public sealed class DocumentView
 }
 public sealed class ViewBlock
 {
+    public int StartNumber { get; set; } = 1;
+    public string Alignment { get; set; } = "left";
     public string Kind { get; set; } = "paragraph";
     public int Level { get; set; }
     public string Text { get; set; } = "";

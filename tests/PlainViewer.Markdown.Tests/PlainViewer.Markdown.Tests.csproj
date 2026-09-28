@@ -1,1 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><ProjectReference Include="../../src/PlainViewer.Core/PlainViewer.Core.csproj" /></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/PlainViewer.Core/PlainViewer.Core.csproj" />
+    <Compile Include="../../src/PlainViewer.App/MarkdownRenderer.cs" Link="MarkdownRenderer.cs" />
+    <Compile Include="../../src/PlainViewer.App/MarkdownSearch.cs" Link="MarkdownSearch.cs" />
+  </ItemGroup>
+</Project>

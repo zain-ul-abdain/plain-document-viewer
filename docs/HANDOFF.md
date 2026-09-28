@@ -160,3 +160,33 @@ Claims released. Optional Markdown ordered-list starts, table alignment and hori
 - `sandbox-test.ps1 -WebView2Installer <file>`: every view passes on a clean offline PC (20 opened, 14 refused, keyboard and high contrast for all views). Word and PowerPoint work there without a Visual C++ runtime.
 - Fix: Excel search matches were unreadable in high contrast (Chromium's text backplate); `Assets/sheet/sheet.css` uses Mark/Highlight system colours with `forced-color-adjust: none` for match cells.
 - D9 now lists what bundling WebView2 would require under Microsoft's terms. Still open for Zain: D9, Narrator check, scaling check, Git history cleanup.
+
+## Agent 1, 28 September 2026: Markdown layout and native controls
+
+Implemented ordered-list start numbers (including zero), table column alignment and read-only code blocks with horizontal scrolling. Extracted the native renderer and added search/copy support for embedded code controls. The existing FlowDocument is still refilled, and the keyboard fixes are preserved. Rendered copy is plain text; Source remains available for original Markdown. Search does not span a code/prose boundary. The Markdown test project now targets Windows/WPF and links the production renderer/search sources; the existing test script runs it without new dependencies.
+
+Verification this increment:
+- build.ps1 -Offline: passed, 0 warnings/errors.
+- test.ps1 -Offline: 74 passed, 0 failed, 2 absent generated large fixtures skipped.
+- test-markdown.ps1 -Offline: 23 passed (14 existing plus 9 parsing/native layout/search/copy regressions).
+- test-office-safety.ps1: 14 passed, including low-integrity LocalLow output checks.
+- smoke-test.ps1: 16/16 passed on rerun. An earlier run stopped opening complex.txt with the generic unexpected-error message. Temporary exception logging was added for diagnosis, but the failure did not recur; logging was removed and the build/security checks passed. Root cause remains unknown. C: had approximately 90 MB free during investigation; this is an observation, not a proven cause.
+- security-smoke.ps1: 32/32 passed; 0 recorded requests. WebDAV service stopped; SMB not observed.
+- powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/a11y-audit.ps1 -Only complex.markdown: passed, 15 controls, document text readable.
+
+Manual keyboard traversal, clipboard integration, Narrator, high contrast and scaling for the new embedded code controls have not been rerun. The native tests cover selected-text composition, not the system clipboard. No installer rebuild, download, licensing or signing step performed.
+
+Agent 2: review and commit these exact eleven files; this session did not stage, commit or push:
+1. src/PlainViewer.Core/Models.cs
+2. src/PlainViewer.Core/MarkdownView.cs
+3. src/PlainViewer.App/MainWindow.xaml.cs
+4. src/PlainViewer.App/MarkdownRenderer.cs (new)
+5. src/PlainViewer.App/MarkdownSearch.cs (new)
+6. tests/PlainViewer.Markdown.Tests/PlainViewer.Markdown.Tests.csproj
+7. tests/PlainViewer.Markdown.Tests/Program.cs
+8. docs/TASKS.md
+9. docs/SUPPORT.md
+10. docs/TEST-RESULTS.md
+11. docs/HANDOFF.md
+
+Suggested title: Preserve Markdown list starts and table alignment and scroll wide code. No attribution trailers. Claims released; MainWindow.xaml, OfficeConverter.cs, installer files and scripts remain untouched. Before packaging, investigate the intermittent open failure if it recurs and rerun the sandbox keyboard/high-contrast checks with the new code controls.

@@ -1,0 +1,88 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Media;
+using PlainViewer.Core;
+namespace PlainViewer.App;
+
+public static class MarkdownRenderer
+{
+    public static void ResizeCode(FlowDocument flow, double viewportWidth)
+    {
+        if (viewportWidth <= 0) return;
+        foreach (var block in MarkdownSearch.CodeBlocks(flow.Blocks))
+            ((TextBox)block.Child).MaxWidth = Math.Max(120, viewportWidth - 100);
+    }
+    public static Block Render(ViewBlock model, double zoom, Action<string> openLink)
+    {
+        if (model.Kind == "table")
+        {
+            var table = new Table { CellSpacing = 0 }; var group = new TableRowGroup(); table.RowGroups.Add(group);
+            foreach (var row in model.Children)
+            {
+                var targetRow = new TableRow(); group.Rows.Add(targetRow);
+                foreach (var cell in row.Children)
+                {
+                    var target = new TableCell { Padding = new Thickness(8), BorderThickness = new Thickness(0.5), BorderBrush = SystemColors.GrayTextBrush,
+                        TextAlignment = cell.Alignment switch { "center" => TextAlignment.Center, "right" => TextAlignment.Right, _ => TextAlignment.Left } };
+                    foreach (var child in cell.Children) target.Blocks.Add(Render(child, zoom, openLink));
+                    targetRow.Cells.Add(target);
+                }
+            }
+            return table;
+        }
+        if (model.Kind is "list" or "ordered")
+        {
+            bool zeroStart = model.Kind == "ordered" && model.StartNumber == 0;
+            var list = new System.Windows.Documents.List { MarkerStyle = zeroStart ? TextMarkerStyle.None : model.Kind == "ordered" ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc,
+                StartIndex = Math.Clamp(model.StartNumber, 1, 999999999) };
+            int number = 0;
+            foreach (var item in model.Children)
+            {
+                var target = new ListItem(); foreach (var child in item.Children) target.Blocks.Add(Render(child, zoom, openLink));
+                // WPF rejects StartIndex=0, although CommonMark permits it. Use literal markers for that list.
+                if (zeroStart)
+                {
+                    if (target.Blocks.FirstBlock is not Paragraph first)
+                    {
+                        first = new Paragraph();
+                        if (target.Blocks.FirstBlock is { } firstBlock) target.Blocks.InsertBefore(firstBlock, first); else target.Blocks.Add(first);
+                    }
+                    var marker = new Run($"{number++}. ");
+                    if (first.Inlines.FirstInline is { } inline) first.Inlines.InsertBefore(inline, marker); else first.Inlines.Add(marker);
+                }
+                list.ListItems.Add(target);
+            }
+            return list;
+        }
+        if (model.Children.Count > 0)
+        {
+            var section = new Section { Margin = model.Kind == "quote" ? new Thickness(20, 6, 0, 6) : new Thickness(0) };
+            foreach (var child in model.Children) section.Blocks.Add(Render(child, zoom, openLink)); return section;
+        }
+        var paragraph = new Paragraph { Margin = new Thickness(0, 4, 0, 10) };
+        if (model.Kind == "heading") { paragraph.FontSize = (32 - Math.Min(model.Level, 6) * 2) * zoom; paragraph.FontWeight = FontWeights.SemiBold; }
+        if (model.Kind == "code")
+        {
+            var code = new TextBox { Text = model.Text, IsReadOnly = true, AcceptsTab = false, AcceptsReturn = true,
+                TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas"), FontSize = 16 * zoom,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                MaxWidth = 600, MaxHeight = 400 * zoom, Padding = new Thickness(10), Margin = new Thickness(0, 4, 0, 10) };
+            System.Windows.Automation.AutomationProperties.SetName(code, "Read-only code block");
+            return new BlockUIContainer(code);
+        }
+        if (model.Kind == "rule") { paragraph.Inlines.Add(new Run("────────────────────────")); return paragraph; }
+        foreach (var item in model.Runs)
+        {
+            var run = new Run(item.Text) { FontWeight = item.Bold ? FontWeights.Bold : FontWeights.Normal, FontStyle = item.Italic ? FontStyles.Italic : FontStyles.Normal };
+            if (item.Code) run.FontFamily = new FontFamily("Consolas");
+            if (item.Link is { } address && LinkPolicy.CanOpen(address))
+            {
+                var link = new Hyperlink(run) { ToolTip = address };
+                link.Click += (_, _) => openLink(address); paragraph.Inlines.Add(link);
+            }
+            else paragraph.Inlines.Add(run);
+        }
+        return paragraph;
+    }
+}

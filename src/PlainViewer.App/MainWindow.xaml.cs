@@ -31,6 +31,18 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent(); PreviewKeyDown += WindowKeyDown;
+        MarkdownDisplay.SizeChanged += (_, e) => MarkdownRenderer.ResizeCode(MarkdownDisplay.Document, e.NewSize.Width);
+        MarkdownDisplay.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, (_, e) =>
+        {
+            if (!MarkdownDisplay.IsKeyboardFocused) return; // Nested code controls own their native selection.
+            try { Clipboard.SetDataObject(new DataObject(DataFormats.UnicodeText, MarkdownSearch.SelectedText(MarkdownDisplay)), true); }
+            catch (System.Runtime.InteropServices.ExternalException) { Status.Text = "The clipboard is busy. Try copying again."; }
+            e.Handled = true;
+        }, (_, e) =>
+        {
+            if (!MarkdownDisplay.IsKeyboardFocused) return;
+            e.CanExecute = !MarkdownDisplay.Selection.IsEmpty; e.Handled = true;
+        }));
         Closed += (_, _) => { loading?.Cancel(); ReplaceRowStore(null, null, null); };
         // The status line is a live region: screen readers announce loading, errors and search results as they change.
         var statusText = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
@@ -117,7 +129,9 @@ public partial class MainWindow : Window
             var png = new System.Windows.Media.Imaging.PngBitmapEncoder(); png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
             using var file = File.Create(Path.Combine(captureFolder, Path.GetFileName(path) + ".png")); png.Save(file);
         }
-        if (document.Kind == "markdown" && MarkdownDisplay.Selection.Text != "Hello") throw new InvalidOperationException("Rendered Markdown search selected the wrong text.");
+        if (document.Kind == "markdown" && MarkdownDisplay.Selection.Text != "Hello"
+            && !MarkdownSearch.CodeBlocks(MarkdownDisplay.Document.Blocks).Any(block => ((TextBox)block.Child).SelectedText == "Hello"))
+            throw new InvalidOperationException("Rendered Markdown search selected the wrong text.");
         ChangeZoom(1.2);
         if (document.Kind == "markdown") { SourceToggle.IsChecked = true; if (TextView.Text != document.Text) throw new InvalidOperationException("Source view mismatch."); }
     }
@@ -279,56 +293,12 @@ public partial class MainWindow : Window
             // file was loading (as Narrator does) keeps reading the original document object, which would stay empty.
             var flow = MarkdownDisplay.Document;
             flow.Blocks.Clear(); flow.PagePadding = new Thickness(18); flow.FontFamily = new FontFamily("Segoe UI"); flow.FontSize = 16 * zoom;
-            foreach (var block in document.Blocks) flow.Blocks.Add(Render(block));
+            foreach (var block in document.Blocks) flow.Blocks.Add(MarkdownRenderer.Render(block, zoom, OpenLink));
+            MarkdownRenderer.ResizeCode(flow, MarkdownDisplay.ActualWidth);
             MarkdownDisplay.Visibility = Visibility.Visible;
         }
         else { TextView.Text = document.Text; TextView.Visibility = Visibility.Visible; }
         lastQuery = ""; matchIndex = -1; ApplyZoom();
-    }
-    private Block Render(ViewBlock model)
-    {
-        if (model.Kind == "table")
-        {
-            var table = new Table { CellSpacing = 0 }; var group = new TableRowGroup(); table.RowGroups.Add(group);
-            foreach (var row in model.Children)
-            {
-                var targetRow = new TableRow(); group.Rows.Add(targetRow);
-                foreach (var cell in row.Children)
-                {
-                    var target = new TableCell { Padding = new Thickness(8), BorderThickness = new Thickness(0.5), BorderBrush = SystemColors.GrayTextBrush };
-                    foreach (var child in cell.Children) target.Blocks.Add(Render(child));
-                    targetRow.Cells.Add(target);
-                }
-            }
-            return table;
-        }
-        if (model.Kind is "list" or "ordered")
-        {
-            var list = new System.Windows.Documents.List { MarkerStyle = model.Kind == "ordered" ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc };
-            foreach (var item in model.Children) { var target = new ListItem(); foreach (var child in item.Children) target.Blocks.Add(Render(child)); list.ListItems.Add(target); }
-            return list;
-        }
-        if (model.Children.Count > 0)
-        {
-            var section = new Section { Margin = model.Kind == "quote" ? new Thickness(20, 6, 0, 6) : new Thickness(0) };
-            foreach (var child in model.Children) section.Blocks.Add(Render(child)); return section;
-        }
-        var paragraph = new Paragraph { Margin = new Thickness(0, 4, 0, 10) };
-        if (model.Kind == "heading") { paragraph.FontSize = (32 - Math.Min(model.Level, 6) * 2) * zoom; paragraph.FontWeight = FontWeights.SemiBold; }
-        if (model.Kind == "code") { paragraph.FontFamily = new FontFamily("Consolas"); paragraph.Inlines.Add(new Run(model.Text)); return paragraph; }
-        if (model.Kind == "rule") { paragraph.Inlines.Add(new Run("────────────────────────")); return paragraph; }
-        foreach (var item in model.Runs)
-        {
-            var run = new Run(item.Text) { FontWeight = item.Bold ? FontWeights.Bold : FontWeights.Normal, FontStyle = item.Italic ? FontStyles.Italic : FontStyles.Normal };
-            if (item.Code) run.FontFamily = new FontFamily("Consolas");
-            if (item.Link is { } address && LinkPolicy.CanOpen(address))
-            {
-                var link = new Hyperlink(run) { ToolTip = address };
-                link.Click += (_, _) => OpenLink(address); paragraph.Inlines.Add(link);
-            }
-            else paragraph.Inlines.Add(run);
-        }
-        return paragraph;
     }
     private void OpenLink(string address)
     {
@@ -343,6 +313,18 @@ public partial class MainWindow : Window
         if (InWebPane) { Status.Text = "Searching…"; WebPane.Find(FindBox.Text, previous); lastQuery = FindBox.Text; return; }
         if (rowStore is not null) { FindInStore(FindBox.Text, previous); return; }
         string query = FindBox.Text; var hits = new List<int>();
+        if (MarkdownDisplay.Visibility == Visibility.Visible)
+        {
+            var matches = MarkdownSearch.Find(MarkdownDisplay, query);
+            if (lastQuery != query) matchIndex = previous ? 0 : -1;
+            if (matches.Count > 0)
+            {
+                matchIndex = (matchIndex + (previous ? -1 : 1) + matches.Count) % matches.Count;
+                matches[matchIndex].Select();
+            }
+            Status.Text = matches.Count == 0 ? "No matches." : $"Match {matchIndex + 1} of {matches.Count}.";
+            lastQuery = query; return;
+        }
         if (document.Kind == "csv")
         {
             var rows = (List<string[]>)CsvGrid.ItemsSource;
@@ -353,20 +335,14 @@ public partial class MainWindow : Window
         }
         else
         {
-            bool rendered = MarkdownDisplay.Visibility == Visibility.Visible;
-            string text = rendered ? new TextRange(MarkdownDisplay.Document.ContentStart, MarkdownDisplay.Document.ContentEnd).Text : TextView.Text;
+            string text = TextView.Text;
             for (int start = 0; start <= text.Length - query.Length;)
             { int found = text.IndexOf(query, start, StringComparison.OrdinalIgnoreCase); if (found < 0) break; hits.Add(found); start = found + query.Length; }
             if (lastQuery != query) matchIndex = previous ? 0 : -1;
             if (hits.Count > 0)
             {
                 matchIndex = (matchIndex + (previous ? -1 : 1) + hits.Count) % hits.Count;
-                if (!rendered) { TextView.Focus(); TextView.Select(hits[matchIndex], query.Length); TextView.ScrollToLine(TextView.GetLineIndexFromCharacterIndex(hits[matchIndex])); }
-                else
-                {
-                    var start = PointerAtTextOffset(MarkdownDisplay.Document, hits[matchIndex]); var end = PointerAtTextOffset(MarkdownDisplay.Document, hits[matchIndex] + query.Length);
-                    MarkdownDisplay.Focus(); MarkdownDisplay.Selection.Select(start, end); start.Paragraph?.BringIntoView();
-                }
+                TextView.Focus(); TextView.Select(hits[matchIndex], query.Length); TextView.ScrollToLine(TextView.GetLineIndexFromCharacterIndex(hits[matchIndex]));
             }
             Status.Text = hits.Count == 0 ? "No matches." : $"Match {matchIndex + 1} of {hits.Count}.";
         }
@@ -408,19 +384,6 @@ public partial class MainWindow : Window
         Status.Text = search.Error ?? (search.Done
             ? count == 0 ? "No matches." : $"Matching {unit} {storeMatch + 1} of {count:N0}.{(search.Truncated ? " The search stopped at 1,000,000 matches." : "")}"
             : $"Searching… {search.Progress:P0} · {count:N0} matching {unit}s so far{(storeMatch >= 0 ? $", showing {storeMatch + 1}" : "")}. Cancel stops the search.");
-    }
-    private static TextPointer PointerAtTextOffset(FlowDocument flow, int offset)
-    {
-        // Binary-search WPF symbol offsets rather than constructing a prefix per character.
-        var start = flow.ContentStart;
-        int low = 0, high = start.GetOffsetToPosition(flow.ContentEnd);
-        while (low < high)
-        {
-            int middle = low + (high - low) / 2;
-            var pointer = start.GetPositionAtOffset(middle)!;
-            if (new TextRange(start, pointer).Text.Length < offset) low = middle + 1; else high = middle;
-        }
-        return start.GetPositionAtOffset(low)!.GetInsertionPosition(LogicalDirection.Forward);
     }
     private static string ColumnName(int index) { string name = ""; for (int value = index + 1; value > 0; value = (value - 1) / 26) name = (char)('A' + (value - 1) % 26) + name; return name; }
     private void ApplyZoom() { TextView.FontSize = 16 * zoom; CsvGrid.FontSize = 14 * zoom; MarkdownDisplay.FontSize = 16 * zoom; if (document?.Kind == "markdown") MarkdownDisplay.Document.FontSize = 16 * zoom; ZoomButton.Content = $"{zoom:P0}"; }

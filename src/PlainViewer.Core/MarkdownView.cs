@@ -38,12 +38,19 @@ public static class MarkdownView
             case Table: output.Kind = "table"; break;
             case TableRow: output.Kind = "row"; break;
             case TableCell: output.Kind = "cell"; break;
-            case ListBlock list: output.Kind = list.IsOrdered ? "ordered" : "list"; break;
+            case ListBlock list:
+                output.Kind = list.IsOrdered ? "ordered" : "list";
+                if (int.TryParse(list.OrderedStart, out int number)) output.StartNumber = number;
+                break;
             case ListItemBlock: output.Kind = "item"; break;
             case QuoteBlock: output.Kind = "quote"; break;
         }
         if (block is ContainerBlock container)
             foreach (var child in container) output.Children.Add(ConvertBlock(child, source, depth + 1));
+        if (block is Table table)
+            foreach (var row in output.Children)
+                for (int i = 0; i < Math.Min(row.Children.Count, table.ColumnDefinitions.Count); i++)
+                    row.Children[i].Alignment = table.ColumnDefinitions[i].Alignment?.ToString().ToLowerInvariant() ?? "left";
         if (block is LeafBlock leaf && leaf.Inline is not null) output.Runs = Runs(leaf.Inline, false, false, 0, source);
         return output;
     }

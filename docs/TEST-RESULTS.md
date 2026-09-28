@@ -61,3 +61,12 @@ Compilation timings and the loading indicator are not performance benchmarks.
 - [ ] Inert unsafe Markdown references and link confirmation.
 - [ ] Cancel, timeout, forced worker failure recovery.
 - [ ] Offline install/launch, associations/uninstall after packaging.
+
+## Markdown layout increment, 28 September 2026 (Agent 1)
+
+- Offline build: 0 warnings/errors; core: 74 passed, 2 generated large fixtures absent/skipped; Office safety: 14 passed.
+- Markdown: 23 passed, including native WPF checks for list starts (zero and nondefault), table alignment, horizontal code scrolling, search across separate prose/code regions, whole-document selected-text composition and nested code/zoom.
+- Smoke: 16/16 on rerun. An earlier complex.txt open failed with an unexpected-error message and did not reproduce after temporary diagnostic logging; root cause unresolved. C: had about 90 MB free. Diagnostic logging was removed; final build and security run passed.
+- Security: 32/32, 0 recorded requests; WebDAV stopped and SMB unobserved.
+- Markdown UI Automation audit: 15 controls checked, text readable, no automated problems.
+- New code controls still need manual keyboard, system clipboard, Narrator, high-contrast and scaling checks. Existing sandbox accessibility results above predate this change. No installer rebuild or clean-PC run for this increment.
