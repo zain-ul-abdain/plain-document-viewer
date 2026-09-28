@@ -48,3 +48,7 @@ Build output: `src/PlainViewer.App/bin/Release/net10.0-windows`. Use `run.ps1` s
 - No PDF/Office renderer, file associations, installer or production signing. Docker is not used; native Windows builds and tests are intended.
 
 See `docs/SUPPORT.md` and `docs/TEST-RESULTS.md`. Packaging instructions will follow an actual offline installer; no placeholder packaging script is provided.
+
+## Licence
+
+Plain Viewer is released under the MIT licence (`LICENSE`). The components it bundles keep their own licences: see `THIRD-PARTY-NOTICES.md`.

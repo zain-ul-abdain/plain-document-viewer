@@ -49,7 +49,7 @@ $runtimePack = Get-ChildItem -LiteralPath $feed -Filter 'microsoft.netcore.app.r
 $zip = [IO.Compression.ZipFile]::OpenRead($runtimePack.FullName)
 try { foreach ($name in 'LICENSE.TXT', 'THIRD-PARTY-NOTICES.TXT') { [IO.Compression.ZipFileExtensions]::ExtractToFile($zip.GetEntry($name), (Join-Path $licenses $name), $true) } }
 finally { $zip.Dispose() }
-foreach ($file in 'PlainViewer.exe', 'PlainViewer.Worker.exe', 'PlainViewer.Worker.dll', 'coreclr.dll', 'Assets\prewarm\prewarm-word.docx', 'THIRD-PARTY-NOTICES.md') {
+foreach ($file in 'PlainViewer.exe', 'PlainViewer.Worker.exe', 'PlainViewer.Worker.dll', 'coreclr.dll', 'Assets\prewarm\prewarm-word.docx', 'THIRD-PARTY-NOTICES.md', 'LICENSE') {
   if (-not (Test-Path -LiteralPath (Join-Path $publish $file))) { throw "Published output is missing $file." }
 }
 

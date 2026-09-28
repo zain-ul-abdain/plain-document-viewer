@@ -2,7 +2,7 @@
 
 ## Current state
 
-Repository: C:\Users\zainb\PhpstormProjects\plain-document-viewer. Agent 2 created the private origin and committed research in d01dc84 while Codex implemented the preview. User authorized continuing after freeing disk space. Docker was discussed and not recommended for this native WPF app.
+Repository: C:\Users\zainb\PhpstormProjects\plain-document-viewer. Agent 2 created the private origin and committed research in badd54e while Codex implemented the preview. User authorized continuing after freeing disk space. Docker was discussed and not recommended for this native WPF app.
 
 Codex implemented the .NET 10 WPF shell, core, separate worker, tests, fixtures and scripts. Text/CSV/Markdown development preview builds and passes tests. Full v1 and required PDF/Office viewing remain unfinished. Read SPECIFICATION.md, DECISIONS.md, SUPPORT.md and TEST-RESULTS.md before continuing.
 
@@ -73,7 +73,7 @@ DECISIONS.md research retained without edits. Direction is consistent with the i
 
 ## Agent 2, 27 September 2026 (later)
 
-- **Codex's preview committed and pushed** as `d286782` with a `[codex]` message, after Agent 2 re-ran the project's scripts: build 0 warnings/0 errors; tests 22 passed, 0 failed; smoke test 6 passed.
+- **Codex's preview committed and pushed** as `81802e6` with a `[codex]` message, after Agent 2 re-ran the project's scripts: build 0 warnings/0 errors; tests 22 passed, 0 failed; smoke test 6 passed.
 - **Review notes accepted** in DECISIONS.md: D6 now keeps HTML nodes as literal text; D9 records the offline WebView2 question for Zain; gate 1 states that a failed AppContainer test needs Zain's written decision, with no silent fallback.
 - **Commit workflow:** Codex's sandbox cannot write `.git`, so Agent 2 commits Codex's verified work with `[codex]` messages. Codex, leave a note here listing the files to commit.
 - **Next:** PDF viewer and XLSX/XLS grid on a local branch in a separate worktree, then corpus fixtures for those formats. Claimed files are listed in TASKS.md.
@@ -94,9 +94,9 @@ Current process has normal user access. Git needs a per-command safe.directory e
 
 ## Agent 2, 27 September 2026 (evening): all seven required formats in the preview
 
-- **Merged on master:** PDF viewer (4aafdeb), XLSX viewer (9ad7446), corpus and security harness (508308f), Word and PowerPoint (5f4cf8b). All file claims released.
+- **Merged on master:** PDF viewer (621d714), XLSX viewer (4e15bfb), corpus and security harness (443275a), Word and PowerPoint (7ed4de3). All file claims released.
 - **LibreOffice for development:** Zain approved the download. Run `scripts/fetch-libreoffice.ps1` on a new machine; it downloads 26.2.6, checks its SHA-256 against download.documentfoundation.org, unpacks it (no system install) to `.tools/libreoffice-26.2.6` and puts its fonts where LibreOffice loads them. About 1.5 GB. `OfficeConverter` finds it automatically in development builds.
-- **Scripts to run before merging UI or document-handling changes:** `build.ps1 -Offline`, `test.ps1 -Offline`, `test-markdown.ps1`, `smoke-test.ps1` (16 files, all formats), `security-smoke.ps1` (32 hostile or broken files with the request listener). All pass at 5f4cf8b.
+- **Scripts to run before merging UI or document-handling changes:** `build.ps1 -Offline`, `test.ps1 -Offline`, `test-markdown.ps1`, `smoke-test.ps1` (16 files, all formats), `security-smoke.ps1` (32 hostile or broken files with the request listener). All pass at 7ed4de3.
 - **Open decision for Zain:** LibreOffice cannot run in an AppContainer (DECISIONS.md gate 1, with evidence and four options). Do not describe the Word/PowerPoint path as network-isolated at OS level.
 - **Known gaps, free to claim:** large-file paging for CSV and XLSX (10,000-row sheet cap now); pre-building the LibreOffice profile so the first Word/PowerPoint open meets the 5-second target; installer (Inno Setup, per-user) with LibreOffice trimmed (extensions 462 MB and UI translations 263 MB are candidates); replacing the Liberation Sans 1.x fonts bundled by PDF.js with OFL 2.x; running the .NET worker itself in an AppContainer (it has no named-pipe problem); Narrator, keyboard-only, high-contrast and 100–300% scaling checks; Markdown numbering/alignment (Codex's pending item; MainWindow is free now).
 
@@ -126,7 +126,7 @@ Zain chose a staged public release (finish blockers, private beta, public GitHub
 
 ## Agent 1, 28 September 2026: Office safety changes ready
 
-Checked against master 2f2e8df and the low-integrity/LocalLow worker contract. Fixed the pending StartsWith overload and preserved package-root-relative relationship targets. Cleanup now deletes only an output this invocation created; it cannot delete an existing output or the source supplied as output. Relationship filtering no longer skips adjacent XML nodes, removes unsafe external hyperlinks, and preserves permitted web/email and internal targets.
+Checked against master c8b6b60 and the low-integrity/LocalLow worker contract. Fixed the pending StartsWith overload and preserved package-root-relative relationship targets. Cleanup now deletes only an output this invocation created; it cannot delete an existing output or the source supplied as output. Relationship filtering no longer skips adjacent XML nodes, removes unsafe external hyperlinks, and preserves permitted web/email and internal targets.
 
 Verification: build.ps1 -Offline: 0 warnings/errors; test.ps1 -Offline: 74 passed, 0 failed, 2 large generated fixtures absent/skipped; test-markdown.ps1 -Offline: 14 passed; test-office-safety.ps1: 14 passed (including 3 actual low-integrity child-process tests writing under LocalLow); smoke-test.ps1: 16/16; security-smoke.ps1: 32/32, 0 recorded requests. WebDAV service stopped; SMB not observed. No new downloads, licence acceptance, signing, installer/firewall, performance or accessibility validation performed. User's successful Excel opening is recorded as a manual spot check, not full acceptance.
 
@@ -148,7 +148,7 @@ Claims released. Optional Markdown ordered-list starts, table alignment and hori
 
 ## Agent 2, 28 September 2026: clean-PC test, Office safety committed
 
-- **Agent 1's Office safety work committed** as dac81e9 (the nine files listed above), after rerunning build (0 warnings), core 74, Markdown 14, Office safety 14, smoke 16/16 and security smoke 32/32 with 0 requests. `package.ps1` now runs `test-office-safety.ps1` too.
+- **Agent 1's Office safety work committed** as 09b2155 (the nine files listed above), after rerunning build (0 warnings), core 74, Markdown 14, Office safety 14, smoke 16/16 and security smoke 32/32 with 0 requests. `package.ps1` now runs `test-office-safety.ps1` too.
 - **Windows Sandbox clean-PC test** (`scripts/sandbox-test.ps1`, which runs `sandbox-inner.ps1`, `keyboard-check.ps1` and `high-contrast-capture.ps1` inside the sandbox): offline install, firewall rules, "Open with", text/CSV/Markdown views, 14 refusals, keyboard, high contrast and a clean uninstall all pass. Details and what is not tested are in TEST-RESULTS.md. Windows Sandbox has no WebView2 Runtime, so the PDF, Word, PowerPoint and Excel views need Microsoft's offline installer (`-WebView2Installer`; see the next entry).
 - **App fixes from the Sandbox runs:** a missing WebView2 Runtime now gives a clear message (`DocumentWebView.EnsureReady`); unexpected failures show a plain message (`MainWindow.UnexpectedError`) instead of developer wording; Tab leaves the Markdown view (`AcceptsTab="False"`) and passes through the CSV grid (`KeyboardNavigation.TabNavigation="Once"`).
 - **Claims released:** MainWindow.xaml(.cs), DocumentWebView.cs and the sandbox scripts. Agent 1 may take the Markdown numbering, table alignment and wide-code task; say in TASKS.md which files it touches.
@@ -201,7 +201,7 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 
 ## Agent 2, 28 September 2026 (late evening): private beta prepared (stage 2)
 
-- **Installer rebuilt** from 0e35468 with `package.ps1` (full test gate passed: build 0 warnings, core 75, Markdown 23, Office safety 14, smoke, security smoke 32/32 with 0 requests). `artifacts\installer\PlainViewer-Setup-0.1.0-x64.exe` in this worktree, 403 MB, SHA-256 `f8e572f366e9ba08bf2ab3c262f320323a06b3bc523940eb72bcebce8a7f9cd9` (also in the `.sha256` file beside it). The Windows Sandbox clean-PC test was not rerun: C: had 3.5 GB free and it needs about 8 GB. Code is unchanged since the last clean-PC pass except the disk-full messages in 0e35468.
+- **Installer rebuilt** from e1252b9 with `package.ps1` (full test gate passed: build 0 warnings, core 75, Markdown 23, Office safety 14, smoke, security smoke 32/32 with 0 requests). `artifacts\installer\PlainViewer-Setup-0.1.0-x64.exe` in this worktree, 403 MB, SHA-256 `f8e572f366e9ba08bf2ab3c262f320323a06b3bc523940eb72bcebce8a7f9cd9` (also in the `.sha256` file beside it). The Windows Sandbox clean-PC test was not rerun: C: had 3.5 GB free and it needs about 8 GB. Code is unchanged since the last clean-PC pass except the disk-full messages in e1252b9.
 - **New docs for testers:** `docs/BETA.md` (plain-English guide: what it is, requirements, SmartScreen and Smart App Control, installer options, what to try, known limitations, uninstall, privacy, reporting), `docs/BETA-FEEDBACK.md` (problem report form; asks testers not to send documents unless they choose to), `docs/RELEASE-NOTES.md` (0.1.0). RELEASING.md step 6 points to them.
 - **Nothing was uploaded or sent.** Zain distributes the installer and the two tester files. Open for Zain: how testers receive the installer (the repository is private), who testers send reports to (BETA.md says "the person who gave you the installer"), review of `installer/terms.txt`, and the earlier items (Narrator, scaling, history cleanup, Inno Setup licence, signing, ARM64).
 - Claims released.
@@ -212,3 +212,11 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **Done in this commit:** the name is replaced with "Agent 2" in every tracked file (docs, four source/test comments, the corpus generator and SOURCES.md). The agent's entry-point file is no longer tracked; it stays on disk and is listed in `.git/info/exclude`. AGENTS.md now says: neutral commit titles, no prefixes or trailers. `git grep -i` finds no mention. Build 0 warnings, core tests 75 passed.
 - **Codex / Agent 1:** fast-forwarding deletes the untracked entry-point file from your folder; Agent 2 restored it in the main folder. Nothing else of yours changed.
 - **Next, waiting for Zain:** (1) switch the permission mode so the history rewrite can run (a backup bundle exists); the rewrite removes the name from old commit messages and old file versions and needs a force-push to master, after which both folders must be reset to the new master; (2) choose a licence; (3) then make the repository public and upload the v0.1.0 pre-release.
+
+## Agent 2, 28 September 2026 (night, later): history rewritten, MIT licence
+
+- **History rewritten and force-pushed to master** with Zain's approval. All 30 commits: the second agent's name replaced with "Agent 2" in messages and files, agent-name title prefixes and attribution trailers removed, the agent entry-point file removed from every commit, author and committer email set to `80884412+zain-ul-abdain@users.noreply.github.com`. The final file tree was identical before and after; no test fixture changed. **Every commit ID changed**; commit IDs quoted in TASKS.md, HANDOFF.md and TEST-RESULTS.md were updated to the new ones.
+- A backup of the old history is in `%USERPROFILE%\plain-document-viewer-before-rewrite-2026-09-28.bundle` (outside the repository; it still contains the name and the old email, so do not publish it).
+- **Anyone with an old clone** (Codex / Agent 1): the main folder was reset to the new master by Agent 2. Do not merge or push any branch based on the old history; rebase work onto the new master instead.
+- The repository's local `user.email` is set to the noreply address so new commits keep it private.
+- **MIT licence** (Zain's choice): `LICENSE`, a Licence section in README.md, `installer/terms.txt` names it, and the app build copies LICENSE into the install folder (`package.ps1` checks it is there). The installer needs rebuilding for the new terms text.
