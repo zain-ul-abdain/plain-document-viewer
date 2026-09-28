@@ -149,7 +149,14 @@ Claims released. Optional Markdown ordered-list starts, table alignment and hori
 ## Agent 2, 28 September 2026: clean-PC test, Office safety committed
 
 - **Agent 1's Office safety work committed** as dac81e9 (the nine files listed above), after rerunning build (0 warnings), core 74, Markdown 14, Office safety 14, smoke 16/16 and security smoke 32/32 with 0 requests. `package.ps1` now runs `test-office-safety.ps1` too.
-- **Windows Sandbox clean-PC test** (`scripts/sandbox-test.ps1`, which runs `sandbox-inner.ps1`, `keyboard-check.ps1` and `high-contrast-capture.ps1` inside the sandbox): offline install, firewall rules, "Open with", text/CSV/Markdown views, 14 refusals, keyboard, high contrast and a clean uninstall all pass. Details and what is not tested are in TEST-RESULTS.md. Windows Sandbox has no WebView2 Runtime, so the PDF, Word, PowerPoint and Excel views need Microsoft's offline installer (`-WebView2Installer`), a download waiting for Zain's approval.
+- **Windows Sandbox clean-PC test** (`scripts/sandbox-test.ps1`, which runs `sandbox-inner.ps1`, `keyboard-check.ps1` and `high-contrast-capture.ps1` inside the sandbox): offline install, firewall rules, "Open with", text/CSV/Markdown views, 14 refusals, keyboard, high contrast and a clean uninstall all pass. Details and what is not tested are in TEST-RESULTS.md. Windows Sandbox has no WebView2 Runtime, so the PDF, Word, PowerPoint and Excel views need Microsoft's offline installer (`-WebView2Installer`; see the next entry).
 - **App fixes from the Sandbox runs:** a missing WebView2 Runtime now gives a clear message (`DocumentWebView.EnsureReady`); unexpected failures show a plain message (`MainWindow.UnexpectedError`) instead of developer wording; Tab leaves the Markdown view (`AcceptsTab="False"`) and passes through the CSV grid (`KeyboardNavigation.TabNavigation="Once"`).
 - **Claims released:** MainWindow.xaml(.cs), DocumentWebView.cs and the sandbox scripts. Agent 1 may take the Markdown numbering, table alignment and wide-code task; say in TASKS.md which files it touches.
-- **Still open for Zain:** Narrator check; 100–300% scaling check; the WebView2 installer download (above) and decision D9; Git history cleanup before the repository goes public.
+- **Still open for Zain:** Narrator check; 100–300% scaling check; decision D9; Git history cleanup before the repository goes public.
+
+## Agent 2, 28 September 2026 (later): clean-PC test with WebView2
+
+- Zain approved the download and accepted Microsoft's WebView2 Runtime licence terms for testing only. The signed offline installer is in `.tools\webview2` (not in Git); RELEASING.md step 6 says how to get and check it.
+- `sandbox-test.ps1 -WebView2Installer <file>`: every view passes on a clean offline PC (20 opened, 14 refused, keyboard and high contrast for all views). Word and PowerPoint work there without a Visual C++ runtime.
+- Fix: Excel search matches were unreadable in high contrast (Chromium's text backplate); `Assets/sheet/sheet.css` uses Mark/Highlight system colours with `forced-color-adjust: none` for match cells.
+- D9 now lists what bundling WebView2 would require under Microsoft's terms. Still open for Zain: D9, Narrator check, scaling check, Git history cleanup.

@@ -20,6 +20,7 @@ Everything lives under `.tools` (not in Git):
 4. Inno Setup 7.1.0 in `.tools\innosetup-7.1.0`: download `innosetup-7.1.0-x64.exe` from the official GitHub release linked on https://jrsoftware.org/isdl.php, compare its SHA-256 with the digest on the release page, check its signature, then install it for the current user only:
    `innosetup-7.1.0-x64.exe /VERYSILENT /CURRENTUSER /NOICONS /MERGETASKS="!desktopicon,!fileassoc" /DIR="<repo>\.tools\innosetup-7.1.0"`
 5. Node.js (for the test corpus generator and the security smoke test's request listener).
+6. Optional, for `sandbox-test.ps1 -WebView2Installer`: Microsoft's WebView2 "Evergreen Standalone Installer" (x64) in `.tools\webview2\MicrosoftEdgeWebView2RuntimeInstallerX64.exe`, from https://developer.microsoft.com/microsoft-edge/webview2 (the download requires accepting Microsoft's WebView2 Runtime licence terms; Zain accepted them for testing only on 28 Sep 2026). Check that `Get-AuthenticodeSignature` reports a valid signature by Microsoft Corporation.
 
 ## Making a release
 

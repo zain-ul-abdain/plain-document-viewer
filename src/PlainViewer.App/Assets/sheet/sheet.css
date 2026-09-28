@@ -43,7 +43,8 @@ p.empty { margin: 32px; color: var(--muted); font-size: 15px; }
 #tabs button[aria-selected="true"] { background: var(--tab-active); border-color: var(--grid); border-bottom: 2px solid var(--accent); font-weight: 600; }
 #tabs button:focus-visible { outline: 2px solid var(--accent); }
 @media (forced-colors: active) {
-  .grid td.current { outline: 3px solid Highlight; }
-  .grid td.hit { background: Mark; color: MarkText; }
+  /* forced-color-adjust: none, or Chromium draws its dark text backplate over the Mark colour and MarkText is unreadable. */
+  .grid td.hit { forced-color-adjust: none; background: Mark; color: MarkText; }
+  .grid td.current { forced-color-adjust: none; background: Highlight; color: HighlightText; outline: 3px solid CanvasText; }
   #tabs button[aria-selected="true"] { border: 2px solid Highlight; }
 }
