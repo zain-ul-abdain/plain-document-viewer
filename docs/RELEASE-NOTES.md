@@ -1,5 +1,14 @@
 # Release notes
 
+## 0.1.1 — beta update (September 2026)
+
+Fixes from the first beta feedback. Install over 0.1.0; nothing needs uninstalling first.
+
+- **Excel:** in sheets with a frozen top row, the row number of that row (and the empty corner above the row numbers) no longer scrolls away when you scroll right; frozen columns inside frozen rows stay on top as well.
+- **Window size and position are remembered**, including whether the window was maximized. A position on a monitor that is no longer connected is ignored, and a second window opens slightly offset.
+- **The theme choice (System, Light or Dark) is remembered.**
+- Both are kept in `%LOCALAPPDATA%\PlainViewer\settings.json`, which never contains file names or document contents and is removed on uninstall.
+
 ## 0.1.0 — private beta (September 2026)
 
 The first version for testers. Installer: `PlainViewer-Setup-0.1.0-x64.exe`, Windows 11 x64, not code-signed. Guide for testers: [BETA.md](BETA.md).

@@ -45,6 +45,9 @@ public partial class MainWindow : Window
             if (!MarkdownDisplay.IsKeyboardFocused) return;
             e.CanExecute = !MarkdownDisplay.Selection.IsEmpty; e.Handled = true;
         }));
+        // The theme is chosen here, not in XAML: a SelectedIndex in XAML is applied late and would undo the saved choice.
+        if (AppSettings.Enabled) { RestoreSettings(); Closing += (_, _) => SavePlacement(); }
+        else ThemeChoice.SelectedIndex = 0;
         Closed += (_, _) => { loading?.Cancel(); ReplaceRowStore(null, null, null); };
         // The status line is a live region: screen readers announce loading, errors and search results as they change.
         var statusText = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
@@ -500,10 +503,36 @@ public partial class MainWindow : Window
     private void ThemeChanged(object s, SelectionChangedEventArgs e)
     {
         if (ThemeChoice is null) return;
-        ThemeMode = Choice(ThemeChoice) switch { "Dark" => ThemeMode.Dark, "Light" => ThemeMode.Light, _ => ThemeMode.System };
+        string choice = Choice(ThemeChoice);
+        ThemeMode = choice switch { "Dark" => ThemeMode.Dark, "Light" => ThemeMode.Light, _ => ThemeMode.System };
         if (InWebPane) WebPane.SetTheme(IsDarkTheme());
+        if (AppSettings.Enabled && AppSettings.Current.Theme != choice) { AppSettings.Current.Theme = choice; AppSettings.Save(); }
     }
 #pragma warning restore WPF0001
+    // The last theme choice and window placement. A new window opened while others are showing is offset so it does not
+    // hide them exactly.
+    private void RestoreSettings()
+    {
+        var settings = AppSettings.Current;
+        ThemeChoice.SelectedIndex = settings.Theme switch { "Light" => 1, "Dark" => 2, _ => 0 };
+        if (settings.Bounds(MinWidth, MinHeight) is { } bounds)
+        {
+            int others = Application.Current.Windows.OfType<MainWindow>().Count(w => w != this && w.IsVisible);
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = bounds.Left + 32 * others; Top = bounds.Top + 32 * others;
+            Width = bounds.Width; Height = bounds.Height;
+        }
+        if (settings.Maximized) WindowState = WindowState.Maximized;
+    }
+    private void SavePlacement()
+    {
+        bool fullScreen = WindowStyle == WindowStyle.None;   // F11: remember the state from before full screen
+        var bounds = WindowState == WindowState.Normal && !fullScreen ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        var settings = AppSettings.Current;
+        if (!bounds.IsEmpty) { settings.Left = bounds.Left; settings.Top = bounds.Top; settings.Width = bounds.Width; settings.Height = bounds.Height; }
+        settings.Maximized = fullScreen ? savedState == WindowState.Maximized : WindowState == WindowState.Maximized;
+        AppSettings.Save();
+    }
     private void NumberRow(object s, DataGridRowEventArgs e) => e.Row.Header = (e.Row.GetIndex() + 1).ToString();
     private void FileDropped(object s, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] files) foreach (var file in files) OpenPath(file); }
     private static string Version => typeof(MainWindow).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "";

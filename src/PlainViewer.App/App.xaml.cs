@@ -63,6 +63,7 @@ public partial class App : Application
             catch (Exception ex) { Console.Error.WriteLine(ex); Shutdown(1); }
             return;
         }
+        AppSettings.Enabled = true;   // remembered theme and window placement, for interactive windows only
         var window = new MainWindow(); window.Show();
         if (e.Args.Length > 0) window.OpenPath(e.Args[0]);
         // Normally already done by the installer; repeats only if the profile is missing or LibreOffice changed.

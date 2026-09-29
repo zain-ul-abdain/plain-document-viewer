@@ -1,6 +1,6 @@
 # Plain Viewer beta: a guide for testers
 
-Thank you for trying Plain Viewer. This is an early test version (0.1.0). It will have rough edges, and your reports help us find them.
+Thank you for trying Plain Viewer. This is an early test version (0.1.1). It will have rough edges, and your reports help us find them.
 
 ## What Plain Viewer is
 
@@ -20,15 +20,17 @@ It opens these files: PDF (.pdf), Word (.docx), Excel (.xlsx), PowerPoint (.pptx
 
 ## Installing
 
-1. Run `PlainViewer-Setup-0.1.0-x64.exe` (about 400 MB).
-2. **"Windows protected your PC".** Windows shows this blue warning because the installer is not yet signed with a publisher certificate. It does not mean a virus was found. Click **More info**, check that the file name is `PlainViewer-Setup-0.1.0-x64.exe`, then click **Run anyway**.
+1. Run `PlainViewer-Setup-0.1.1-x64.exe` (about 400 MB).
+2. **"Windows protected your PC".** Windows shows this blue warning because the installer is not yet signed with a publisher certificate. It does not mean a virus was found. Click **More info**, check that the file name is `PlainViewer-Setup-0.1.1-x64.exe`, then click **Run anyway**.
 3. **Smart App Control.** On some newly set-up Windows 11 PCs, Smart App Control is switched on. It may block the installer or Plain Viewer completely, with no "Run anyway" button. If that happens, please tell us rather than switching Smart App Control off just for this test (on many Windows versions it cannot be switched back on without resetting the PC).
 4. Read and accept the terms page.
 5. Choose the options (next section) and click **Install**. Installing takes one to two minutes. At the end it prepares the part that shows Word and PowerPoint files, so the first one you open is quick.
 
+If you already have an earlier beta, just run the new installer: it updates Plain Viewer in place, and nothing needs uninstalling first.
+
 Plain Viewer installs for your Windows account only, in `%LOCALAPPDATA%\Programs\Plain Viewer`, and adds a Start menu entry.
 
-If you were given a checksum (a long code in a `.sha256` file), you can check the download in PowerShell with `Get-FileHash PlainViewer-Setup-0.1.0-x64.exe`; the code shown should match.
+If you were given a checksum (a long code in a `.sha256` file), you can check the download in PowerShell with `Get-FileHash PlainViewer-Setup-0.1.1-x64.exe`; the code shown should match.
 
 ## The installer's options
 
@@ -49,7 +51,7 @@ Please use your own everyday documents as well as any test files. Things worth t
 - **Copying:** select text or cells and press Ctrl+C, then paste somewhere else.
 - **Markdown:** switch between the rendered view and "Markdown source".
 - **Text and CSV:** if characters look wrong, or columns are split in the wrong place, try the encoding and delimiter choices.
-- **Themes:** the theme box (System, Light, Dark), and Windows' own dark mode and contrast themes (Settings > Accessibility > Contrast themes). PDF, Word, Excel and PowerPoint keep their own colours; the rest follows the theme.
+- **Themes:** the theme box (System, Light, Dark; your choice is remembered), and Windows' own dark mode and contrast themes (Settings > Accessibility > Contrast themes). PDF, Word, Excel and PowerPoint keep their own colours; the rest follows the theme.
 - **Keyboard only:** can you do everything with Tab, the arrow keys, Enter and the shortcuts above? F11 switches full screen on and off; Ctrl+W closes the window.
 - **Screen scaling:** if you use 150%, 200% or more (Settings > System > Display > Scale), or move the window between two monitors, does everything stay sharp and readable?
 - **Narrator** or another screen reader, if you use one.

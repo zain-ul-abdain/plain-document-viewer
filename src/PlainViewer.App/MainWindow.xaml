@@ -8,7 +8,7 @@
     <Button Content="−" Click="ZoomOut" Padding="12,6" AutomationProperties.Name="Zoom out" />
     <Button x:Name="ZoomButton" Content="100%" Click="ResetZoom" Padding="10,6" AutomationProperties.Name="Reset zoom" />
     <Button Content="+" Click="ZoomIn" Padding="12,6" Margin="0,0,12,0" AutomationProperties.Name="Zoom in" />
-    <ComboBox x:Name="ThemeChoice" Width="100" SelectedIndex="0" SelectionChanged="ThemeChanged" AutomationProperties.Name="Theme"><ComboBoxItem>System</ComboBoxItem><ComboBoxItem>Light</ComboBoxItem><ComboBoxItem>Dark</ComboBoxItem></ComboBox>
+    <ComboBox x:Name="ThemeChoice" Width="100" SelectionChanged="ThemeChanged" AutomationProperties.Name="Theme"><ComboBoxItem>System</ComboBoxItem><ComboBoxItem>Light</ComboBoxItem><ComboBoxItem>Dark</ComboBoxItem></ComboBox>
     <Button Content="About" Click="AboutClicked" Margin="8,0,0,0" Padding="12,6" />
    </WrapPanel>
    <WrapPanel Margin="0,0,0,12">

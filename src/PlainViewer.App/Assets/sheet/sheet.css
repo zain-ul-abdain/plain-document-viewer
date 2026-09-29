@@ -19,12 +19,16 @@ table.grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; 
   border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); background: var(--page);
 }
 .grid thead th, .grid tbody th, .grid .frozen th { background: var(--header); color: var(--header-text); font-weight: 400; text-align: center; }
+/* Layers, lowest first: cells; row numbers and frozen columns (1); frozen rows (2); frozen columns within frozen rows,
+   and column letters (3); frozen column letters (4); row numbers of frozen rows and the corner (5). Selectors that
+   raise a layer must be more specific than the ones they override. */
 .grid thead tr.letters th { position: sticky; top: 0; z-index: 3; }
 .grid thead tr.frozen td, .grid thead tr.frozen th { position: sticky; z-index: 2; }
 .grid th[scope="row"] { position: sticky; inset-inline-start: 0; z-index: 1; }
-.grid thead th[scope="row"], .grid thead th.corner { z-index: 4; }
 .grid .frozen-col { position: sticky; z-index: 1; }
-.grid thead .frozen-col { z-index: 3; }
+.grid thead tr.frozen .frozen-col { z-index: 3; }
+.grid thead tr.letters .frozen-col { z-index: 4; }
+.grid thead tr.frozen th[scope="row"], .grid thead tr.letters th.corner { inset-inline-start: 0; z-index: 5; }
 .grid td.r { text-align: right; }
 .grid td.c { text-align: center; }
 .grid[dir="rtl"] td.r { text-align: left; }
