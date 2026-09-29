@@ -13,7 +13,7 @@ Open a file, read it, close it. Offline, no Microsoft Office needed, and it neve
 
 ![Plain Viewer showing an Excel workbook with its cell formatting](docs/images/screenshot-spreadsheet.png)
 
-**Status: public beta.** The installer is not code-signed yet, so Windows shows a warning when you install it (see below).
+**Status: public beta.** The installer is not code-signed yet, so Windows shows a warning when you install it (see below and the [code signing policy](#code-signing-policy)).
 
 ## What it opens
 
@@ -84,6 +84,15 @@ If you can check a download: each release has a `.sha256` file; in PowerShell, `
 ## Privacy and safety
 
 Plain Viewer never uploads anything, has no account or sign-in, sends no usage data or crash reports, and never checks for updates. Documents are read by a separate, restricted process with time and memory limits; PDF pages, spreadsheets and pictures are drawn in a locked-down browser engine that may load nothing but the document itself; Office and OpenDocument files are converted by a bundled LibreOffice with macros and links switched off, from a private copy with every reference to outside content removed. Temporary copies are deleted when you close the document. Details and limits: [docs/SUPPORT.md](docs/SUPPORT.md).
+
+## Code signing policy
+
+Plain Viewer has applied for free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). Until the project is accepted, installers are not signed. Once it is, each release installer and the programs inside it are signed by SignPath after being built from this repository by the [release workflow](.github/workflows/release.yml) on GitHub's own build machines, and only after a person approves that release in SignPath.
+
+- Committers and reviewers: [Zain ul abdain](https://github.com/zain-ul-abdain) (repository owner)
+- Approvers: [Zain ul abdain](https://github.com/zain-ul-abdain)
+
+Privacy policy: this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. The installer may add the Microsoft Edge WebView2 Runtime, a Windows component that Microsoft updates under [Microsoft's privacy statement](https://privacy.microsoft.com/privacystatement); Plain Viewer itself never uses the network.
 
 ## Build, test and package
 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "installer": the Inno Setup installer, uploaded by the release workflow as one
+     GitHub artifact (a ZIP) after the signed programs were packed into it. A copy of what is set up in SignPath; see
+     docs/RELEASING.md. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="PlainViewer-Setup-${version}-x64.exe" product-name="Plain Viewer" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

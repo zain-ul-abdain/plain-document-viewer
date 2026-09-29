@@ -37,7 +37,7 @@ Everything lives under `.tools` (not in Git):
        .\scripts\security-smoke.ps1 -App "$dir\PlainViewer.exe"
        Start-Process "$dir\unins000.exe" -Wait -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES'
 
-5. Sign the installer once a code-signing certificate exists (open decision below).
+5. For a signed installer, build it in GitHub Actions instead of on this PC (next section): signing through SignPath only accepts builds made by the repository's own workflow on GitHub's machines.
 6. Publish the installer, its `.sha256` file and short release notes (add a section to `docs/RELEASE-NOTES.md`). Keep earlier installers. For the private beta, testers also get `docs/BETA.md` (guide) and `docs/BETA-FEEDBACK.md` (problem report form).
 
 Never change `AppId` in `installer/PlainViewer.iss`; it is how Windows recognises the same app for upgrades.
@@ -60,19 +60,37 @@ Plain Viewer opens files from strangers, so ship an update whenever a bundled co
 | Markdig, ExcelNumberFormat, WebView2 SDK | NuGet | Update the version in the project file and `.tools\feed`, update notices |
 | WebView2 Runtime | Installed copies update themselves through Microsoft's update service | For each release, download the offline installer again into `.tools\webview2` (one-time setup, step 6) so new installs start from a current runtime |
 
-## Signing and Windows warnings
+## Signed release builds (SignPath)
 
-Current installers are unsigned. What users see:
+Zain chose SignPath Foundation (30 Sep 2026): free code signing for open-source projects, with a certificate issued to SignPath Foundation (so Windows shows "SignPath Foundation" as the publisher). Conditions: https://signpath.org/terms. The README's "Code signing policy" section is required by them.
+
+**The workflow** `.github/workflows/release.yml` (run it from the repository's Actions tab: "Release build", "Run workflow") builds on a clean GitHub-hosted Windows machine. `scripts/ci-prepare.ps1` fetches the same pinned tools as the one-time setup below and checks each one (NuGet packages by SHA-256, Inno Setup by GitHub's digest and its signature, LibreOffice by The Document Foundation's SHA-256, WebView2 by Microsoft's signature). Then `package.ps1 -Stage Publish` runs the whole test gate and publishes; SignPath signs the app's own five programs (`.signpath/artifact-configurations/binaries.xml`); `package.ps1 -Stage Installer` packs the signed programs; SignPath signs the installer (`installer.xml`). The result is the workflow artifact `PlainViewer-Setup-<version>-x64` (installer and `.sha256`), ready to attach to a GitHub release. Until SignPath is set up, the same workflow builds an unsigned installer.
+
+**Each release:** change the version, push, run the workflow, approve the two signing requests in SignPath when it asks (within three hours each, or the run stops), download the artifact, run the Windows Sandbox test on it (`sandbox-test.ps1 -Installer <file>`), then publish.
+
+**One-time set-up by Zain** (accounts, approvals and secrets are his to handle):
+
+1. Turn on two-factor authentication for GitHub (SignPath requires it for every team member).
+2. Apply at https://signpath.org/apply for the project https://github.com/zain-ul-abdain/plain-document-viewer. Be ready to explain: the bundled Microsoft WebView2 Runtime installer (proprietary, from Microsoft, for PCs that lack this Windows component) and the bundled LibreOffice and .NET runtime (open source, unsigned or signed by their publishers).
+3. After acceptance, in SignPath: link the predefined trusted build system "GitHub.com" to the project; create the artifact configurations `binaries` and `installer` from the two files in `.signpath/artifact-configurations`; use the signing policy SignPath Foundation sets up (usually `release-signing`) with Zain as approver; create an API token for a user with submitter rights.
+4. In the GitHub repository settings: add the secret `SIGNPATH_API_TOKEN` and the variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG` and `SIGNPATH_SIGNING_POLICY_SLUG`. Optionally install the SignPath GitHub App.
+5. Run the workflow once and approve both requests. If SignPath rejects the installer's product name or version, that is because Inno Setup pads these fields with spaces: tell the agents, who will change the `installer` configuration.
+
+Not signed: the uninstaller that Inno Setup writes during installation.
+
+## Windows warnings
+
+What users see while installers are unsigned:
 
 - **SmartScreen:** "Windows protected your PC" when the installer starts. They continue with "More info" > "Run anyway". The warning fades for a signed file as it builds reputation; for unsigned files it stays.
 - **Smart App Control** (Windows 11, on some clean installs): when it is on, it can block unsigned programs outright, with no "Run anyway". `PlainViewer.exe` and `PlainViewer.Worker.exe` are unsigned; the .NET runtime files are signed by Microsoft and LibreOffice's by its publisher.
 - Some antivirus products scan unsigned installers more strictly.
 
-Steps once a certificate exists: sign `PlainViewer.exe` and `PlainViewer.Worker.exe` in `artifacts\publish\win-x64` after publishing, then let Inno Setup sign the installer and uninstaller by adding a `SignTool` directive and `SignedUninstaller=yes` to `installer\PlainViewer.iss`. Use SHA-256 file digests and an RFC 3161 timestamp (`signtool sign /fd SHA256 /tr <timestamp URL> /td SHA256 ...`) so signatures stay valid after the certificate expires. A self-signed certificate may be used for local testing only, never for distribution (specification).
+Signed installers show "SignPath Foundation" as the verified publisher. SmartScreen can still warn until the signed files have built up reputation. A self-signed certificate may be used for local testing only, never for distribution (specification).
 
 ## Open decisions for Zain
 
-- **Code signing.** The specification says not to buy a certificate now; production signing is a later step (see "Signing" below). A certificate is a paid, yearly item; check current prices and eligibility when the time comes (for example an OV certificate from a certificate authority, or Microsoft's Azure-based signing service, whose eligibility rules for individuals need checking).
+- **Code signing.** Decided 30 Sep 2026: SignPath Foundation (free; see "Signed release builds"). Waiting for Zain's application and set-up.
 - **Inno Setup commercial licence.** Inno Setup's licence allows commercial use for free, but since 2025 its authors ask commercial users with annual revenue above USD 5,000 to buy a licence (Single User, Team 2–5 users, Enterprise; one-time payment with two years of updates; price shown at checkout). They state it is not strictly required.
 - **Where to publish.** GitHub Releases (this repository is private, so users could not download from it; a public repository or another host is needed), your own website, winget (needs a public download link) or the Microsoft Store (not tested with LibreOffice inside).
 - **Terms page wording** (`installer/terms.txt`): a draft; review it before the beta. Plain Viewer's own licence is chosen at the public release.

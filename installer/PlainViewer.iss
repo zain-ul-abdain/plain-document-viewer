@@ -11,6 +11,11 @@ AppName=Plain Viewer
 AppVersion={#AppVersion}
 AppVerName=Plain Viewer {#AppVersion}
 VersionInfoVersion={#AppVersion}
+; Product name and version as SignPath's signing rules require them on every signed file.
+VersionInfoProductName=Plain Viewer
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion}
+VersionInfoDescription=Plain Viewer Setup
 DefaultDirName={autopf}\Plain Viewer
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -35,8 +40,9 @@ SetupIconFile=..\src\PlainViewer.App\Assets\app.ico
 SetupLogging=yes
 ; Users accept these terms, which include Microsoft's terms for the bundled WebView2 Runtime (DECISIONS.md D9).
 LicenseFile=terms.txt
-; Code signing needs a certificate (a decision for Zain; see docs/RELEASING.md). With one, add a SignTool
-; directive here and SignedUninstaller=yes, so Windows SmartScreen stops warning about an unknown publisher.
+; Release builds are signed by SignPath after this script runs (.github/workflows/release.yml, docs/RELEASING.md):
+; the app's own programs before they are packed, then this setup program. The uninstaller Inno Setup writes at install
+; time is not signed.
 
 [Tasks]
 Name: openwith; Description: "Add Plain Viewer to ""Open with"" for PDF, Word, Excel, PowerPoint, OpenDocument, RTF, picture, text, CSV, Markdown and data files (your default apps do not change)"

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "binaries": the app's own programs, which the release workflow uploads as one
+     GitHub artifact (a ZIP) before they are packed into the installer. Each must carry the product name and the
+     release version (Directory.Build.props). A copy of what is set up in SignPath; see docs/RELEASING.md. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file-set product-name="Plain Viewer" product-version="${version}">
+      <include path="PlainViewer.exe" />
+      <include path="PlainViewer.dll" />
+      <include path="PlainViewer.Core.dll" />
+      <include path="PlainViewer.Worker.exe" />
+      <include path="PlainViewer.Worker.dll" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

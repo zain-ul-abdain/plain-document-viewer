@@ -32,6 +32,8 @@ const fs = require("fs"), crypto = require("crypto");
 })().catch(e => { console.error(e.message); process.exit(1); });
 '@
 & node -e $download $url $msi
+# Older releases move from "stable" to The Document Foundation's archive once a newer one is out.
+if ($LASTEXITCODE -ne 0) { & node -e $download "https://downloadarchive.documentfoundation.org/libreoffice/old/$Version/win/x86_64/$name" $msi }
 if ($LASTEXITCODE -ne 0) { throw 'Download or checksum verification failed.' }
 
 $process = Start-Process msiexec.exe -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$target`"") -Wait -PassThru

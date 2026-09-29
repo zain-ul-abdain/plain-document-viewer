@@ -1,0 +1,134 @@
+# Release build: makes the Windows installer from this repository on a GitHub-hosted runner, running the full test
+# gate first. Once SignPath is set up (docs/RELEASING.md: repository variables SIGNPATH_ORGANIZATION_ID,
+# SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG, and the secret SIGNPATH_API_TOKEN), SignPath signs the app's
+# own programs before they are packed and then the installer; each signing request waits for a person to approve it
+# in SignPath. Without that set-up the installer is built unsigned. Publishing a release is a separate, manual step.
+name: Release build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    # Long enough for the tests, the build and two signing approvals.
+    timeout-minutes: 330
+    env:
+      SIGNING: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.401'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Prepare build tools
+        shell: powershell
+        run: .\scripts\ci-prepare.ps1
+
+      - name: Read the version
+        id: version
+        shell: powershell
+        run: |
+          $version = ([xml](Get-Content -Raw Directory.Build.props)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Test and publish
+        shell: powershell
+        run: .\scripts\package.ps1 -Stage Publish
+
+      - name: Upload the programs for signing
+        id: programs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: programs-unsigned
+          path: artifacts/sign/binaries/
+          if-no-files-found: error
+
+      - name: Sign the programs (SignPath, waits for approval)
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ steps.programs.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 10800
+          output-artifact-directory: artifacts/sign/signed-binaries
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+
+      - name: Put the signed programs into the app
+        if: env.SIGNING == 'true'
+        shell: powershell
+        run: |
+          $files = @(Get-ChildItem -LiteralPath artifacts\sign\signed-binaries -File)
+          if ($files.Count -ne 5) { throw "Expected 5 signed programs, got $($files.Count)." }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne 'Valid') { throw "$($file.Name) is not validly signed ($($signature.Status))." }
+            Copy-Item -LiteralPath $file.FullName -Destination artifacts\publish\win-x64 -Force
+          }
+
+      - name: Build the installer
+        shell: powershell
+        run: .\scripts\package.ps1 -Stage Installer
+
+      - name: Upload the installer for signing
+        id: installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installer-unsigned
+          path: artifacts/installer/PlainViewer-Setup-*-x64.exe
+          if-no-files-found: error
+
+      - name: Sign the installer (SignPath, waits for approval)
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 10800
+          output-artifact-directory: artifacts/signed-installer
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+
+      - name: Collect the release files
+        shell: powershell
+        run: |
+          $name = "PlainViewer-Setup-${{ steps.version.outputs.version }}-x64.exe"
+          $source = if ($env:SIGNING -eq 'true') { 'artifacts\signed-installer' } else { 'artifacts\installer' }
+          $release = New-Item -ItemType Directory -Force -Path artifacts\release
+          $setup = Join-Path $release $name
+          Copy-Item -LiteralPath (Join-Path $source $name) -Destination $setup
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          if ($env:SIGNING -eq 'true' -and $signature.Status -ne 'Valid') { throw "The installer is not validly signed ($($signature.Status))." }
+          Write-Output "Installer signature: $($signature.Status) $($signature.SignerCertificate.Subject)"
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$setup.sha256" -Value "$hash  $name" -Encoding ascii
+          Write-Output "SHA-256: $hash"
+
+      - name: Upload the release files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: PlainViewer-Setup-${{ steps.version.outputs.version }}-x64
+          path: artifacts/release/
+          if-no-files-found: error
