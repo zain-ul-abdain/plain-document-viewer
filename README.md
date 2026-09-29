@@ -115,6 +115,7 @@ Office formats need LibreOffice for development: `.\scripts\fetch-libreoffice.ps
 - [docs/SPECIFICATION.md](docs/SPECIFICATION.md): the full requirements.
 - [docs/DECISIONS.md](docs/DECISIONS.md): technology decisions and their evidence.
 - [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md): what changed in each version.
+- [docs/STORE-LISTING.md](docs/STORE-LISTING.md): draft Microsoft Store listing (not submitted).
 - [AGENTS.md](AGENTS.md): shared working instructions for the agents that worked on this project; [docs/TASKS.md](docs/TASKS.md) and [docs/HANDOFF.md](docs/HANDOFF.md): task records and handoff notes.
 
 ## Licence
