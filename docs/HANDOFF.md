@@ -232,3 +232,9 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 
 - Zain chose GitHub Issues for beta reports. New issue template `.github/ISSUE_TEMPLATE/problem-report.md` (same questions as `docs/BETA-FEEDBACK.md`, label `beta`); BETA.md and BETA-FEEDBACK.md point to https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose and warn that issues are public (no private details or documents). The v0.1.0 release text and its BETA.md and BETA-FEEDBACK.md files were replaced with these versions; the installer is unchanged.
 - Disk clean-up at Zain's request: worktree `bin`/`obj` folders, `artifacts\publish` and Temp items older than a day were deleted (about 500 MB; Temp\DockerDesktopUpdates left alone). The next build recreates the build outputs. C: had 0.56 GB free afterwards; a restart should shrink the 13.4 GB paging file.
+
+## Agent 2, 29 September 2026 (afternoon): released installer passes the clean-PC test; beta stage complete
+
+- After a restart C: had 88 GB free. The Windows Sandbox test ran on the exact installer on the v0.1.0 release page and passed everything, including keyboard and high contrast for the new Markdown code blocks (TEST-RESULTS.md).
+- Stage 2 (private beta) is complete: public repository, MIT licence, v0.1.0 pre-release with installer, checksum and tester guides, reports through GitHub Issues (label `beta`, template `problem-report.md`).
+- **Still open for Zain:** Narrator check, 150–300% display-scaling check, Inno Setup commercial licence, code signing, ARM64 installer, optional GitHub Support purge of the pre-rewrite commits. **For the agents:** watch GitHub Issues labelled `beta` and triage reports.
