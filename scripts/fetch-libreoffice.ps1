@@ -17,7 +17,7 @@ $url = "https://download.documentfoundation.org/libreoffice/stable/$Version/win/
 $download = @'
 const fs = require("fs"), crypto = require("crypto");
 (async () => {
-  const [url, file] = process.argv.slice(1);
+  const [url, file] = process.argv.slice(2);
   const expected = (await (await fetch(url + ".sha256", { redirect: "error" })).text()).trim().split(/\s+/)[0];
   if (!/^[0-9a-f]{64}$/.test(expected)) throw new Error("no checksum from download.documentfoundation.org");
   const response = await fetch(url);
@@ -31,14 +31,18 @@ const fs = require("fs"), crypto = require("crypto");
   console.log("Verified SHA-256 " + actual);
 })().catch(e => { console.error(e.message); process.exit(1); });
 '@
-& node -e $download $url $msi
+# Run from a file: Windows PowerShell 5.1 drops the double quotes inside a script passed with node -e.
+$script = Join-Path $downloads 'fetch-checked.js'
+Set-Content -LiteralPath $script -Value $download -Encoding utf8
+& node $script $url $msi
 # Older releases move from "stable" to The Document Foundation's archive once a newer one is out.
-if ($LASTEXITCODE -ne 0) { & node -e $download "https://downloadarchive.documentfoundation.org/libreoffice/old/$Version/win/x86_64/$name" $msi }
+if ($LASTEXITCODE -ne 0) { & node $script "https://downloadarchive.documentfoundation.org/libreoffice/old/$Version/win/x86_64/$name" $msi }
 if ($LASTEXITCODE -ne 0) { throw 'Download or checksum verification failed.' }
 
 $process = Start-Process msiexec.exe -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$target`"") -Wait -PassThru
 if ($process.ExitCode -ne 0) { throw "Unpacking failed (msiexec exit code $($process.ExitCode))." }
 Remove-Item $msi -Force
+Remove-Item $script -Force
 Remove-Item (Join-Path $target $name) -Force -ErrorAction SilentlyContinue
 
 # Moves the fonts where LibreOffice loads them, adds the C++ runtime and removes what the viewer never uses.

@@ -40,7 +40,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $inno 'ISCC.exe'))) {
   $setup = Join-Path $downloads 'innosetup-7.1.0-x64.exe'
   Get-Checked 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' $setup '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
   $signature = Get-AuthenticodeSignature -LiteralPath $setup
-  if ($signature.Status -ne 'Valid') { throw "The Inno Setup installer's signature is not valid ($($signature.Status))." }
+  if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike 'CN=Pyrsys B.V.,*') {
+    throw "The Inno Setup installer is not validly signed by its publisher, Pyrsys B.V. ($($signature.Status), $($signature.SignerCertificate.Subject))."
+  }
   Write-Output "Inno Setup signed by: $($signature.SignerCertificate.Subject)"
   $process = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/NOICONS',
     '/MERGETASKS="!desktopicon,!fileassoc"', "/DIR=`"$inno`"")
