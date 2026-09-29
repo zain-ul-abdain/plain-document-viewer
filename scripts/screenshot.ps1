@@ -1,8 +1,9 @@
-# Takes README screenshots: opens each file in the development build (Light theme, thumbnails on, 1280 x 820) and
+# Takes README and Store screenshots: opens each file in the development build (Light theme unless -Theme Dark,
+# thumbnails on, 1280 x 820 unless -Width and -Height say otherwise; the Store needs at least 1366 x 768) and
 # saves the whole window with PrintWindow, which also captures the WebView2 content. The window appears on screen for
 # a few seconds. The viewer's settings file is backed up and restored.
 #   screenshot.ps1 -File <document> -Out <png>   (repeat the script for each picture)
-param([Parameter(Mandatory)][string]$File, [Parameter(Mandatory)][string]$Out, [int]$Width = 1280, [int]$Height = 820, [int]$Wait = 6)
+param([Parameter(Mandatory)][string]$File, [Parameter(Mandatory)][string]$Out, [int]$Width = 1280, [int]$Height = 820, [int]$Wait = 6, [ValidateSet('Light', 'Dark')][string]$Theme = 'Light')
 . "$PSScriptRoot\env.ps1"
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
@@ -22,13 +23,17 @@ public static class Capture {
 $settings = Join-Path $env:LOCALAPPDATA 'PlainViewer\settings.json'
 $backup = if (Test-Path $settings) { [IO.File]::ReadAllText($settings) } else { $null }
 New-Item -ItemType Directory -Force (Split-Path $settings) | Out-Null
-[IO.File]::WriteAllText($settings, '{"Theme":"Light","Thumbnails":true,"Maximized":false}')
+[IO.File]::WriteAllText($settings, "{""Theme"":""$Theme"",""Thumbnails"":true,""Maximized"":false}")
 $dll = Join-Path $repoRoot 'src\PlainViewer.App\bin\Release\net10.0-windows\PlainViewer.dll'
 $process = Start-Process $Dotnet -ArgumentList @("`"$dll`"", "`"$((Resolve-Path $File).Path)`"") -PassThru
 try {
   for ($i = 0; $i -lt 60 -and $process.MainWindowHandle -eq 0; $i++) { Start-Sleep -Milliseconds 500; $process.Refresh() }
   $window = $process.MainWindowHandle
   [Capture]::SetWindowPos($window, [IntPtr]::Zero, 40, 40, $Width, $Height, 0x0040) | Out-Null
+  # The title shows the file name once the document has opened (Word and PowerPoint files are converted first).
+  $name = [IO.Path]::GetFileName($File)
+  for ($i = 0; $i -lt 180 -and -not $process.MainWindowTitle.StartsWith($name); $i++) { Start-Sleep -Milliseconds 500; $process.Refresh() }
+  if (-not $process.MainWindowTitle.StartsWith($name)) { throw "$name did not open within 90 seconds." }
   Start-Sleep -Seconds $Wait
   # The visible frame (without the invisible resize border Windows adds around it).
   $frame = New-Object Capture+RECT

@@ -118,14 +118,22 @@ Answer "no" to every content question: no violence, sexual content, gambling, dr
 
 Plain Viewer is a read-only document viewer. After installing, open any document from the Start menu app with "Open file" (Ctrl+O), or right-click a file in File Explorer and choose Open with > Plain Viewer. It needs no account and makes no network connections; a sample set of documents is in the tests/corpus folder of the GitHub repository. The installer includes the Microsoft Edge WebView2 Runtime (Microsoft's offline installer) for PCs that lack it, and a trimmed LibreOffice (MPL-2.0) that lays out Word and PowerPoint files.
 
-## Images still needed
+## Images
 
-- Screenshots: the Store needs at least 1366 × 768 pixels for desktop; the README's screenshots are 1262 × 811. Make new ones at 1920 × 1080 with scripts/screenshot.ps1 (a document, a spreadsheet with a chart, a presentation, a picture). Up to 10; captions can be the product features above.
-- Store logo: a 300 × 300 PNG from docs/images/logo.svg (scripts/make-icon.ps1 makes a 256 × 256 one; it needs a 300 × 300 size added).
+In docs/images/store (made by scripts/screenshot.ps1 and scripts/make-icon.ps1 -StoreLogoOnly from the sample files in docs/images/showcase, which tests/corpus/generate/showcase.mjs makes):
+
+- Store logo: logo-300.png (300 × 300).
+- Screenshots, 1902 × 1004 (the Store needs at least 1366 × 768), with suggested captions:
+  1. screenshot-1-document.png: "Word documents as pages, with page thumbnails"
+  2. screenshot-2-spreadsheet.png: "Excel workbooks with their formatting and charts"
+  3. screenshot-3-presentation.png: "PowerPoint slides with a slide strip"
+  4. screenshot-4-markdown-dark.png: "Markdown notes, here in the dark theme"
+
+The status line at the bottom of the window is cropped off: it shows how long a file took to open, which on a busy PC misrepresents typical times.
 
 ## Before submitting
 
 1. SignPath signing works (docs/RELEASING.md), and every program file in the installer is signed. Not signed today: Markdig.dll, ExcelNumberFormat.dll (third-party libraries) and the uninstaller Inno Setup writes; decide with Microsoft whether they may stay unsigned, or sign them.
 2. A Partner Center developer account (identity verification), and the name reserved.
-3. The images above.
+3. Upload the images above.
 4. Whether to mention "beta" in the listing while releases are pre-releases on GitHub.

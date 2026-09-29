@@ -55,19 +55,25 @@ function stylesWorkbook() {
 }
 
 // A chart part: one chart of the given kind with cached categories and values, and references to the cells they came
-// from (series in columns B, C, ... of rows 2-5 by default; a pie chart of one row passes `across`).
-function chartXml({ kind, title, categories, series, across }) {
+// from (series in columns B, C, ... of rows 2-5 by default; a pie chart of one row passes `across`; other workbooks
+// pass `refs` with their own name(i), cat and val(i) references, and `stacked` for a stacked column chart).
+export function chartXml({ kind, title, categories, series, across, refs, stacked }) {
   const strCache = values => `<c:strCache><c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:strCache>`;
   const numCache = values => `<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:numCache>`;
-  const ser = series.map(([name, values, colour], i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:strRef><c:f>Sales!$${"BC"[i] ?? "B"}$1</c:f>${strCache([name])}</c:strRef></c:tx>` +
+  const nameRef = i => refs ? refs.name(i) : `Sales!$${"BC"[i] ?? "B"}$1`;
+  const catRef = refs ? refs.cat : across ? across.cat : "Sales!$A$2:$A$5";
+  const valRef = i => refs ? refs.val(i) : across ? across.val : `Sales!$${"BC"[i] ?? "B"}$2:$${"BC"[i] ?? "B"}$5`;
+  const ser = series.map(([name, values, colour], i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:strRef><c:f>${nameRef(i)}</c:f>${strCache([name])}</c:strRef></c:tx>` +
     (colour ? `<c:spPr><a:solidFill><a:srgbClr val="${colour}"/></a:solidFill></c:spPr>` : "") +
-    `<c:cat><c:strRef><c:f>${across ? across.cat : "Sales!$A$2:$A$5"}</c:f>${strCache(categories)}</c:strRef></c:cat>` +
-    `<c:val><c:numRef><c:f>${across ? across.val : `Sales!$${"BC"[i] ?? "B"}$2:$${"BC"[i] ?? "B"}$5`}</c:f>${numCache(values)}</c:numRef></c:val></c:ser>`).join("");
-  const axes = kind === "pieChart" ? "" : '<c:axId val="1"/><c:axId val="2"/>';
-  const body = kind === "barChart" ? `<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${ser}${axes}</c:barChart>`
+    `<c:cat><c:strRef><c:f>${catRef}</c:f>${strCache(categories)}</c:strRef></c:cat>` +
+    `<c:val><c:numRef><c:f>${valRef(i)}</c:f>${numCache(values)}</c:numRef></c:val></c:ser>`).join("");
+  const round = kind === "pieChart" || kind === "doughnutChart";
+  const axes = round ? "" : '<c:axId val="1"/><c:axId val="2"/>';
+  const body = kind === "barChart" ? `<c:barChart><c:barDir val="col"/><c:grouping val="${stacked ? "stacked" : "clustered"}"/><c:varyColors val="0"/>${ser}${stacked ? '<c:overlap val="100"/>' : ""}${axes}</c:barChart>`
     : kind === "lineChart" ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${ser}<c:marker val="1"/>${axes}</c:lineChart>`
+    : kind === "doughnutChart" ? `<c:doughnutChart><c:varyColors val="1"/>${ser}<c:firstSliceAng val="0"/><c:holeSize val="50"/></c:doughnutChart>`
     : `<c:pieChart><c:varyColors val="1"/>${ser}<c:firstSliceAng val="0"/></c:pieChart>`;
-  const axisParts = kind === "pieChart" ? "" : '<c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>' +
+  const axisParts = round ? "" : '<c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>' +
     '<c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:crossAx val="1"/></c:valAx>';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     `<c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${title}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/>${body}${axisParts}</c:plotArea>` +

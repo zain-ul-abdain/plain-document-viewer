@@ -1,6 +1,9 @@
 # Makes the app icon (src/PlainViewer.App/Assets/app.ico) and docs/images/logo-256.png from docs/images/logo.svg.
 # The SVG is drawn by Microsoft Edge (or Google Chrome) in headless mode at 1024 pixels with a transparent background, then scaled down
 # with GDI+ to each icon size; the icon holds 16, 20, 24, 32, 40, 48, 64, 128 and 256 pixel images (PNG-compressed).
+# It also writes docs/images/store/logo-300.png, the 300 x 300 logo the Microsoft Store listing needs; -StoreLogoOnly
+# writes only that file.
+param([switch]$StoreLogoOnly)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $svg = Join-Path $repo 'docs\images\logo.svg'
@@ -31,6 +34,10 @@ try {
     , $stream.ToArray()
   }
   try {
+    $store = Join-Path $repo 'docs\images\store'; New-Item -ItemType Directory -Force $store | Out-Null
+    [IO.File]::WriteAllBytes((Join-Path $store 'logo-300.png'), (Scaled 300))
+    Write-Output 'Wrote docs\images\store\logo-300.png'
+    if ($StoreLogoOnly) { return }
     $sizes = 16, 20, 24, 32, 40, 48, 64, 128, 256
     $images = @($sizes | ForEach-Object { , (Scaled $_) })
     [IO.File]::WriteAllBytes((Join-Path $repo 'docs\images\logo-256.png'), $images[-1])

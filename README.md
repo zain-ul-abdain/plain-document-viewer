@@ -9,9 +9,10 @@ Open a file, read it, close it. Offline, no Microsoft Office needed, and it neve
 <a href="#how-to-install">How to install</a> · <a href="#how-to-use">How to use</a> ·
 <a href="https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose">Report a problem</a></p>
 
-![Plain Viewer showing a Word document with page thumbnails](docs/images/screenshot-document.png)
-
-![Plain Viewer showing an Excel workbook with its cell formatting](docs/images/screenshot-spreadsheet.png)
+<table>
+<tr><td><img src="docs/images/screenshot-document.png" alt="A Word newsletter shown as pages, with page thumbnails"></td><td><img src="docs/images/screenshot-spreadsheet.png" alt="An Excel budget with its cell formatting and two charts"></td></tr>
+<tr><td><img src="docs/images/screenshot-presentation.png" alt="A PowerPoint presentation with its slide strip"></td><td><img src="docs/images/screenshot-markdown-dark.png" alt="A Markdown document in the dark theme"></td></tr>
+</table>
 
 **Status: public beta.** The installer is not code-signed yet, so Windows shows a warning when you install it (see below and the [code signing policy](#code-signing-policy)).
 
