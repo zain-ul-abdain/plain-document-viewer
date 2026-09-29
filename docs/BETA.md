@@ -1,6 +1,6 @@
 # Plain Viewer beta: a guide for testers
 
-Thank you for trying Plain Viewer. This is an early test version (0.4.0). It will have rough edges, and your reports help us find them.
+Thank you for trying Plain Viewer. This is an early test version (0.5.0). It will have rough edges, and your reports help us find them.
 
 ## What Plain Viewer is
 
@@ -26,7 +26,7 @@ Files with macros open with the macros removed or ignored: they never run, and t
 
 ## Installing
 
-1. Run `PlainViewer-Setup-0.4.0-x64.exe` (about 400 MB).
+1. Run `PlainViewer-Setup-0.5.0-x64.exe` (about 400 MB).
 2. **"Windows protected your PC".** Windows shows this blue warning because the installer is not yet signed with a publisher certificate. It does not mean a virus was found. Click **More info**, check that the file name is `PlainViewer-Setup-0.3.0-x64.exe`, then click **Run anyway**.
 3. **Smart App Control.** On some newly set-up Windows 11 PCs, Smart App Control is switched on. It may block the installer or Plain Viewer completely, with no "Run anyway" button. If that happens, please tell us rather than switching Smart App Control off just for this test (on many Windows versions it cannot be switched back on without resetting the PC).
 4. Read and accept the terms page.
@@ -36,7 +36,7 @@ If you already have an earlier beta, just run the new installer: it updates Plai
 
 Plain Viewer installs for your Windows account only, in `%LOCALAPPDATA%\Programs\Plain Viewer`, and adds a Start menu entry.
 
-If you were given a checksum (a long code in a `.sha256` file), you can check the download in PowerShell with `Get-FileHash PlainViewer-Setup-0.4.0-x64.exe`; the code shown should match.
+If you were given a checksum (a long code in a `.sha256` file), you can check the download in PowerShell with `Get-FileHash PlainViewer-Setup-0.5.0-x64.exe`; the code shown should match.
 
 ## The installer's options
 
