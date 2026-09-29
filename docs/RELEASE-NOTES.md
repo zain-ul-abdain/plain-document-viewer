@@ -1,10 +1,9 @@
 # Release notes
 
-## 0.5.0 — beta: Windows 10, pictures and charts in .xls and .ods (September 2026)
+## 0.5.0 — beta: pictures and charts in .xls and .ods (September 2026)
 
 Install over any earlier beta; nothing needs uninstalling first.
 
-- **Windows 10** (version 21H2 or later) as well as Windows 11. Not yet tested on a Windows 10 PC.
 - **Pictures and charts in .xls and .ods files**, like those in .xlsx. Linked pictures stored outside the file are never loaded.
 - Fixed: in .xls files, sheet settings saved after an embedded chart (such as frozen panes) were lost; in .ods files, text inside shapes was added to the cell's text.
 - Release installers are built by GitHub Actions, ready for code signing through SignPath once the project is accepted.

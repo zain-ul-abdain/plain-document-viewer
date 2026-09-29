@@ -274,3 +274,9 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 
 - **Signing (Zain chose SignPath Foundation):** `.github/workflows/release.yml` builds on a GitHub-hosted runner (`scripts/ci-prepare.ps1` fetches pinned, verified tools), runs the full test gate, and signs through SignPath once the repository variables and secret exist; until then it builds unsigned. `package.ps1 -Stage Publish|Installer`. Artifact configurations in `.signpath/`. README has the required code signing policy. Zain's steps (2FA, application, SignPath set-up, secrets) are in RELEASING.md. Risks told to Zain: young project (reputation), bundled WebView2 installer (proprietary), Inno Setup pads its version fields.
 - **Windows 10** (Zain): installer minimum is now build 19044 (DECISIONS.md D13). No code change was needed; untested on Windows 10.
+
+## Agent 2, 30 September 2026 (night): Windows 10 postponed; 0.5.0
+
+- **Windows 10 test** (`scripts/win10-vm-test.ps1`, Hyper-V, Microsoft's Windows 10 22H2 image checked against its published SHA-256, no network): install, firewall, "Open with", WebView2 and uninstall worked, but the app does not start on that unpatched build (.NET 10's CET check). Zain chose to keep CET and require updates, then to skip Windows 10 for now: the installer is Windows 11 only again. Details and how to resume: DECISIONS.md D13. The October 2025 update (KB5066791) is in `%USERPROFILE%\PlainViewerWin10Test` with the Windows 10 image (about 6.9 GB; delete if not resuming).
+- The keyboard and high-contrast checks could not fail before (a missing window counted as a pass); fixed.
+- **0.5.0** is built by GitHub Actions (unsigned until SignPath is set up) and tested in Windows Sandbox before publishing.

@@ -4,7 +4,7 @@
 
 `scripts/package.ps1` builds one file, `artifacts/installer/PlainViewer-Setup-<version>-x64.exe`, plus a `.sha256` file beside it.
 
-- Installs for the current user only, without administrator rights, into `%LOCALAPPDATA%\Programs\Plain Viewer`. Windows 11, or Windows 10 version 21H2 or later (build 19044; DECISIONS.md D13), x64. The Windows Sandbox test runs this PC's Windows 11 only; Windows 10 needs a separate test PC or virtual machine.
+- Installs for the current user only, without administrator rights, into `%LOCALAPPDATA%\Programs\Plain Viewer`. Windows 11, x64. Windows 10 is postponed (DECISIONS.md D13); `scripts\win10-vm-test.ps1` tests it in a Hyper-V virtual machine when that work resumes.
 - Contains everything needed offline: the app and its worker with the .NET 10 runtime included, PDF.js, a trimmed LibreOffice 26.2.6 for Word and PowerPoint files, and Microsoft's offline WebView2 Runtime installer (DECISIONS.md D9). Windows 11 normally includes the WebView2 Runtime, but a clean Windows 11 may not; setup then offers the task "Install the Microsoft Edge WebView2 Runtime" (on by default) and runs Microsoft's installer. Without the runtime the app opens only text, CSV and Markdown files and explains why for the others. About 400 MB.
 - Shows a terms page (`installer/terms.txt`) that users accept; installing the WebView2 Runtime makes it subject to Microsoft's own licence terms.
 - Adds a Start menu entry, an uninstaller in Settings > Apps, and (optional, on by default) "Open with" entries for .pdf, .docx, .xlsx, .pptx, .csv, .txt, .md and .markdown. It never changes the user's default apps; Windows lets the user pick Plain Viewer as the default in Settings > Default apps.

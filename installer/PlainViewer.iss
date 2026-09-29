@@ -21,8 +21,8 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Windows 10 version 21H2 (build 19044, which includes Windows 10 LTSC 2021) or Windows 11 (DECISIONS.md D13)
-MinVersion=10.0.19044
+; Windows 11. Windows 10 is postponed (DECISIONS.md D13): the app does not start on Windows 10 without recent updates.
+MinVersion=10.0.22000
 OutputDir={#OutputDir}
 OutputBaseFilename=PlainViewer-Setup-{#AppVersion}-x64
 Compression=lzma2/max
