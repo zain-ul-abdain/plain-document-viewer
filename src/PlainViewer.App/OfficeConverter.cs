@@ -74,7 +74,8 @@ internal static class OfficeConverter
         string work = NewWorkFolder();
         try
         {
-            string copy = Path.Combine(work, "in", "document" + Path.GetExtension(path).ToLowerInvariant());
+            // The worker relabels templates, shows and macro-enabled files as plain documents, so the copy is named to match.
+            string copy = Path.Combine(work, "in", OfficePackages.IsWord(path) ? "document.docx" : "document.pptx");
             var prepared = await WorkerClient.PrepareOffice(path, copy, cancellation);
             converting?.Invoke();
             return (prepared, await ToPdf(copy, work, cancellation));

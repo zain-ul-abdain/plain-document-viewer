@@ -9,6 +9,8 @@ import { generateXlsx } from "./xlsx.mjs";
 import { generateDocx } from "./docx.mjs";
 import { generatePptx } from "./pptx.mjs";
 import { generateLargeText } from "./large-text.mjs";
+import { generateImages } from "./images.mjs";
+import { generateData } from "./data.mjs";
 
 const large = process.argv.includes("--large");
 await generatePdf({ large });
@@ -16,6 +18,8 @@ await generateXlsx({ large });
 await generateDocx();
 await generatePptx();
 generateLargeText({ large });
+await generateImages({ large });
+generateData({ large });
 
 // Codex's hand-written fixtures (tests/corpus/*.txt|csv|md|markdown) keep their own provenance table in SOURCES.md.
 const codexLicence = "Authored for this project by Codex (see SOURCES.md)";
@@ -32,7 +36,7 @@ const all = [...codex, ...manifestEntries()];
 const manifest = {
   description: "Plain Viewer test corpus. Paths are relative to tests/corpus. 'generated: true' files are created by 'npm run generate:large' and are not in git.",
   listener: "Hostile fixtures point at http://127.0.0.1:47831 and \\\\127.0.0.1@47831\\share. Run tests/harness/request-listener.mjs while testing; any recorded request is a failure.",
-  expectedResults: "result: open | error | password. error: damaged | empty | mismatch | unsupported | password-cancelled.",
+  expectedResults: "result: open | error | password. error: damaged | empty | mismatch | unsupported | too-large | password-cancelled. stage: renderer means the app accepts the file and the sandboxed renderer refuses it. macrosRemoved: opens with a notice that macros were removed and never ran.",
   fixtures: all
 };
 fs.writeFileSync(path.join(CORPUS, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

@@ -66,10 +66,11 @@ public partial class MainWindow : Window
     }
     private static string Choice(ComboBox box) => ((ComboBoxItem)box.SelectedItem).Content.ToString()!;
     private static bool IsPdf(string path) => string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
-    private static bool IsWorkbook(string path) => Path.GetExtension(path).ToLowerInvariant() is ".xlsx" or ".xlsm" or ".xltx" or ".xltm" or ".xlsb";
+    private static bool IsWorkbook(string path) => Spreadsheets.IsWorkbook(path) || Path.GetExtension(path).Equals(".xlsb", StringComparison.OrdinalIgnoreCase);
     private static bool IsOffice(string path) => OfficePackages.IsOfficeDocument(path);
-    private static bool UsesWebPane(string path) => IsPdf(path) || IsWorkbook(path) || IsOffice(path);
-    private bool InWebPane => document?.Kind is "pdf" or "sheet" or "word" or "slides";
+    private static bool IsPicture(string path) => ImageFiles.IsImage(path);
+    private static bool UsesWebPane(string path) => IsPdf(path) || IsWorkbook(path) || IsOffice(path) || IsPicture(path);
+    private bool InWebPane => document?.Kind is "pdf" or "sheet" or "word" or "slides" or "image";
     private bool Paginated => document?.Kind is "pdf" or "word" or "slides";
     internal async Task<string> VerifyRefusedAsync(string path)
     {
@@ -94,8 +95,23 @@ public partial class MainWindow : Window
         if (InWebPane)
         {
             if (WebPane.Pages < 1) throw new InvalidOperationException("The document reported no pages or sheets.");
-            var (_, total) = await PdfFind("Hello");
-            if (total < 1) throw new InvalidOperationException("Search found no match for 'Hello'.");
+            if (document.Kind == "image")
+            {
+                // Pictures: a size was reported, search is switched off with a reason, and rotating turns the picture.
+                if (WebPane.PictureWidth < 1 || WebPane.PictureHeight < 1) throw new InvalidOperationException("The picture reported no size.");
+                if (FindBox.IsEnabled || FindBox.ToolTip is null) throw new InvalidOperationException("Search should be switched off, with a reason, for pictures.");
+                var turned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                void OnState() { if (WebPane.Rotation == 90) turned.TrySetResult(); }
+                WebPane.StateChanged += OnState;
+                try { WebPane.Rotate(1); await turned.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+                finally { WebPane.StateChanged -= OnState; }
+                WebPane.Rotate(-1);
+            }
+            else
+            {
+                var (_, total) = await PdfFind("Hello");
+                if (total < 1) throw new InvalidOperationException("Search found no match for 'Hello'.");
+            }
             ZoomBy(1); ZoomBy(0);
             if (Environment.GetEnvironmentVariable("PLAINVIEWER_CAPTURE_DIR") is { Length: > 0 } captures)
             {
@@ -170,7 +186,7 @@ public partial class MainWindow : Window
     }
     private void OpenClicked(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Open a document — development preview", Filter = "Preview formats|*.pdf;*.docx;*.xlsx;*.pptx;*.txt;*.csv;*.md;*.markdown", CheckFileExists = true };
+        var dialog = new OpenFileDialog { Title = "Open a document", Filter = Formats.OpenDialogFilter, CheckFileExists = true };
         if (dialog.ShowDialog(this) == true) OpenPath(dialog.FileName);
     }
     public void OpenPath(string path)
@@ -190,6 +206,7 @@ public partial class MainWindow : Window
             DocumentView loaded;
             if (IsPdf(currentPath)) loaded = await LoadPdf(currentPath, operation.Token);
             else if (IsOffice(currentPath)) loaded = await LoadOffice(currentPath, operation.Token);
+            else if (IsPicture(currentPath)) loaded = await LoadPicture(currentPath, operation.Token);
             else
             {
                 work = OfficeConverter.NewWorkFolder();
@@ -272,7 +289,19 @@ public partial class MainWindow : Window
         SourceToggle.Visibility = document.Kind == "markdown" ? Visibility.Visible : Visibility.Collapsed;
         bool web = InWebPane;
         WebPane.Visibility = web ? Visibility.Visible : Visibility.Collapsed;
-        PageControls.Visibility = Paginated ? Visibility.Visible : Visibility.Collapsed;
+        bool picture = document.Kind == "image";
+        PageControls.Visibility = Paginated || picture ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var element in new FrameworkElement[] { PreviousPageButton, PageLabel, PageBox, PageCount, NextPageButton })
+            element.Visibility = picture ? Visibility.Collapsed : Visibility.Visible;
+        RotateLeftButton.Visibility = RotateRightButton.Visibility = picture ? Visibility.Visible : Visibility.Collapsed;
+        // Pictures have no text: search is switched off and says why.
+        string? noSearch = picture ? "Pictures have no text to search." : null;
+        foreach (var control in new Control[] { FindBox, PreviousButton, NextButton })
+        {
+            control.IsEnabled = !picture; control.ToolTip = noSearch;
+            ToolTipService.SetShowOnDisabled(control, true);
+            System.Windows.Automation.AutomationProperties.SetHelpText(control, noSearch ?? "");
+        }
         PageLabel.Text = document.Kind == "slides" ? "Slide" : "Page";
         System.Windows.Automation.AutomationProperties.SetName(PageBox, document.Kind == "slides" ? "Go to slide number" : "Go to page number");
         EncodingChoice.IsEnabled = !web;
@@ -315,7 +344,7 @@ public partial class MainWindow : Window
     }
     private void Find(bool previous)
     {
-        if (document is null || FindBox.Text.Length == 0) return;
+        if (document is null || FindBox.Text.Length == 0 || document.Kind == "image") return;
         if (InWebPane) { Status.Text = "Searching…"; WebPane.Find(FindBox.Text, previous); lastQuery = FindBox.Text; return; }
         if (rowStore is not null) { FindInStore(FindBox.Text, previous); return; }
         string query = FindBox.Text; var hits = new List<int>();
@@ -423,6 +452,21 @@ public partial class MainWindow : Window
         else Status.Text = $"Enter a page number from 1 to {WebPane.Pages}.";
         e.Handled = true;
     }
+    private async Task<DocumentView> LoadPicture(string path, CancellationToken cancellation)
+    {
+        var picture = await Task.Run(() => ImageFiles.Snapshot(path), cancellation);
+        Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
+        WebPane.Visibility = Visibility.Visible;
+        await WebPane.LoadPicture(picture, IsDarkTheme(), cancellation);
+        return new DocumentView
+        {
+            Kind = "image", Encoding = picture.Format + " picture",
+            Notice = picture.Incomplete ? "This picture file is incomplete (cut short, for example by an interrupted download), so part of it may be missing. Get a complete copy to see all of it."
+                : picture.Format == "SVG" ? "SVG pictures are shown as still images: any scripts or linked content in them never run or load." : ""
+        };
+    }
+    private void RotateLeft(object s, RoutedEventArgs e) => WebPane.Rotate(-1);
+    private void RotateRight(object s, RoutedEventArgs e) => WebPane.Rotate(1);
     private async Task<DocumentView> LoadPdf(string path, CancellationToken cancellation)
     {
         var data = await Task.Run(() => PdfFiles.Snapshot(path), cancellation);
@@ -445,7 +489,13 @@ public partial class MainWindow : Window
     {
         if (document is null || !InWebPane) return;
         ZoomButton.Content = $"{WebPane.Scale:P0}";
-        if (Paginated)
+        if (document.Kind == "image")
+        {
+            string turn = WebPane.Rotation == 0 ? "" : $" · Turned {WebPane.Rotation}°";
+            string size = document.Encoding.StartsWith("SVG") ? "scalable drawing" : $"{WebPane.PictureWidth:N0} × {WebPane.PictureHeight:N0} pixels";
+            Status.Text = $"Read only · {document.Encoding} · {size}{turn} · Opened in {openSeconds:F2}s. {document.Notice}";
+        }
+        else if (Paginated)
         {
             string unit = document.Kind == "slides" ? "Slide" : "Page";
             string type = document.Kind switch { "word" => "Word document", "slides" => "PowerPoint presentation", _ => "PDF" };
@@ -554,6 +604,7 @@ public partial class MainWindow : Window
         else if (ctrl && (e.Key == Key.D0 || e.Key == Key.NumPad0)) ZoomBy(0);
         else if (e.Key == Key.F3) Find(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         else if (ctrl && e.Key is Key.PageUp or Key.PageDown && document?.Kind == "sheet") WebPane.ChangeSheet(e.Key == Key.PageDown ? 1 : -1);
+        else if (ctrl && e.Key == Key.R && document?.Kind == "image") WebPane.Rotate(Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? -1 : 1);
         else if (e.Key == Key.F11) { if (WindowStyle == WindowStyle.None) { WindowStyle = WindowStyle.SingleBorderWindow; WindowState = savedState; } else { savedState = WindowState; WindowStyle = WindowStyle.None; WindowState = WindowState.Maximized; } }
         else return;
         e.Handled = true;

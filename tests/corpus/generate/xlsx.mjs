@@ -137,7 +137,7 @@ export async function generateXlsx({ large }) {
       expect: { result: "error", error: "mismatch" }, rules: SAFE_RULES });
   }
 
-  // Macro-enabled workbook (Later in the specification): must be refused, never run.
+  // Macro-enabled workbook: opens with its saved values; the macro project is ignored (never read or run).
   {
     const zip = await JSZip.loadAsync(fs.readFileSync(path.join(CORPUS, "xlsx", "simple.xlsx")));
     zip.file("xl/vbaProject.bin", Buffer.from("Placeholder, not real VBA."), { date });
@@ -145,8 +145,17 @@ export async function generateXlsx({ large }) {
     zip.file("[Content_Types].xml", types.replace("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml")
       .replace("</Types>", '<Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>'), { date });
     write("xlsx/macro.xlsm", await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-    record({ id: "xlsm-macro", file: "xlsx/macro.xlsm", format: "xlsm", category: "unsupported", producer: `${producer}, repackaged with JSZip`, licence,
-      expect: { result: "error", error: "unsupported" }, rules: SAFE_RULES });
+    record({ id: "xlsm-macro", file: "xlsx/macro.xlsm", format: "xlsm", category: "macro", producer: `${producer}, repackaged with JSZip`, licence,
+      expect: { result: "open", sheets: ["Hello"], cells: [{ sheet: "Hello", ref: "B1", text: "42" }], macrosRemoved: true }, rules: SAFE_RULES });
+  }
+  // Template: same parts, template main type; opens like an ordinary workbook.
+  {
+    const zip = await JSZip.loadAsync(fs.readFileSync(path.join(CORPUS, "xlsx", "simple.xlsx")));
+    const types = await zip.file("[Content_Types].xml").async("string");
+    zip.file("[Content_Types].xml", types.replace("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"), { date });
+    write("xlsx/variant.xltx", await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+    record({ id: "xltx-variant", file: "xlsx/variant.xltx", format: "xltx", category: "variant", producer: `${producer}, repackaged with JSZip`, licence,
+      expect: { result: "open", sheets: ["Hello"], cells: [{ sheet: "Hello", ref: "B1", text: "42" }] }, rules: SAFE_RULES });
   }
 
   // Hostile: ZIP bomb (an extra 300 MB entry of zeros, about 300 KB compressed).

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- The picture is decoded here, in WebView2's sandboxed renderer. An SVG is shown only through <img>, where its scripts
+     never run and nothing it refers to is loaded; the policy below also allows no other source. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src https://doc.plainviewer.invalid; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; worker-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Picture</title>
+<link rel="stylesheet" href="image.css">
+</head>
+<body>
+<main id="scroller" tabindex="0" aria-label="Picture">
+  <div id="stage"><img id="picture" alt="" draggable="false"></div>
+</main>
+<script type="module" src="image.js"></script>
+</body>
+</html>

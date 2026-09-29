@@ -1,0 +1,15 @@
+:root { color-scheme: light; --page: #f3f3f3; --accent: #0f6cbd; --check-a: #ffffff; --check-b: #e6e6e6; }
+:root[data-theme="dark"] { color-scheme: dark; --page: #202020; --accent: #479ef5; --check-a: #2b2b2b; --check-b: #333333; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--page); }
+#scroller { height: 100%; overflow: auto; outline: none; display: grid; }
+#scroller:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The stage is centred while it is smaller than the window and scrolls from its top-left corner once it is larger. */
+#stage { margin: auto; padding: 16px; box-sizing: content-box; position: relative; }
+/* A checkerboard shows where a picture is transparent. */
+#picture {
+  display: block; position: absolute; left: 50%; top: 50%; transform-origin: center center;
+  background: repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0 / 16px 16px;
+  image-rendering: auto; user-select: none;
+}
+#picture.pixelated { image-rendering: pixelated; }
+@media (forced-colors: active) { #picture { forced-color-adjust: none; } }

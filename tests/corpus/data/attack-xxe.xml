@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<!DOCTYPE note [
+  <!ENTITY remote SYSTEM "http://127.0.0.1:47831/xml-xxe/entity">
+  <!ENTITY local SYSTEM "file:///C:/Windows/win.ini">
+]>
+<note>Hello data &remote; &local;</note>

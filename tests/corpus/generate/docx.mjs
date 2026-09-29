@@ -85,5 +85,6 @@ export async function generateDocx() {
   }, "INCLUDEPICTURE field pointing at the listener. Fields must not be updated on open.");
 
   await officeVariants({ format: "docx", folder: "docx", simple, complex, mainPart: "word/document.xml",
-    macroType: "application/vnd.ms-word.document.macroEnabled.main+xml", macroExtension: "docm", producer, licence });
+    macroType: "application/vnd.ms-word.document.macroEnabled.main+xml", macroExtension: "docm",
+    variants: [{ extension: "dotx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml" }], producer, licence });
 }

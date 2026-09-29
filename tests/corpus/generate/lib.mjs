@@ -117,11 +117,11 @@ export async function stableZip(buffer, edit) {
 }
 
 // Shared ways to break an Office file, used by every Office format so each gets the same coverage.
-export async function officeVariants({ format, folder, simple, complex, mainPart, textPart = mainPart, macroType, macroExtension, producer, licence }) {
+export async function officeVariants({ format, folder, simple, complex, mainPart, textPart = mainPart, macroType, macroExtension, variants = [], producer, licence }) {
   const { default: JSZip } = await import("jszip");
   const { default: officeCrypto } = await import("officecrypto-tool");
   const { default: CFB } = await import("cfb");
-  const rec = (name, category, expect, extra = {}) => record({ id: `${format}-${name}`, file: `${folder}/${name}.${name === "macro" ? macroExtension : format}`, format: name === "macro" ? macroExtension : format, category, producer, licence, expect, rules: SAFE_RULES, ...extra });
+  const rec = (name, category, expect, extra = {}, extension = name === "macro" ? macroExtension : format) => record({ id: `${format}-${name}`, file: `${folder}/${name}.${extension}`, format: extension, category, producer, licence, expect, rules: SAFE_RULES, ...extra });
 
   write(`${folder}/password.${format}`, officeCrypto.encrypt(simple, { password: "viewer-test" }));
   rec("password", "password", { result: "error", error: "password" }, { password: "viewer-test", producer: `${producer}, encrypted with officecrypto-tool ${packageVersion("officecrypto-tool")}` });
@@ -144,7 +144,17 @@ export async function officeVariants({ format, folder, simple, complex, mainPart
   macro.file("[Content_Types].xml", types.replace(/(PartName="\/[^"]+" ContentType=")[^"]+main\+xml"/, `$1${macroType}"`)
     .replace("</Types>", '<Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>'), { date: FIXED_DATE });
   write(`${folder}/macro.${macroExtension}`, await macro.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
-  rec("macro", "unsupported", { result: "error", error: "unsupported" }, { producer: `${producer}, repackaged with JSZip` });
+  rec("macro", "macro", { result: "open", macrosRemoved: true }, { producer: `${producer}, repackaged with JSZip`, notes: "Opens with the macro project removed (never run) and a notice saying so." });
+
+  // Templates and shows: the same content with the variant main-part type; each opens like the ordinary document.
+  for (const { extension, type } of variants) {
+    const variant = await JSZip.loadAsync(simple);
+    const variantTypes = await variant.file("[Content_Types].xml").async("string");
+    variant.file("[Content_Types].xml", variantTypes.replace(/(PartName="\/[^"]+" ContentType=")[^"]+main\+xml"/, `$1${type}"`), { date: FIXED_DATE });
+    variant.forEach((_, f) => { f.date = FIXED_DATE; });
+    write(`${folder}/variant.${extension}`, await variant.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+    rec("variant", "variant", { result: "open" }, { id: `${format}-variant-${extension}`, producer: `${producer}, repackaged with JSZip`, notes: `${extension} (${type})` }, extension);
+  }
 
   const bomb = await JSZip.loadAsync(simple);
   bomb.file(`${mainPart.split("/")[0]}/media/bomb.bin`, Buffer.alloc(300 * 1024 * 1024), { date: FIXED_DATE, compression: "DEFLATE", compressionOptions: { level: 9 } });

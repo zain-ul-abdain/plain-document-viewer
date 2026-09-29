@@ -1,0 +1,19 @@
+{
+  "title": "Hello data",
+  "nested": {
+    "list": [
+      {
+        "id": "001",
+        "note": "leading zeros stay"
+      },
+      {
+        "id": "002",
+        "rtl": "اردو سنڌي العربية"
+      }
+    ],
+    "cjk": "中文 日本語 한국어"
+  },
+  "escapes": "Tab\tquote\" backslash\\ unicode é",
+  "empty": null,
+  "big": 12345678901234567000
+}

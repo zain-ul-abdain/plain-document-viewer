@@ -18,7 +18,7 @@ try
     // "<file> --prepare-office <output>": validate a Word/PowerPoint package and write a sanitised copy for conversion.
     // "<file> <encoding> <delimiter> <work folder>": large rows go to a RowStore in the work folder.
     var document = args.ElementAtOrDefault(1) == "--prepare-office" ? OfficePackages.Prepare(args[0], args[2])
-        : extension is ".xlsx" or ".xlsm" or ".xltx" or ".xltm" or ".xlsb" ? Spreadsheets.Load(args[0], storeFolder: args.ElementAtOrDefault(3))
+        : Spreadsheets.IsWorkbook(args[0]) || extension is ".xlsb" ? Spreadsheets.Load(args[0], storeFolder: args.ElementAtOrDefault(3))
         : TextFiles.Load(args[0], args.ElementAtOrDefault(1) ?? "Auto", args.ElementAtOrDefault(2) ?? "Auto", args.ElementAtOrDefault(3));
     response = new WorkerResponse(document, null);
 }

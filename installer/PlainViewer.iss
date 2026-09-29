@@ -38,7 +38,7 @@ LicenseFile=terms.txt
 ; directive here and SignedUninstaller=yes, so Windows SmartScreen stops warning about an unknown publisher.
 
 [Tasks]
-Name: openwith; Description: "Add Plain Viewer to ""Open with"" for PDF, Word, Excel, PowerPoint, CSV, text and Markdown files (your default apps do not change)"
+Name: openwith; Description: "Add Plain Viewer to ""Open with"" for PDF, Word, Excel, PowerPoint, picture, text, CSV, Markdown and data files (your default apps do not change)"
 Name: firewall; Description: "Block the parts that read documents from the network with Windows Firewall (asks for administrator permission once)"
 Name: webview2; Description: "Install the Microsoft Edge WebView2 Runtime, which PDF, Word, Excel and PowerPoint files need (included; licensed by Microsoft)"; Check: not WebView2Installed
 Name: desktopicon; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -63,28 +63,82 @@ Name: "{autodesktop}\Plain Viewer"; Filename: "{app}\PlainViewer.exe"; Tasks: de
 ; "Open with" and Settings > Default apps. Only offers Plain Viewer; Windows lets the user choose defaults.
 Root: HKA; Subkey: "Software\PlainViewer"; Flags: uninsdeletekey; Tasks: openwith
 Root: HKA; Subkey: "Software\PlainViewer\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "Plain Viewer"; Tasks: openwith
-Root: HKA; Subkey: "Software\PlainViewer\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Read-only viewer for PDF, Word, Excel, PowerPoint, CSV, text and Markdown files"; Tasks: openwith
+Root: HKA; Subkey: "Software\PlainViewer\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Read-only viewer for PDF, Word, Excel, PowerPoint, picture, text, CSV, Markdown and data files"; Tasks: openwith
 Root: HKA; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "Plain Viewer"; ValueData: "Software\PlainViewer\Capabilities"; Flags: uninsdeletevalue; Tasks: openwith
 Root: HKA; Subkey: "Software\Classes\Applications\PlainViewer.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Plain Viewer"; Flags: uninsdeletekey; Tasks: openwith
 Root: HKA; Subkey: "Software\Classes\Applications\PlainViewer.exe\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PlainViewer.exe"" ""%1"""; Tasks: openwith
-#dim Ext[8]
+#dim Ext[35]
 #define Ext[0] "pdf"
 #define Ext[1] "docx"
-#define Ext[2] "xlsx"
-#define Ext[3] "pptx"
-#define Ext[4] "csv"
-#define Ext[5] "txt"
-#define Ext[6] "md"
-#define Ext[7] "markdown"
-#dim Kind[8]
+#define Ext[2] "docm"
+#define Ext[3] "dotx"
+#define Ext[4] "dotm"
+#define Ext[5] "xlsx"
+#define Ext[6] "xlsm"
+#define Ext[7] "xltx"
+#define Ext[8] "xltm"
+#define Ext[9] "pptx"
+#define Ext[10] "pptm"
+#define Ext[11] "potx"
+#define Ext[12] "potm"
+#define Ext[13] "ppsx"
+#define Ext[14] "ppsm"
+#define Ext[15] "jpg"
+#define Ext[16] "jpeg"
+#define Ext[17] "jfif"
+#define Ext[18] "png"
+#define Ext[19] "gif"
+#define Ext[20] "bmp"
+#define Ext[21] "ico"
+#define Ext[22] "webp"
+#define Ext[23] "avif"
+#define Ext[24] "svg"
+#define Ext[25] "txt"
+#define Ext[26] "json"
+#define Ext[27] "xml"
+#define Ext[28] "log"
+#define Ext[29] "ini"
+#define Ext[30] "yaml"
+#define Ext[31] "yml"
+#define Ext[32] "csv"
+#define Ext[33] "md"
+#define Ext[34] "markdown"
+#dim Kind[35]
 #define Kind[0] "PDF document"
 #define Kind[1] "Word document"
-#define Kind[2] "Excel workbook"
-#define Kind[3] "PowerPoint presentation"
-#define Kind[4] "CSV file"
-#define Kind[5] "Text document"
-#define Kind[6] "Markdown document"
-#define Kind[7] "Markdown document"
+#define Kind[2] "Word macro-enabled document"
+#define Kind[3] "Word template"
+#define Kind[4] "Word macro-enabled template"
+#define Kind[5] "Excel workbook"
+#define Kind[6] "Excel macro-enabled workbook"
+#define Kind[7] "Excel template"
+#define Kind[8] "Excel macro-enabled template"
+#define Kind[9] "PowerPoint presentation"
+#define Kind[10] "PowerPoint macro-enabled presentation"
+#define Kind[11] "PowerPoint template"
+#define Kind[12] "PowerPoint macro-enabled template"
+#define Kind[13] "PowerPoint show"
+#define Kind[14] "PowerPoint macro-enabled show"
+#define Kind[15] "JPEG picture"
+#define Kind[16] "JPEG picture"
+#define Kind[17] "JPEG picture"
+#define Kind[18] "PNG picture"
+#define Kind[19] "GIF picture"
+#define Kind[20] "Bitmap picture"
+#define Kind[21] "Icon"
+#define Kind[22] "WebP picture"
+#define Kind[23] "AVIF picture"
+#define Kind[24] "SVG picture"
+#define Kind[25] "Text document"
+#define Kind[26] "JSON file"
+#define Kind[27] "XML file"
+#define Kind[28] "Log file"
+#define Kind[29] "Settings file"
+#define Kind[30] "YAML file"
+#define Kind[31] "YAML file"
+#define Kind[32] "CSV file"
+#define Kind[33] "Markdown document"
+#define Kind[34] "Markdown document"
 #define i
 #sub FileType
 Root: HKA; Subkey: "Software\Classes\.{#Ext[i]}\OpenWithProgids"; ValueType: string; ValueName: "PlainViewer.{#Ext[i]}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: openwith

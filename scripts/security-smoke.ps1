@@ -11,12 +11,16 @@ $corpus = Join-Path $repoRoot 'tests\corpus'
 # Hostile or broken files that should still open safely, and files that must be refused with a clear message.
 $open = @('pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\complex.xlsx',
   'docx\attack-remote-image.docx', 'docx\attack-unc-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx',
-  'pptx\attack-remote-image.pptx', 'docx\complex-20-pages.docx', 'pptx\complex.pptx')
+  'pptx\attack-remote-image.pptx', 'docx\complex-20-pages.docx', 'pptx\complex.pptx',
+  'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\macro.pptm', 'images\attack-svg-active.svg', 'data\attack-xxe.xml',
+  'images\damaged-truncated.webp', 'images\damaged-truncated.jpg', 'images\damaged-truncated.png', 'images\attack-svg-xxe.svg')
 $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx',
-  'xlsx\old-format-renamed.xlsx', 'xlsx\damaged-truncated.xlsx', 'xlsx\zero-byte.xlsx', 'xlsx\not-a-workbook.xlsx', 'xlsx\macro.xlsm',
+  'xlsx\old-format-renamed.xlsx', 'xlsx\damaged-truncated.xlsx', 'xlsx\zero-byte.xlsx', 'xlsx\not-a-workbook.xlsx',
   'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\old-format-renamed.docx', 'docx\damaged-truncated.docx',
-  'docx\zero-byte.docx', 'docx\not-a-document.docx', 'docx\macro.docm',
-  'pptx\attack-xxe.pptx', 'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx', 'pptx\macro.pptm')
+  'docx\zero-byte.docx', 'docx\not-a-document.docx',
+  'pptx\attack-xxe.pptx', 'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx',
+  'images\zero-byte.png', 'images\damaged-header.png', 'images\not-a-picture.jpg', 'images\tiff-named.png',
+  'images\attack-pixel-bomb.png', 'data\binary-named.json')
 # Switch off the converter's extra dead-proxy layer so the listener observes LibreOffice directly.
 $env:PLAINVIEWER_LO_PROXY_OFF = '1'
 $arguments = @($open | ForEach-Object { Join-Path $corpus $_ }) + @($refuse | ForEach-Object { '!' + (Join-Path $corpus $_) })

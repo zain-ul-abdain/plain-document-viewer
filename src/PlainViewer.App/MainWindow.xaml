@@ -26,13 +26,15 @@
      <Button x:Name="NextPageButton" Content="›" Click="NextPage" Padding="10,6" Margin="0,0,12,0" AutomationProperties.Name="Next page" ToolTip="Next page" />
      <Button Content="Fit width" Click="FitWidth" Margin="0,0,4,0" Padding="10,6" />
      <Button Content="Fit page" Click="FitPage" Padding="10,6" />
+     <Button x:Name="RotateLeftButton" Content="⟲" Click="RotateLeft" Padding="10,6" Margin="12,0,4,0" Visibility="Collapsed" AutomationProperties.Name="Rotate left" ToolTip="Rotate left (Ctrl+Shift+R)" />
+     <Button x:Name="RotateRightButton" Content="⟳" Click="RotateRight" Padding="10,6" Visibility="Collapsed" AutomationProperties.Name="Rotate right" ToolTip="Rotate right (Ctrl+R)" />
     </StackPanel>
    </WrapPanel>
    <ProgressBar x:Name="Progress" Height="3" IsIndeterminate="True" Visibility="Collapsed" />
   </StackPanel>
   <TextBlock x:Name="Status" DockPanel.Dock="Bottom" Margin="0,12,0,0" TextWrapping="Wrap" Text="Development preview · Read only · No files are uploaded" AutomationProperties.LiveSetting="Polite" />
   <Grid>
-   <TextBlock x:Name="Welcome" Text="Open a document&#10;&#10;PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx),&#10;text, CSV and Markdown · development preview&#10;&#10;Drop a local file here or press Ctrl+O." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="22" />
+   <TextBlock x:Name="Welcome" Text="Open a document&#10;&#10;PDF, Word, Excel, PowerPoint, pictures,&#10;text, CSV, Markdown and data files&#10;&#10;Drop a local file here or press Ctrl+O." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="22" />
    <local:DocumentWebView x:Name="WebPane" Visibility="Collapsed" />
    <TextBox x:Name="TextView" Visibility="Collapsed" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" Padding="20" AutomationProperties.Name="Read-only document text" />
    <RichTextBox x:Name="MarkdownDisplay" Visibility="Collapsed" IsReadOnly="True" AcceptsTab="False" IsDocumentEnabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="20" AutomationProperties.Name="Rendered Markdown document" />

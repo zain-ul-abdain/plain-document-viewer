@@ -10,6 +10,8 @@ namespace PlainViewer.Core;
 public static class Spreadsheets
 {
     public const long SizeLimit = 256L * 1024 * 1024;
+    public static readonly string[] Extensions = [".xlsx", ".xlsm", ".xltx", ".xltm"];
+    public static bool IsWorkbook(string path) => Extensions.Contains(Path.GetExtension(path).ToLowerInvariant());
     public const int MaxRowsPerSheet = 10_000, MaxColumns = 256, MaxCellsPerWorkbook = 300_000;
     public const string ResultUnavailable = "Result unavailable";
     private const long PartByteLimit = 1024L * 1024 * 1024;       // decompressed bytes read from any one part
@@ -35,9 +37,10 @@ public static class Spreadsheets
         culture ??= CultureInfo.CurrentCulture;
         TextFiles.ValidateLocalPath(path);
         string extension = Path.GetExtension(path).ToLowerInvariant();
-        if (extension is ".xlsm" or ".xltx" or ".xltm" or ".xlsb" or ".xlam")
+        // Templates and macro-enabled workbooks have the same parts as .xlsx; macros are never read, let alone run.
+        if (extension is ".xlsb" or ".xlam")
             throw new DocumentException($"{extension} files are not supported yet. Save the workbook as .xlsx in a spreadsheet application to view it here.");
-        if (extension != ".xlsx") throw new DocumentException("Only .xlsx workbooks open in the spreadsheet view.");
+        if (!Extensions.Contains(extension)) throw new DocumentException("Only Excel workbooks (.xlsx, .xlsm, .xltx, .xltm) open in the spreadsheet view.");
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         long length = stream.Length;
@@ -49,9 +52,9 @@ public static class Spreadsheets
         if (head.AsSpan().StartsWith(new byte[] { 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 }))
             throw new DocumentException(head.AsSpan().IndexOf(Encoding.Unicode.GetBytes("EncryptionInfo")) >= 0
                 ? "This workbook is protected with a password. Password-protected Excel files cannot be opened in this version. Remove the password in Excel, or ask the sender for an unprotected copy."
-                : "This looks like an older Excel file (.xls) saved with an .xlsx name. Older .xls files are not supported yet.");
+                : $"This looks like an older Excel file (.xls) saved with a {extension} name. Older .xls files are not supported yet.");
         if (!head.AsSpan().StartsWith("PK\u0003\u0004"u8))
-            throw new DocumentException("This file is named .xlsx, but its contents are not an Excel workbook. Open it with an application for its actual format.");
+            throw new DocumentException($"This file is named {extension}, but its contents are not an Excel workbook. Open it with an application for its actual format.");
 
         DocumentView view;
         try
@@ -60,6 +63,8 @@ public static class Spreadsheets
             // Sheet XML compresses well, so the total is generous; the ratio check still stops ZIP bombs.
             ArchiveSafety.Validate(zip, maximumBytes: 4L * 1024 * 1024 * 1024, maximumEntries: 10000, maximumRatio: 500);
             view = new Reader(zip, culture, storeFolder).Read();
+            if (zip.Entries.Any(e => OfficePackages.IsMacroPart(e.FullName)))
+                view.Notice = ("This workbook contains macros. They were ignored and never ran. " + view.Notice).Trim();
         }
         catch (InvalidDataException) { throw Damaged(); }
         catch (XmlException) { throw Damaged(); }

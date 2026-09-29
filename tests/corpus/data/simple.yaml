@@ -1,0 +1,6 @@
+greeting: Hello data
+items:
+  - one
+  - two
+anchor: &a { x: 1 }
+alias: *a

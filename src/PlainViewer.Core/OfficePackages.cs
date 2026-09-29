@@ -4,24 +4,50 @@ using System.Xml;
 namespace PlainViewer.Core;
 
 // Prepares a Word or PowerPoint package for conversion. Runs in the worker, before LibreOffice sees the file:
-// refuses encrypted, macro-enabled, mislabelled and malformed packages, then writes a private copy with every
-// reference to outside content removed (pictures, templates or objects stored elsewhere) and content-fetching field
-// codes blanked. Web and email hyperlinks are kept; the viewer asks before opening them.
+// refuses encrypted, mislabelled and malformed packages, then writes a private copy with every reference to outside
+// content removed (pictures, templates or objects stored elsewhere), content-fetching field codes blanked, and any
+// macro project removed. Templates, shows and macro-enabled files are relabelled as ordinary documents in the copy,
+// so the converter only ever sees a plain .docx or .pptx. Web and email hyperlinks are kept; the viewer asks before
+// opening them.
 public static class OfficePackages
 {
     public const long SizeLimit = 256L * 1024 * 1024;
     private const long PartByteLimit = 512L * 1024 * 1024;
     private static readonly string[] FetchingFields = ["INCLUDEPICTURE", "INCLUDETEXT", "LINK", "DDE", "DDEAUTO", "IMPORT", "DATABASE"];
+    public static readonly string[] WordExtensions = [".docx", ".docm", ".dotx", ".dotm"];
+    public static readonly string[] SlideExtensions = [".pptx", ".pptm", ".potx", ".potm", ".ppsx", ".ppsm"];
+    private const string WordMain = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
+    private const string SlidesMain = "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml";
+    // Main-part types of the variants, relabelled in the private copy.
+    private static readonly Dictionary<string, string> VariantTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["application/vnd.ms-word.document.macroEnabled.main+xml"] = WordMain,
+        ["application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"] = WordMain,
+        ["application/vnd.ms-word.template.macroEnabledTemplate.main+xml"] = WordMain,
+        ["application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml"] = SlidesMain,
+        ["application/vnd.openxmlformats-officedocument.presentationml.template.main+xml"] = SlidesMain,
+        ["application/vnd.ms-powerpoint.template.macroEnabled.main+xml"] = SlidesMain,
+        ["application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml"] = SlidesMain,
+        ["application/vnd.ms-powerpoint.slideshow.macroEnabled.main+xml"] = SlidesMain,
+    };
 
-    public static bool IsOfficeDocument(string path) => Path.GetExtension(path).ToLowerInvariant() is ".docx" or ".pptx" or ".docm" or ".pptm" or ".dotx" or ".dotm" or ".potx" or ".potm" or ".ppsx" or ".ppsm";
+    public static bool IsOfficeDocument(string path) => IsWord(path) || SlideExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+    public static bool IsWord(string path) => WordExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+
+    // Macro projects, their signatures and their data. Never copied; relationships and type entries for them are dropped.
+    public static bool IsMacroPart(string name)
+    {
+        string file = name[(name.LastIndexOf('/') + 1)..];
+        return file.StartsWith("vbaProject", StringComparison.OrdinalIgnoreCase) || file.Equals("vbaData.xml", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static DocumentView Prepare(string path, string output)
     {
         TextFiles.ValidateLocalPath(path);
         string extension = Path.GetExtension(path).ToLowerInvariant();
-        if (extension is not (".docx" or ".pptx"))
-            throw new DocumentException($"{extension} files are not supported yet. Save the file as .docx or .pptx, without macros, to view it here.");
-        bool word = extension == ".docx";
+        if (!IsOfficeDocument(path))
+            throw new DocumentException($"{extension} files do not open in the Word and PowerPoint view.");
+        bool word = IsWord(path);
         string kind = word ? "Word document" : "PowerPoint presentation";
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
@@ -39,6 +65,7 @@ public static class OfficePackages
             throw new DocumentException($"This file is named {extension}, but its contents are not a {kind}. Open it with an application for its actual format.");
 
         int removed = 0;
+        bool macros = false;
         bool ownsOutput = false;
         try
         {
@@ -46,9 +73,6 @@ public static class OfficePackages
             ArchiveSafety.Validate(zip, maximumBytes: 2L * 1024 * 1024 * 1024, maximumEntries: 10000, maximumRatio: 500);
             if (zip.GetEntry(word ? "word/document.xml" : "ppt/presentation.xml") is null)
                 throw new DocumentException($"This file is named {extension}, but its contents are not a {kind}. Open it with an application for its actual format.");
-            if (zip.Entries.Any(e => e.FullName.EndsWith("vbaProject.bin", StringComparison.OrdinalIgnoreCase) || e.FullName.EndsWith("vbaData.xml", StringComparison.OrdinalIgnoreCase)))
-                throw new DocumentException($"This {kind} contains macros. Files with macros are not supported yet, and macros would never run here. Save it without macros to view it.");
-
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
             // Only clean up files this invocation actually created. CreateNew can fail because
             // another file already exists, including when the caller passes the source path.
@@ -58,10 +82,12 @@ public static class OfficePackages
             foreach (var entry in zip.Entries)
             {
                 if (entry.FullName.EndsWith('/')) continue;
+                if (IsMacroPart(entry.FullName)) { macros = true; continue; }
                 var copy = target.CreateEntry(entry.FullName, CompressionLevel.Fastest);
                 using var input = new LimitedStream(entry.Open(), PartByteLimit);
                 using var destination = copy.Open();
-                if (entry.FullName.EndsWith(".rels", StringComparison.OrdinalIgnoreCase)) removed += CopyXml(input, destination, Mode.Relationships);
+                if (entry.FullName.Equals("[Content_Types].xml", StringComparison.OrdinalIgnoreCase)) CopyXml(input, destination, Mode.ContentTypes);
+                else if (entry.FullName.EndsWith(".rels", StringComparison.OrdinalIgnoreCase)) removed += CopyXml(input, destination, Mode.Relationships);
                 else if (word && entry.FullName.StartsWith("word/", StringComparison.Ordinal) && entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) removed += CopyXml(input, destination, Mode.WordFields);
                 else if (entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) CopyXml(input, destination, Mode.Validate);
                 else input.CopyTo(destination);
@@ -76,17 +102,22 @@ public static class OfficePackages
         {
             Kind = word ? "word" : "slides",
             Encoding = word ? "Word document" : "PowerPoint presentation",
-            Notice = removed > 0 ? $"{removed} reference{(removed == 1 ? "" : "s")} to content stored outside this file {(removed == 1 ? "was" : "were")} removed before display, so linked pictures or templates are not shown." : ""
+            Notice = string.Join(" ", new[]
+            {
+                macros ? "This file contains macros. They were removed before display and never ran." : "",
+                removed > 0 ? $"{removed} reference{(removed == 1 ? "" : "s")} to content stored outside this file {(removed == 1 ? "was" : "were")} removed before display, so linked pictures or templates are not shown." : ""
+            }.Where(text => text.Length > 0))
         };
     }
 
     private static DocumentException Damaged(string kind) => new($"This {kind} is damaged or incomplete, so it cannot be shown. Try another copy of the file.");
     private static void Discard(string output) { try { if (File.Exists(output)) File.Delete(output); } catch (IOException) { } }
 
-    private enum Mode { Validate, Relationships, WordFields }
+    private enum Mode { Validate, Relationships, WordFields, ContentTypes }
 
-    // Streams one XML part through a reader with DTDs prohibited and writes it back, dropping outside references
-    // (Relationships) or blanking content-fetching field codes (WordFields). Returns how many items were removed.
+    // Streams one XML part through a reader with DTDs prohibited and writes it back, dropping outside references and
+    // links to macro parts (Relationships), blanking content-fetching field codes (WordFields), or relabelling variant
+    // main parts and dropping macro part types (ContentTypes). Returns how many outside references were removed.
     private static int CopyXml(Stream input, Stream output, Mode mode)
     {
         int removed = 0;
@@ -113,6 +144,13 @@ public static class OfficePackages
                         if (!reader.IsEmptyElement) { reader.Skip(); advance = false; }
                         continue;
                     }
+                    if ((mode == Mode.Relationships && reader.LocalName == "Relationship" && IsMacroPart(reader.GetAttribute("Target") ?? ""))
+                        || (mode == Mode.ContentTypes && reader.LocalName == "Override" && IsMacroPart(reader.GetAttribute("PartName") ?? ""))
+                        || (mode == Mode.ContentTypes && reader.LocalName == "Default" && (reader.GetAttribute("ContentType") ?? "").Contains("vba", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (!reader.IsEmptyElement) { reader.Skip(); advance = false; }
+                        continue;
+                    }
                     bool empty = reader.IsEmptyElement;
                     writer.WriteStartElement(reader.Prefix, reader.LocalName, reader.NamespaceURI);
                     if (reader.MoveToFirstAttribute())
@@ -121,6 +159,7 @@ public static class OfficePackages
                         {
                             string value = reader.Value;
                             if (mode == Mode.WordFields && reader.LocalName == "instr" && IsFetchingField(value)) { value = ""; removed++; }
+                            if (mode == Mode.ContentTypes && reader.LocalName == "ContentType" && VariantTypes.TryGetValue(value, out var plain)) value = plain;
                             writer.WriteAttributeString(reader.Prefix, reader.LocalName, reader.NamespaceURI, value);
                         } while (reader.MoveToNextAttribute());
                         reader.MoveToElement();

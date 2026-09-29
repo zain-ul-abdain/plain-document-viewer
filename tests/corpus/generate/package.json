@@ -8,6 +8,8 @@
     "generate:large": "node generate.mjs --large"
   },
   "dependencies": {
+    "@jsquash/avif": "2.1.1",
+    "@jsquash/webp": "1.5.0",
     "cfb": "1.2.2",
     "docx": "9.7.2",
     "exceljs": "4.4.0",

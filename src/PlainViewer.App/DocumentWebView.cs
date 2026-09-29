@@ -25,6 +25,9 @@ internal sealed class DocumentWebView : Border
     public int Page { get; private set; }         // PDF page, or 1-based sheet index
     public int Pages { get; private set; }        // PDF page count, or sheet count
     public string SheetName { get; private set; } = "";
+    public int PictureWidth { get; private set; }  // pixels, for pictures
+    public int PictureHeight { get; private set; }
+    public int Rotation { get; private set; }      // degrees clockwise, for pictures
     public double Scale { get; private set; } = 1;
     public int BlockedRequests { get; private set; }
     public event Action? StateChanged;
@@ -58,8 +61,8 @@ internal sealed class DocumentWebView : Border
         try { await web.EnsureCoreWebView2Async(await SharedEnvironment()); }
         catch (WebView2RuntimeNotFoundException)
         {
-            throw new DocumentException("PDF, Word, Excel and PowerPoint files need the Microsoft Edge WebView2 Runtime, which is not installed on this PC. " +
-                "Text, CSV and Markdown files still open. Run the Plain Viewer installer again (it includes the WebView2 Runtime), then open the file again.");
+            throw new DocumentException("PDF, Word, Excel, PowerPoint and picture files need the Microsoft Edge WebView2 Runtime, which is not installed on this PC. " +
+                "Text, CSV, Markdown and data files still open. Run the Plain Viewer installer again (it includes the WebView2 Runtime), then open the file again.");
         }
         var core = web.CoreWebView2 ?? throw new DocumentException("The document view could not start. Check that Microsoft Edge WebView2 Runtime is installed.");
         var settings = core.Settings;
@@ -138,6 +141,9 @@ internal sealed class DocumentWebView : Border
     public Task<int> LoadPdf(byte[] data, bool dark, CancellationToken cancellation, bool slides = false) =>
         Load("pdf/viewer.html", data, "document.pdf", "application/pdf", dark, cancellation, slides ? "&mode=slides" : "");
 
+    public Task<int> LoadPicture(ImageFiles.Picture picture, bool dark, CancellationToken cancellation) =>
+        Load("image/image.html", picture.Bytes, "picture", picture.ContentType, dark, cancellation, picture.Format == "SVG" ? "&vector=1" : "");
+
     public Task<int> LoadSheets(byte[] json, bool dark, CancellationToken cancellation) =>
         Load("sheet/sheet.html", json, "workbook.json", "application/json; charset=utf-8", dark, cancellation, "");
 
@@ -167,7 +173,8 @@ internal sealed class DocumentWebView : Border
                 break;
             case "state":
                 if (message.TryGetProperty("page", out var p)) { Page = p.GetInt32(); Pages = message.GetProperty("pages").GetInt32(); }
-                else { Page = message.GetProperty("sheet").GetInt32(); Pages = message.GetProperty("sheets").GetInt32(); SheetName = message.GetProperty("name").GetString() ?? ""; }
+                if (message.TryGetProperty("width", out var w)) { PictureWidth = w.GetInt32(); PictureHeight = message.GetProperty("height").GetInt32(); Rotation = message.GetProperty("rotation").GetInt32(); }
+                else if (message.TryGetProperty("sheet", out var sheet)) { Page = sheet.GetInt32(); Pages = message.GetProperty("sheets").GetInt32(); SheetName = message.GetProperty("name").GetString() ?? ""; }
                 Scale = message.GetProperty("scale").GetDouble();
                 StateChanged?.Invoke();
                 break;
@@ -194,6 +201,7 @@ internal sealed class DocumentWebView : Border
     {
         "password-cancelled" => "This PDF is password protected. Open it again and enter its password to view it.",
         "unavailable" => "The document could not be passed to the viewer. Open the file again.",
+        "image" => "This picture is damaged or incomplete, or uses a variant of its format that cannot be shown. Try another copy of the file.",
         _ => "This PDF is damaged or incomplete, so it cannot be shown. Try another copy of the file."
     };
 
@@ -207,6 +215,7 @@ internal sealed class DocumentWebView : Border
     public void GoToPage(int number) => Post(new { type = "page", number });
     public void Step(int delta) => Post(new { type = "step", delta });
     public void ChangeSheet(int delta) => Post(new { type = "sheet", delta });
+    public void Rotate(int delta) => Post(new { type = "rotate", delta });
     public void SetTheme(bool dark) => Post(new { type = "theme", dark });
     public void FocusDocument() { web.Focus(); Post(new { type = "focus" }); }
 

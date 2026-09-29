@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="400" height="200" onload="fetch('http://127.0.0.1:47831/svg-onload')">
+  <script>new Image().src = "http://127.0.0.1:47831/svg-script";</script>
+  <style>@import url("http://127.0.0.1:47831/svg-css-import"); .remote { fill: url("http://127.0.0.1:47831/svg-css-fill#p"); } @font-face { font-family: Remote; src: url("http://127.0.0.1:47831/svg-font"); }</style>
+  <rect class="remote" width="400" height="200" fill="#fce8e6"/>
+  <image href="http://127.0.0.1:47831/svg-image.png" width="50" height="50"/>
+  <image xlink:href="\\127.0.0.1@47831\share\svg-unc.png" x="60" width="50" height="50"/>
+  <image href="file://127.0.0.1@47831/share/svg-file.png" x="120" width="50" height="50"/>
+  <use href="http://127.0.0.1:47831/svg-use.svg#shape"/>
+  <foreignObject width="200" height="50"><iframe xmlns="http://www.w3.org/1999/xhtml" src="http://127.0.0.1:47831/svg-iframe"></iframe></foreignObject>
+  <a href="javascript:fetch('http://127.0.0.1:47831/svg-link')"><text x="20" y="150" font-family="Segoe UI" font-size="22" fill="#b3261e">Hostile SVG: nothing may load or run</text></a>
+</svg>

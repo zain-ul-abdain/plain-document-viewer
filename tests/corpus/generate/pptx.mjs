@@ -67,5 +67,7 @@ export async function generatePptx() {
     expect: { result: "open", slides: 3, text: ["Hello slides"] }, rules: SAFE_RULES, notes: "Any request under /pptx-remote-image/ is a failure." });
 
   await officeVariants({ format: "pptx", folder: "pptx", simple, complex, mainPart: "ppt/presentation.xml", textPart: "ppt/slides/slide1.xml",
-    macroType: "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml", macroExtension: "pptm", producer, licence });
+    macroType: "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml", macroExtension: "pptm",
+    variants: [{ extension: "ppsx", type: "application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml" },
+      { extension: "potx", type: "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml" }], producer, licence });
 }

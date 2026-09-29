@@ -42,7 +42,7 @@ try {
     & netsh advfirewall firewall show rule name="$rules$name" | Out-Null
     Expect ($LASTEXITCODE -eq 0) "firewall rule '$name'"
   }
-  Expect (Test-Path 'HKCU:\Software\Classes\PlainViewer.docx') '"Open with" registered'
+  Expect (@(@('docx', 'ppsx', 'xlsm', 'png', 'svg', 'json') | Where-Object { -not (Test-Path "HKCU:\Software\Classes\PlainViewer.$_") }).Count -eq 0) '"Open with" registered (checked .docx .ppsx .xlsm .png .svg .json)'
 
   # Without a WebView2 Runtime a PDF must be refused with a clear explanation (text formats are tested below).
   $code = Run $app @('--smoke-test', ('!' + (Join-Path $corpus 'pdf\simple.pdf'))) (Join-Path $results 'no-webview2.txt')
@@ -54,14 +54,16 @@ try {
   $webViews = [bool]$version
   Expect ($upgrade.ExitCode -eq 0 -and $webViews) "install again over it (upgrade) with the bundled WebView2 Runtime (exit $($upgrade.ExitCode), $($upgrade.Seconds) s, runtime $version)"
   Expect (Test-Path -LiteralPath $app) 'app still installed after the upgrade'
-  $native = 'simple.txt', 'complex.txt', 'simple.csv', 'complex.csv', 'simple.md', 'complex.markdown'
+  $native = 'simple.txt', 'complex.txt', 'simple.csv', 'complex.csv', 'simple.md', 'complex.markdown', 'data\complex.json', 'data\attack-xxe.xml', 'data\simple.yaml'
   $web = 'pdf\simple.pdf', 'pdf\complex.pdf', 'pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\simple.xlsx', 'xlsx\complex.xlsx',
     'docx\simple.docx', 'docx\complex-20-pages.docx', 'docx\attack-remote-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx',
-    'pptx\simple.pptx', 'pptx\complex.pptx', 'pptx\attack-remote-image.pptx'
+    'pptx\simple.pptx', 'pptx\complex.pptx', 'pptx\attack-remote-image.pptx',
+    'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\variant.ppsx', 'images\complex.png', 'images\complex-rotated-exif.jpg', 'images\complex.webp',
+    'images\complex.avif', 'images\complex.svg', 'images\attack-svg-active.svg', 'images\simple.gif', 'images\simple.ico'
   $open = @(@($native) + $(if ($webViews) { @($web) } else { @() }) | ForEach-Object { Join-Path $corpus $_ })
-  $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx', 'xlsx\macro.xlsm',
-    'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\damaged-truncated.docx', 'docx\macro.docm',
-    'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx', 'pptx\macro.pptm') | ForEach-Object { '!' + (Join-Path $corpus $_) }
+  $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx',
+    'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\damaged-truncated.docx',
+    'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx', 'images\attack-pixel-bomb.png', 'images\tiff-named.png', 'images\not-a-picture.jpg') | ForEach-Object { '!' + (Join-Path $corpus $_) }
   $code = Run $app (@('--smoke-test') + $open + $refuse) (Join-Path $results 'smoke.txt')
   Get-Content (Join-Path $results 'smoke.txt') | ForEach-Object { Log "  $_" }
   Expect ($code -eq 0) "smoke test in the installed app: $($open.Count) opened, $($refuse.Count) refused (exit $code)"
@@ -82,7 +84,7 @@ try {
   Expect (-not (Test-Path -LiteralPath "$env:LOCALAPPDATA\PlainViewer") -and -not (Test-Path -LiteralPath "$env:USERPROFILE\AppData\LocalLow\PlainViewer")) 'private data removed'
   & netsh advfirewall firewall show rule name="${rules}converter (out)" | Out-Null
   Expect ($LASTEXITCODE -ne 0) 'firewall rules removed'
-  Expect (-not (Test-Path 'HKCU:\Software\Classes\PlainViewer.docx')) '"Open with" removed'
+  Expect (@(@('docx', 'ppsx', 'xlsm', 'png', 'svg', 'json') | Where-Object { Test-Path "HKCU:\Software\Classes\PlainViewer.$_" }).Count -eq 0) '"Open with" removed'
 }
 catch { Log "FAIL unexpected error: $($_.Exception.Message)"; $failures.Add('unexpected error') }
 finally {

@@ -4,7 +4,9 @@ namespace PlainViewer.Core;
 public static class TextFiles
 {
     public const long TextLimit = 4 * 1024 * 1024;
-    public static readonly string[] Extensions = [".txt", ".csv", ".md", ".markdown"];
+    // Plain-text formats are shown as text and never parsed: XML entities, JSON and YAML stay exactly as written.
+    public static readonly string[] PlainExtensions = [".txt", ".json", ".xml", ".log", ".ini", ".yaml", ".yml"];
+    public static readonly string[] Extensions = [.. PlainExtensions, ".csv", ".md", ".markdown"];
     public static void ValidateLocalPath(string path)
     {
         // Reject network/device paths before filesystem access can contact them.
@@ -57,11 +59,11 @@ public static class TextFiles
     {
         ValidateLocalPath(path);
         string extension = Path.GetExtension(path).ToLowerInvariant();
-        if (!Extensions.Contains(extension)) throw new DocumentException("This development preview opens text, CSV, and Markdown. PDF and Office viewing are still being built.");
+        if (!Extensions.Contains(extension)) throw new DocumentException($"{extension} files do not open in the text view.");
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         long originalLength = stream.Length;
         var modified = File.GetLastWriteTimeUtc(path);
-        bool lines = storeFolder is not null && extension == ".txt" && originalLength > TextLimit;
+        bool lines = storeFolder is not null && PlainExtensions.Contains(extension) && originalLength > TextLimit;
         long limit = storeFolder is not null && (extension == ".csv" || lines) ? StoreLimit : extension == ".csv" ? 256L * 1024 * 1024 : TextLimit;
         if (originalLength > limit)
             throw new DocumentException(limit == StoreLimit ? "This file is larger than the 1 GB this viewer can open."
@@ -105,7 +107,7 @@ public static class TextFiles
             for (string? line = reader.ReadLine(); line is not null; line = reader.ReadLine())
             {
                 if (store.Count == 0) line = line.TrimStart('﻿');
-                if (line.AsSpan().ContainsAny(Binary)) throw new DocumentException("This file contains binary data. Choose a text, CSV, or Markdown file.");
+                if (line.AsSpan().ContainsAny(Binary)) throw new DocumentException("This file contains binary data, so its contents are not text. Open it with an application for its actual format.");
                 row[0] = line; store.Add(row);
             }
             store.Complete(); view.Kind = "lines"; view.Store = "rows"; view.RowCount = store.Count; view.Columns = 1;
@@ -114,7 +116,7 @@ public static class TextFiles
         {
             view.Text = reader.ReadToEnd().TrimStart('\ufeff');
             if (view.Text.Any(c => c == '\0' || (char.IsControl(c) && c != '\n' && c != '\r' && c != '\t' && c != '\f')))
-                throw new DocumentException("This file contains binary data. Choose a text, CSV, or Markdown file.");
+                throw new DocumentException("This file contains binary data, so its contents are not text. Open it with an application for its actual format.");
             view.Kind = extension is ".md" or ".markdown" ? "markdown" : "text";
             if (view.Kind == "markdown") view.Blocks = MarkdownView.Parse(view.Text);
         }

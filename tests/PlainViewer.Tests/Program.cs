@@ -15,7 +15,7 @@ if (args is ["--low-integrity-probe", var mediumFolder, var lowFolder])
 int passed = 0, failed = 0;
 void Test(string name, Action test) { try { test(); Console.WriteLine("PASS " + name); passed++; } catch (Exception ex) { Console.WriteLine("FAIL " + name + ": " + ex.Message); failed++; } }
 void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
-void Throws<T>(Action action) where T : Exception { try { action(); } catch (T) { return; } throw new Exception("Expected " + typeof(T).Name); }
+T Throws<T>(Action action) where T : Exception { try { action(); } catch (T ex) { return ex; } throw new Exception("Expected " + typeof(T).Name); }
 string root = Path.Combine(Path.GetTempPath(), "PlainViewerTests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
 try
 {
@@ -173,14 +173,15 @@ try
     using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "manifest.json")));
     var errorWords = new Dictionary<string, string[]> {
         ["damaged"] = ["damaged", "too large to open safely"], ["empty"] = ["empty"], ["password"] = ["password"],
-        ["mismatch"] = ["not an Excel workbook", "older Excel file", "contents are not", "older Office file"], ["unsupported"] = ["not supported", "contains macros"] };
+        ["mismatch"] = ["not an Excel workbook", "older Excel file", "contents are not", "older Office file", "binary data"],
+        ["unsupported"] = ["not supported", "cannot be opened in this version"], ["too-large"] = ["more than this viewer can"] };
 
     // Word and PowerPoint: OfficePackages.Prepare must refuse bad packages with the right message and write a
     // copy of good ones with no outside references (other than hyperlinks) and no content-fetching field codes.
     foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
     {
         string format = fixture.GetProperty("format").GetString()!;
-        if (format is not ("docx" or "pptx" or "docm" or "pptm") || fixture.TryGetProperty("generated", out _)) continue;
+        if (!OfficePackages.IsOfficeDocument("x." + format) || fixture.TryGetProperty("generated", out _)) continue;
         string file = fixture.GetProperty("file").GetString()!;
         var expect = fixture.GetProperty("expect");
         Test("Office preparation " + file, () => {
@@ -198,8 +199,15 @@ try
             else
             {
                 var view = OfficePackages.Prepare(path, output);
-                Check(view.Kind == (format == "docx" ? "word" : "slides"));
+                Check(view.Kind == (OfficePackages.IsWord(path) ? "word" : "slides"));
                 using var zip = ZipFile.OpenRead(output);
+                // The copy is always a plain document: no macro project, no template/show/macro-enabled main type.
+                if (zip.Entries.Any(e => OfficePackages.IsMacroPart(e.FullName))) throw new Exception("The prepared copy still contains a macro project.");
+                using (var types = new StreamReader(zip.GetEntry("[Content_Types].xml")!.Open()))
+                    if (System.Text.RegularExpressions.Regex.IsMatch(types.ReadToEnd(), "macroEnabled|vbaProject|template\\.main|slideshow\\.main", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                        throw new Exception("The prepared copy's content types still name a macro, template or show part.");
+                if (expect.TryGetProperty("macrosRemoved", out _)) Check(view.Notice.Contains("macros", StringComparison.Ordinal) && view.Notice.Contains("never ran"));
+                else Check(!view.Notice.Contains("macros"));
                 foreach (var entry in zip.Entries.Where(e => e.FullName.EndsWith(".xml") || e.FullName.EndsWith(".rels")))
                 {
                     using var reader = new StreamReader(entry.Open()); string xml = reader.ReadToEnd();
@@ -217,7 +225,7 @@ try
     foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
     {
         string format = fixture.GetProperty("format").GetString()!;
-        if (format is not ("xlsx" or "xlsm") || fixture.TryGetProperty("generated", out _)) continue;
+        if (!Spreadsheets.IsWorkbook("x." + format) || fixture.TryGetProperty("generated", out _)) continue;
         string file = fixture.GetProperty("file").GetString()!;
         var expect = fixture.GetProperty("expect");
         Test("Spreadsheet fixture " + file, () => {
@@ -245,6 +253,7 @@ try
                         if (actual != cell.GetProperty("text").GetString()) throw new Exception($"{sheet.Name}!{cell.GetProperty("ref").GetString()}: got '{actual}', expected '{cell.GetProperty("text").GetString()}'");
                     }
                 if (expect.TryGetProperty("notice", out var notice)) Check(view.Sheets[0].Notice == notice.GetString());
+                Check(expect.TryGetProperty("macrosRemoved", out _) == view.Notice.Contains("macros"));
                 if (expect.TryGetProperty("hiddenSheetsNotShown", out var hidden))
                     Check(hidden.EnumerateArray().All(h => !names.Contains(h.GetString())) && !view.Sheets.SelectMany(s => s.Rows).SelectMany(r => r).Any(t => t.Contains("hidden value")));
                 if (expect.TryGetProperty("frozen", out var frozen))
@@ -265,6 +274,62 @@ try
             Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
         });
     }
+    // Pictures and plain-text data files: every fixture in the manifest, with the originals left untouched.
+    foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
+    {
+        string file = fixture.GetProperty("file").GetString()!;
+        bool picture = ImageFiles.IsImage(file), data = TextFiles.PlainExtensions.Contains(Path.GetExtension(file)) && !file.EndsWith(".txt");
+        if (!(picture || data) || fixture.TryGetProperty("generated", out _)) continue;
+        var expect = fixture.GetProperty("expect");
+        Test((picture ? "Picture fixture " : "Data fixture ") + file, () => {
+            string path = Path.Combine(corpus, file.Replace('/', Path.DirectorySeparatorChar));
+            byte[] before = SHA256.HashData(File.ReadAllBytes(path)); var siblings = Directory.GetFiles(Path.GetDirectoryName(path)!);
+            // "stage: renderer" files pass the app's checks; the sandboxed renderer refuses them (smoke test).
+            bool opensHere = expect.GetProperty("result").GetString() == "open" || expect.TryGetProperty("stage", out _);
+            if (!opensHere)
+            {
+                string message = "";
+                try { if (picture) ImageFiles.Snapshot(path); else TextFiles.Load(path); } catch (DocumentException ex) { message = ex.Message; }
+                var words = errorWords[expect.GetProperty("error").GetString()!];
+                if (!words.Any(w => message.Contains(w, StringComparison.OrdinalIgnoreCase))) throw new Exception($"Expected a {string.Join("/", words)} message, got: '{message}'");
+            }
+            else if (picture)
+            {
+                var image = ImageFiles.Snapshot(path);
+                if (expect.TryGetProperty("format", out var imageFormat) && image.Format != imageFormat.GetString()) throw new Exception($"Format: got {image.Format}");
+                if (expect.TryGetProperty("width", out var width) && width.GetInt32() > 0) Check(image.Width == width.GetInt32() && image.Height == expect.GetProperty("height").GetInt32());
+                if (expect.GetProperty("result").GetString() == "open" && image.Incomplete != expect.TryGetProperty("incomplete", out _)) throw new Exception($"Incomplete: got {image.Incomplete}");
+            }
+            else
+            {
+                var view = TextFiles.Load(path);
+                Check(view.Kind == "text");
+                foreach (var text in expect.GetProperty("text").EnumerateArray())
+                    if (!view.Text.Contains(text.GetString()!)) throw new Exception($"Text '{text.GetString()}' not shown.");
+            }
+            Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))));
+            Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
+        });
+    }
+    Test("Picture formats are recognised by content, not by name", () => {
+        byte[] ftyp(string brand) => [0, 0, 0, 24, .. "ftyp"u8, .. Encoding.ASCII.GetBytes(brand), 0, 0, 0, 0, .. "mif1"u8, .. Encoding.ASCII.GetBytes(brand)];
+        Check(ImageFiles.Identify(ftyp("avif"))?.Format == "AVIF");
+        Check(ImageFiles.Identify(ftyp("heic")) is null);
+        string heic = Path.Combine(root, "photo.jpg"); File.WriteAllBytes(heic, ftyp("heic"));
+        Check(Throws<DocumentException>(() => ImageFiles.Snapshot(heic)).Message.Contains("HEIC"));
+        Check(ImageFiles.Identify(Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><!-- note --><!DOCTYPE svg><svg xmlns=\"http://www.w3.org/2000/svg\"/>"))?.Format == "SVG");
+        Check(ImageFiles.Identify(Encoding.UTF8.GetBytes("<html><body><svg></svg></body></html>")) is null);   // an HTML page is not an SVG
+        string gz = Path.Combine(root, "drawing.svg"); File.WriteAllBytes(gz, [0x1f, 0x8b, 8, 0, 0, 0, 0, 0]);
+        Check(Throws<DocumentException>(() => ImageFiles.Snapshot(gz)).Message.Contains("compressed"));
+        Throws<DocumentException>(() => ImageFiles.Snapshot(@"\\nonexistent.invalid\share\photo.png"));
+    });
+    Test("Every supported type is registered by the installer, and nothing else", () => {
+        string script = File.ReadAllText(Path.Combine(Path.GetDirectoryName(corpus)!, "..", "installer", "PlainViewer.iss"));
+        var registered = System.Text.RegularExpressions.Regex.Matches(script, "#define Ext\\[\\d+\\] \"([a-z0-9]+)\"").Select(m => "." + m.Groups[1].Value).ToHashSet();
+        var supported = Formats.All.ToHashSet();
+        if (!registered.SetEquals(supported)) throw new Exception($"Installer only: {string.Join(" ", registered.Except(supported))}; app only: {string.Join(" ", supported.Except(registered))}");
+        Check(Formats.OpenDialogFilter.StartsWith("All supported files|*.pdf;"));
+    });
     Test("Spreadsheet complex fixture reports hidden sheets and the missing formula result", () => {
         var view = Spreadsheets.Load(Path.Combine(corpus, "xlsx", "complex.xlsx"), culture);
         Check(view.Notice.Contains("2 hidden sheets") && view.Notice.Contains("1 formula cell has no saved result")); });
