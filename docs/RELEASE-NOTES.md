@@ -1,5 +1,9 @@
 # Release notes
 
+## Next version (not yet released)
+
+- A tidier toolbar: the text encoding and CSV delimiter lists appear only for files they apply to (the encoding for text, CSV, Markdown and data files; the delimiter for CSV), instead of greyed out everywhere else.
+
 ## 0.5.0 — beta: pictures and charts in .xls and .ods (September 2026)
 
 Install over any earlier beta; nothing needs uninstalling first.

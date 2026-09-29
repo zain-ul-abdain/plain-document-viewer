@@ -327,13 +327,15 @@ public partial class MainWindow : Window
         }
         PageLabel.Text = document.Kind == "slides" ? "Slide" : "Page";
         System.Windows.Automation.AutomationProperties.SetName(PageBox, document.Kind == "slides" ? "Go to slide number" : "Go to page number");
-        EncodingChoice.IsEnabled = !web;
+        // Text encoding and CSV delimiter appear only where they apply (Zain's choice, DECISIONS.md D14): the encoding for
+        // text, CSV, Markdown and data files, the delimiter for CSV.
+        EncodingChoice.Visibility = web ? Visibility.Collapsed : Visibility.Visible;
+        DelimiterChoice.Visibility = document.Kind == "csv" ? Visibility.Visible : Visibility.Collapsed;
         // Page thumbnails beside PDF and Word documents, on request (slides always have their strip).
         bool documentPages = document.Kind is "pdf" or "word";
         ThumbnailsToggle.Visibility = documentPages ? Visibility.Visible : Visibility.Collapsed;
         if (documentPages && ThumbnailsToggle.IsChecked == true) WebPane.ShowThumbnails(true);
-        if (web) { DelimiterChoice.IsEnabled = false; lastQuery = ""; matchIndex = -1; WebPane.FocusDocument(); return; }
-        DelimiterChoice.IsEnabled = document.Kind == "csv";
+        if (web) { lastQuery = ""; matchIndex = -1; WebPane.FocusDocument(); return; }
         if (document.Kind is "csv" or "lines")
         {
             // Large plain text shows one line per row, with line numbers as row headers.
