@@ -2,7 +2,7 @@
 
 <h1 align="center">Plain Viewer</h1>
 
-<p align="center">A simple, read-only document viewer for Windows 11.<br>
+<p align="center">A simple, read-only document viewer for Windows 11 and Windows 10.<br>
 Open a file, read it, close it. Offline, no Microsoft Office needed, and it never changes your files.</p>
 
 <p align="center"><a href="https://github.com/zain-ul-abdain/plain-document-viewer/releases"><b>Download</b></a> ·
@@ -30,7 +30,7 @@ Files with macros open with the macros removed or ignored: they never run. What 
 
 ## How to install
 
-You need Windows 11 on a normal Intel or AMD PC (x64) and about 1.3 GB of free disk space. No administrator rights are needed.
+You need Windows 11, or Windows 10 version 21H2 or later, on a normal Intel or AMD PC (x64) and about 1.3 GB of free disk space. No administrator rights are needed.
 
 1. Download `PlainViewer-Setup-<version>-x64.exe` (the newest version at the top) from the [Releases page](https://github.com/zain-ul-abdain/plain-document-viewer/releases).
 2. Run it. Windows may show **"Windows protected your PC"** because the installer is not signed yet. Click **More info**, check the file name, then **Run anyway**.

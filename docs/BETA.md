@@ -20,7 +20,7 @@ Files with macros open with the macros removed or ignored: they never run, and t
 
 ## What you need
 
-- Windows 11 on a normal Intel or AMD PC (x64). PCs with ARM processors (for example some Surface and Snapdragon laptops) have not been tested.
+- Windows 11, or Windows 10 version 21H2 or later (from the next version; not yet tested on Windows 10, so reports are especially welcome), on a normal Intel or AMD PC (x64). PCs with ARM processors (for example some Surface and Snapdragon laptops) have not been tested.
 - About 1.3 GB of free disk space. Plain Viewer itself takes about 870 MB; the rest is for a Windows component it may install (see "WebView2" below) and for temporary copies while you view documents.
 - No administrator rights, unless you choose the optional firewall rules.
 
@@ -42,7 +42,7 @@ If you were given a checksum (a long code in a `.sha256` file), you can check th
 
 - **Add Plain Viewer to "Open with"** (on by default). Right-click a supported file in File Explorer and choose **Open with** > **Plain Viewer**. Your default apps do not change. If you want double-clicking to use Plain Viewer, choose it yourself in Windows Settings > Apps > Default apps.
 - **Block with Windows Firewall** (off by default). Adds firewall rules that stop the parts of Plain Viewer that read documents from reaching the network, as an extra safety layer. Windows asks once for administrator permission. The About button in Plain Viewer shows whether the rules are on. Uninstalling removes them.
-- **Install the Microsoft Edge WebView2 Runtime** (only shown if your PC lacks it; on by default). PDF, Word, Excel, PowerPoint and picture files need this Windows component; most Windows 11 PCs already have it. It is Microsoft software under Microsoft's licence and stays installed if you remove Plain Viewer. Without it, Plain Viewer still opens text, CSV, Markdown and data files, and explains what is missing for the others.
+- **Install the Microsoft Edge WebView2 Runtime** (only shown if your PC lacks it; on by default). PDF, Word, Excel, PowerPoint and picture files need this Windows component; most Windows 11 PCs already have it; many Windows 10 PCs do not. It is Microsoft software under Microsoft's licence and stays installed if you remove Plain Viewer. Without it, Plain Viewer still opens text, CSV, Markdown and data files, and explains what is missing for the others.
 - **Create a desktop shortcut** (off by default).
 
 ## What to try

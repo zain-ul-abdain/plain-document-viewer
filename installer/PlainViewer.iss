@@ -21,8 +21,8 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Windows 11
-MinVersion=10.0.22000
+; Windows 10 version 21H2 (build 19044, which includes Windows 10 LTSC 2021) or Windows 11 (DECISIONS.md D13)
+MinVersion=10.0.19044
 OutputDir={#OutputDir}
 OutputBaseFilename=PlainViewer-Setup-{#AppVersion}-x64
 Compression=lzma2/max
@@ -195,7 +195,7 @@ Type: filesandordirs; Name: "{%USERPROFILE}\AppData\LocalLow\PlainViewer"
 
 [Code]
 // PDF, Word, Excel and PowerPoint views need the Microsoft Edge WebView2 Runtime. Windows 11 normally includes it,
-// but a clean Windows 11 may not. Registry check documented by Microsoft for the Evergreen runtime.
+// but a clean Windows 11 may not, and Windows 10 often lacks it. Registry check documented by Microsoft for the Evergreen runtime.
 function WebView2Installed: Boolean;
 var
   Version: String;

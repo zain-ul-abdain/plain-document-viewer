@@ -269,3 +269,8 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **.xls:** `Core/LegacySpreadsheets.Drawings.cs` (partial `Excel97`): picture store from MSODRAWINGGROUP, shapes and anchors from each sheet's MSODRAWING, paired in order with OBJ records (ot 8 picture, 5 chart). Charts are parsed in a first pass (`FindCharts`) so `ReadSheet` keeps the saved values of cells their series refer to (`chartCells`); `ResolveCharts` builds them after all sheets. `Records` now follows nested BOF/EOF.
 - Shared helpers in `SheetDrawings`: `Fits`, `AddPicture`, `Notes`, `ColumnPixels`, `CellAt`.
 - Verified: see TEST-RESULTS.md. Not verified with Excel-made .xls files (chart cache, chart sheets, JPEG/DIB). Version not bumped; the installer was not rebuilt.
+
+## Agent 2, 30 September 2026 (later): SignPath release build; Windows 10
+
+- **Signing (Zain chose SignPath Foundation):** `.github/workflows/release.yml` builds on a GitHub-hosted runner (`scripts/ci-prepare.ps1` fetches pinned, verified tools), runs the full test gate, and signs through SignPath once the repository variables and secret exist; until then it builds unsigned. `package.ps1 -Stage Publish|Installer`. Artifact configurations in `.signpath/`. README has the required code signing policy. Zain's steps (2FA, application, SignPath set-up, secrets) are in RELEASING.md. Risks told to Zain: young project (reputation), bundled WebView2 installer (proprietary), Inno Setup pads its version fields.
+- **Windows 10** (Zain): installer minimum is now build 19044 (DECISIONS.md D13). No code change was needed; untested on Windows 10.
