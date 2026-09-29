@@ -1,5 +1,20 @@
 # Release notes
 
+## 0.4.0 — beta: Excel pictures and charts, iPhone photos, formatting in .xls and .ods (September 2026)
+
+Install over any earlier beta; nothing needs uninstalling first.
+
+### New
+
+- **Pictures and charts in Excel workbooks (.xlsx and its variants)**, placed where the workbook puts them. Charts are drawn from the values saved with them (column, bar, line, area, pie, doughnut and scatter); chart sheets show their chart filling the window. Linked pictures stored outside the file are never loaded, and the status line says so.
+- **iPhone photos (.heic, .heif)**, decoded with Windows' own decoder inside the restricted worker. They need Microsoft's "HEIF Image Extensions" and "HEVC Video Extensions" from the Microsoft Store (many PCs have them already); without them Plain Viewer says which to install. Nothing is downloaded by Plain Viewer.
+- **Cell formatting in .xls and .ods**: fonts, colours, fills, borders and alignment, as for .xlsx.
+- **Long .xls and .ods sheets** are no longer cut at 10,000 rows: rows past that are kept on disk and loaded as you scroll, as for .xlsx.
+
+### Still not shown
+
+Conditional formatting, shapes and text boxes, row heights; charts and pictures in .xls and .ods; less common chart kinds (a note says so).
+
 ## 0.3.0 — beta: older Office files, OpenDocument, RTF, TIFF; logo (September 2026)
 
 Install over any earlier beta; nothing needs uninstalling first.

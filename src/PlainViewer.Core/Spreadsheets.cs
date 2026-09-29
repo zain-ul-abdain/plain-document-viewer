@@ -133,10 +133,14 @@ public static class Spreadsheets
             {
                 if (state is "hidden" or "veryHidden") { hidden++; continue; }
                 if (!workbookRels.TryGetValue(id, out var rel)) continue;
-                if (!rel.Type.EndsWith("/worksheet", StringComparison.Ordinal)) { notes.Add($"The chart sheet \"{name}\" is not shown in this version."); continue; }
+                if (rel.Type.EndsWith("/chartsheet", StringComparison.Ordinal)) { view.Sheets.Add(ReadChartSheet(name, rel.Target, view.Sheets.Count)); continue; }
+                if (!rel.Type.EndsWith("/worksheet", StringComparison.Ordinal)) { notes.Add($"The sheet \"{name}\" is of a kind not shown in this version."); continue; }
                 view.Sheets.Add(ReadSheet(name, rel.Target, view.Sheets.Count));
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
+            if (pictureBudget.Unsupported > 0) notes.Add($"{pictureBudget.Unsupported} picture{(pictureBudget.Unsupported == 1 ? " is" : "s are")} in a format this viewer cannot show (for example EMF or WMF) and {(pictureBudget.Unsupported == 1 ? "is" : "are")} left out.");
+            if (pictureBudget.Skipped > 0) notes.Add($"{pictureBudget.Skipped} picture{(pictureBudget.Skipped == 1 ? " is" : "s are")} left out because the workbook's pictures are larger than this viewer shows at once.");
+            if (pictureBudget.Linked > 0) notes.Add($"{pictureBudget.Linked} linked picture{(pictureBudget.Linked == 1 ? " is" : "s are")} stored outside this file and {(pictureBudget.Linked == 1 ? "is" : "are")} not loaded.");
             if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
             if (formulasWithoutResult > 0)
                 notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show{(formulasWithoutResult == 1 ? "s" : "")} \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");
@@ -233,6 +237,30 @@ public static class Spreadsheets
             return list;
         }
 
+        private readonly SheetDrawings.Budget pictureBudget = new();
+
+        // The pictures and charts of a worksheet or chart sheet (its drawing part, if it has one).
+        private List<SheetPicture> Drawing(string part, string drawingId, int index)
+        {
+            if (!Relationships(part).TryGetValue(drawingId, out var rel)) return [];
+            return SheetDrawings.Read(rel.Target, p => Relationships(p).ToDictionary(pair => pair.Key, pair => (pair.Value.Type, pair.Value.Target)),
+                Open, zip.GetEntry, storeFolder, index, pictureBudget, styles.Theme);
+        }
+
+        // A chart sheet: no cells, its chart shown filling the view.
+        private SheetData ReadChartSheet(string name, string part, int index)
+        {
+            var sheet = new SheetData { Name = name, ChartSheet = true };
+            string? drawingId = null;
+            using (var r = Open(part))
+                while (r.Read())
+                    if (r.NodeType == XmlNodeType.Element && r.LocalName == "drawing")
+                        drawingId = r.GetAttribute("id", RelationshipNs) ?? r.GetAttribute("id", StrictRelationshipNs);
+            if (drawingId is not null) sheet.Pictures = Drawing(part, drawingId, index).Where(p => p.Chart is not null).Take(1).ToList();
+            if (sheet.Pictures.Count == 0) sheet.Notice = "This chart sheet has no chart to show.";
+            return sheet;
+        }
+
         private SheetData ReadSheet(string name, string part, int index)
         {
             var sheet = new SheetData { Name = name };
@@ -241,6 +269,7 @@ public static class Spreadsheets
             double defaultWidth = 8.43;
             int maxRow = 0, maxColumn = 0, rowNumber = 0, stored = 0;
             bool firstView = true, stopped = false;
+            string? drawingId = null;
             // A long sheet switches to streaming its rows (in order) into a row store; rows read so far go first.
             RowStoreWriter? store = null;
             try
@@ -290,6 +319,9 @@ public static class Spreadsheets
                     case "mergeCell":
                         if (r.GetAttribute("ref") is { } reference && TryRange(reference, out var range)) sheet.Merges.Add(range);
                         break;
+                    case "drawing":
+                        drawingId = r.GetAttribute("id", RelationshipNs) ?? r.GetAttribute("id", StrictRelationshipNs);
+                        break;
                 }
                 r.Read();
             }
@@ -301,6 +333,7 @@ public static class Spreadsheets
             }
             }
             finally { store?.Dispose(); }
+            if (drawingId is not null) sheet.Pictures = Drawing(part, drawingId, index);
 
             int totalRows = sheet.Store.Length > 0 ? stored : 0;
             maxRow = Math.Max(maxRow, sheet.FrozenRows);

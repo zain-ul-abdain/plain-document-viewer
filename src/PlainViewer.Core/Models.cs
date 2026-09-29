@@ -86,4 +86,46 @@ public sealed class SheetData
     // Rows then holds only the first rows, for the first screen. RowCount is the sheet's full row count.
     public string Store { get; set; } = "";
     public int RowCount { get; set; }
+    public List<SheetPicture> Pictures { get; set; } = [];  // pictures and charts drawn over the grid
+    public bool ChartSheet { get; set; }                    // a chart sheet: no cells, one chart filling the view
+}
+
+// A picture or chart placed on a sheet. Position: from a cell (zero-based) plus an offset in pixels; size either to
+// another cell (ToRow/ToColumn plus offsets) or in pixels. Media names a picture file the worker wrote to the work
+// folder (checked by ImageFiles, never a link); Chart holds a chart's saved data.
+public sealed class SheetPicture
+{
+    public int Row { get; set; }
+    public int Column { get; set; }
+    public double RowOffset { get; set; }
+    public double ColumnOffset { get; set; }
+    public int ToRow { get; set; } = -1;
+    public int ToColumn { get; set; } = -1;
+    public double ToRowOffset { get; set; }
+    public double ToColumnOffset { get; set; }
+    public double Width { get; set; }
+    public double Height { get; set; }
+    public string Media { get; set; } = "";
+    public string Description { get; set; } = "";
+    public ChartData? Chart { get; set; }
+}
+
+// A chart as the values saved in the file (the chart's own cache): never recalculated from the cells.
+public sealed class ChartData
+{
+    public string Type { get; set; } = "column";             // column, bar, line, area, pie, doughnut, scatter
+    public bool Stacked { get; set; }
+    public bool Percent { get; set; }
+    public string Title { get; set; } = "";
+    public List<string> Categories { get; set; } = [];
+    public List<ChartSeries> Series { get; set; } = [];
+    public string Notice { get; set; } = "";
+}
+
+public sealed class ChartSeries
+{
+    public string Name { get; set; } = "";
+    public List<double?> Values { get; set; } = [];
+    public List<double?> X { get; set; } = [];                 // scatter charts
+    public string? Color { get; set; }
 }

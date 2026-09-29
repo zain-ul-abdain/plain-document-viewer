@@ -17,6 +17,7 @@ internal sealed partial class WorkbookStyles
     public readonly List<CellStyle> Table = [new()];    // 0: the plain default
 
     private readonly List<string> theme = [];           // XML order: dk1 lt1 dk2 lt2 accent1..6 hlink folHlink
+    public IReadOnlyList<string> Theme => theme;
     private readonly List<Font> fonts = [];
     private readonly List<string?> fills = [];
     private readonly List<string?[]> borders = [];      // left, right, top, bottom
@@ -169,7 +170,7 @@ internal sealed partial class WorkbookStyles
     private static double Number(string? text) => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && v is > 0 and < 500 ? v : 0;
 
     // Excel's border kinds as a CSS width and line kind; unknown kinds and "none" draw nothing.
-    private static string? Line(string? kind, string colour) => kind switch
+    internal static string? Line(string? kind, string colour) => kind switch
     {
         "thin" or "hair" => $"1 solid {colour}",
         "dotted" => $"1 dotted {colour}",
@@ -181,10 +182,10 @@ internal sealed partial class WorkbookStyles
         _ => null
     };
 
-    private static string? SafeName(string? name) => name is not null && SafeFontName().IsMatch(name) ? name : null;
+    internal static string? SafeName(string? name) => name is not null && SafeFontName().IsMatch(name) ? name : null;
     [GeneratedRegex(@"^[\p{L}\p{N} \-]{1,64}$")] private static partial Regex SafeFontName();
 
-    private static string? Hex(string? value)
+    internal static string? Hex(string? value)
     {
         if (value is null) return null;
         if (value.Length == 8) value = value[2..];                   // ARGB: the alpha byte is ignored, as Excel does
@@ -228,7 +229,7 @@ internal sealed partial class WorkbookStyles
     }
 
     // Excel's default indexed palette (0-63); 64 and 65 are the system text and window colours (automatic).
-    private static readonly string[] Palette =
+    internal static readonly string[] Palette =
     [
         "#000000", "#ffffff", "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff",
         "#000000", "#ffffff", "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff",

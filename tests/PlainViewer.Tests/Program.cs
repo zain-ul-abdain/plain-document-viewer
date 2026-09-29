@@ -255,6 +255,16 @@ try
                     }
                 if (expect.TryGetProperty("notice", out var notice)) Check(view.Sheets[0].Notice == notice.GetString());
                 Check(expect.TryGetProperty("macrosRemoved", out _) == view.Notice.Contains("macros"));
+                // Long sheets: with a store folder every row streams to the row store; the last row is read back from it.
+                if (expect.TryGetProperty("storedRows", out var storedRows))
+                {
+                    string folder = NewFolder("store-" + Path.GetFileName(path));
+                    var big = (LegacySpreadsheets.Handles(path) ? LegacySpreadsheets.Load(path, culture, folder) : Spreadsheets.Load(path, culture, folder)).Sheets[0];
+                    using var rowStore = RowStore.Open(folder, big.Store);
+                    Check(big.RowCount == storedRows.GetInt32() && rowStore.Count == storedRows.GetInt32() && big.Rows.Count <= Spreadsheets.MaxRowsPerSheet);
+                    string last = rowStore.Read(rowStore.Count - 1, 1)[0][1];
+                    if (last != expect.GetProperty("lastRow").GetString()) throw new Exception($"Last stored row: got '{last}'");
+                }
                 if (expect.TryGetProperty("hiddenSheetsNotShown", out var hidden))
                     Check(hidden.EnumerateArray().All(h => !names.Contains(h.GetString())) && !view.Sheets.SelectMany(s => s.Rows).SelectMany(r => r).Any(t => t.Contains("hidden value")));
                 if (expect.TryGetProperty("frozen", out var frozen))
@@ -298,6 +308,30 @@ try
                     { Check(Spreadsheets.TryCell(letter.GetString() + "1", out _, out int column)); Check(view.Sheets[0].ColumnWidths[column] == 0); }
                 if (expect.TryGetProperty("rightToLeft", out var rtl))
                     Check(rtl.EnumerateArray().All(n => view.Sheets.Single(s => s.Name == n.GetString()).RightToLeft));
+                // Pictures (written to the work folder under checked names) and charts ("type:title:series").
+                if (expect.TryGetProperty("drawings", out var drawings))
+                {
+                    string folder = NewFolder("media-" + Path.GetFileName(path));
+                    var drawn = Spreadsheets.Load(path, culture, folder);
+                    foreach (var item in drawings.EnumerateArray())
+                    {
+                        int index = drawn.Sheets.FindIndex(s => s.Name == item.GetProperty("sheet").GetString());
+                        var sheet = drawn.Sheets[index];
+                        var media = sheet.Pictures.Where(p => p.Chart is null).ToList();
+                        if (item.TryGetProperty("pictures", out var count) && media.Count != count.GetInt32()) throw new Exception($"{sheet.Name}: {media.Count} pictures");
+                        foreach (var picture in media)
+                            Check(ImageFiles.ContentTypeOf(picture.Media) == "image/png" && picture.Media.StartsWith($"media-{index}-") && File.Exists(Path.Combine(folder, picture.Media)));
+                        if (item.TryGetProperty("charts", out var charts))
+                        {
+                            var got = sheet.Pictures.Where(p => p.Chart is not null).Select(p => $"{p.Chart!.Type}:{p.Chart.Title}:{p.Chart.Series.Count}").ToArray();
+                            var wanted = charts.EnumerateArray().Select(c => c.GetString()!).ToArray();
+                            if (!got.SequenceEqual(wanted)) throw new Exception($"{sheet.Name} charts: got {string.Join(", ", got)}");
+                            Check(sheet.Pictures.Where(p => p.Chart is not null).All(p => p.Chart!.Categories.Count > 0 && p.Chart.Series.All(s => s.Values.Count > 0 && s.Values.All(v => v is not null))));
+                        }
+                        Check(item.TryGetProperty("chartSheet", out _) == sheet.ChartSheet);
+                    }
+                    if (fixture.GetProperty("category").GetString() == "attack") Check(drawn.Notice.Contains("linked picture"));
+                }
             }
             Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))));
             Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
@@ -441,9 +475,10 @@ try
     Test("Picture formats are recognised by content, not by name", () => {
         byte[] ftyp(string brand) => [0, 0, 0, 24, .. "ftyp"u8, .. Encoding.ASCII.GetBytes(brand), 0, 0, 0, 0, .. "mif1"u8, .. Encoding.ASCII.GetBytes(brand)];
         Check(ImageFiles.Identify(ftyp("avif"))?.Format == "AVIF");
-        Check(ImageFiles.Identify(ftyp("heic")) is null);
+        Check(ImageFiles.Identify(ftyp("heic"))?.Format == "HEIF");
         string heic = Path.Combine(root, "photo.jpg"); File.WriteAllBytes(heic, ftyp("heic"));
-        Check(Throws<DocumentException>(() => ImageFiles.Snapshot(heic)).Message.Contains("HEIC"));
+        Check(ImageFiles.Snapshot(heic).Format == "HEIF");                 // a HEIC photo named .jpg still goes to the HEIC path
+        Check(ImageFiles.ContentTypeOf("media-0-0.heic") is null);         // never served to the page as a sheet picture
         Check(ImageFiles.Identify(Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><!-- note --><!DOCTYPE svg><svg xmlns=\"http://www.w3.org/2000/svg\"/>"))?.Format == "SVG");
         Check(ImageFiles.Identify(Encoding.UTF8.GetBytes("<html><body><svg></svg></body></html>")) is null);   // an HTML page is not an SVG
         string gz = Path.Combine(root, "drawing.svg"); File.WriteAllBytes(gz, [0x1f, 0x8b, 8, 0, 0, 0, 0, 0]);

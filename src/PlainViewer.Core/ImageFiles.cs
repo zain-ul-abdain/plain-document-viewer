@@ -9,8 +9,13 @@ public static class ImageFiles
 {
     public const long SizeLimit = 100L * 1024 * 1024;
     public const long PixelLimit = 200_000_000;   // about 14,000 × 14,000; larger pictures would exhaust memory
-    public static readonly string[] Extensions = [".jpg", ".jpeg", ".jfif", ".png", ".gif", ".bmp", ".ico", ".webp", ".avif", ".svg"];
+    public static readonly string[] Extensions = [".jpg", ".jpeg", ".jfif", ".png", ".gif", ".bmp", ".ico", ".webp", ".avif", ".svg", ".heic", ".heif", ".hif"];
     public static bool IsImage(string path) => Extensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+
+    // Pictures the worker writes for sheets are named media-<sheet>-<n>.<type>, the type taken from the checked bytes.
+    public static readonly System.Text.RegularExpressions.Regex MediaName = new(@"^media-\d{1,6}-\d{1,4}\.(png|jpeg|gif|bmp|webp|avif|ico)$");
+    public static string? ContentTypeOf(string mediaName) => MediaName.Match(mediaName) is { Success: true } m
+        ? m.Groups[1].Value == "ico" ? "image/x-icon" : "image/" + m.Groups[1].Value : null;
 
     public sealed record Picture(byte[] Bytes, string ContentType, string Format, int Width, int Height)
     {
@@ -92,7 +97,10 @@ public static class ImageFiles
         if (s.Length >= 6 && s.StartsWith(new byte[] { 0, 0, 1, 0 }) && BinaryPrimitives.ReadUInt16LittleEndian(s[4..]) > 0)
             return new(b, "image/x-icon", "icon", 256, 256);
         if (s.Length >= 16 && s.StartsWith("RIFF"u8) && s[8..12].SequenceEqual("WEBP"u8)) { var (w, h) = WebPSize(s); return new(b, "image/webp", "WebP", w, h); }
-        if (Brands(s) is { } brands && (brands.Contains("avif") || brands.Contains("avis"))) return new(b, "image/avif", "AVIF", 0, 0);
+        var brands = Brands(s);
+        if (brands is not null && (brands.Contains("avif") || brands.Contains("avis"))) return new(b, "image/avif", "AVIF", 0, 0);
+        // HEIC/HEIF (iPhone photos): the browser cannot decode these; the worker converts them with Windows' own codec.
+        if (brands is not null && brands.Any(x => x is "heic" or "heix" or "hevc" or "hevx" or "heim" or "heis" or "mif1" or "msf1")) return new(b, "image/heic", "HEIF", 0, 0);
         if (IsSvg(s)) return new(b, "image/svg+xml", "SVG", 0, 0);
         return null;
     }
@@ -102,8 +110,6 @@ public static class ImageFiles
     private static DocumentException Unrecognised(byte[] b, string extension)
     {
         ReadOnlySpan<byte> s = b;
-        if (Brands(s) is { } brands && brands.Any(x => x is "heic" or "heix" or "hevc" or "heim" or "heis" or "mif1" or "msf1"))
-            return new("This is a HEIC/HEIF photo (the format iPhones use). It cannot be opened in this version. Save it as JPEG or PNG in the Photos app to view it here.");
         if (s.StartsWith("II*\0"u8) || s.StartsWith("MM\0*"u8))
             return new($"This is a TIFF picture, but its name ends in {extension}. Rename it to end in .tif to view it.");
         if (s.StartsWith(new byte[] { 0x1f, 0x8b }))

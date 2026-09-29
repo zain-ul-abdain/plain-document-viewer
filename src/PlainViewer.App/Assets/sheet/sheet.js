@@ -124,7 +124,8 @@ function mergesWithin(sheet, first, last, position) {
 }
 
 function render(sheet) {
-  if (!(sheet.rowCount ?? sheet.rows.length)) {
+  if (sheet.chartSheet) { renderChartSheet(sheet); return; }
+  if (!(sheet.rowCount ?? sheet.rows.length) && !sheet.pictures?.length) {
     const note = document.createElement("p");
     note.className = "empty";
     note.textContent = "This sheet is empty.";
@@ -132,6 +133,7 @@ function render(sheet) {
     return;
   }
   if (sheet.store) { renderLarge(sheet); return; }
+  padForDrawings(sheet);
   const { table, offsets } = frame(sheet);
   const frozen = Math.min(sheet.frozenRows, sheet.rows.length);
   const sections = [[0, frozen]];
@@ -151,7 +153,7 @@ function render(sheet) {
     for (let r = start; r < end; r++) body.append(row(sheet, r, spans, covered, hiddenRows, offsets, false));
     table.append(body);
   }
-  scroller.replaceChildren(table);
+  scroller.replaceChildren(withDrawings(sheet, table, offsets));
 }
 
 function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
@@ -267,8 +269,285 @@ function renderLarge(sheet) {
   const heads = mergesWithin(sheet, 0, frozen - 1, r => r);
   big.head = header(sheet, table, offsets, frozen, heads.spans, heads.covered, hidden);
   table.append(top, body, bottom);
-  scroller.replaceChildren(table);
+  scroller.replaceChildren(withDrawings(sheet, table, offsets));
   update(true, 0);
+}
+
+// ---- Pictures and charts, drawn over the cells where the workbook places them. ----
+
+const MEDIA = /^media-\d+-\d+\.(png|jpeg|gif|bmp|webp|avif|ico)$/;
+const EXCEL_ROW = 20;                                 // Excel's default row height in pixels; this grid's rows are 22
+
+// The table inside a positioned wrapper with a layer of pictures and charts. Rows are all var(--row) high, so a
+// cell's position follows from the column widths and the number of hidden rows above it.
+function withDrawings(sheet, table, offsets) {
+  if (!sheet.pictures?.length) return table;
+  const wrap = document.createElement("div");
+  wrap.className = "drawings";
+  if (sheet.rightToLeft) wrap.dir = "rtl";
+  const layer = document.createElement("div");
+  layer.className = "layer";
+  const rowHeight = 22, hidden = [...new Set(sheet.hiddenRows)].map(r => r - 1).sort((a, b) => a - b);
+  const columnCount = sheet.columnWidths.length;
+  const x = (c, offset) => {
+    let left = c < columnCount ? offsets[c] : (offsets[columnCount - 1] ?? 52) + pixels(sheet.columnWidths[columnCount - 1] ?? 8.43) + (c - columnCount) * pixels(8.43);
+    return left + Math.min(offset, pixels(sheet.columnWidths[c] ?? 8.43));
+  };
+  const y = (r, offset) => rowHeight + (r - lowerBound(hidden, r)) * rowHeight + (hidden.includes(r) ? 0 : Math.min(rowHeight, offset * rowHeight / EXCEL_ROW));
+  for (const p of sheet.pictures) {
+    const left = x(p.column, p.columnOffset), top = y(p.row, p.rowOffset);
+    const width = p.toColumn >= 0 ? x(p.toColumn, p.toColumnOffset) - left : p.width;
+    const height = p.toRow >= 0 ? y(p.toRow, p.toRowOffset) - top : p.height * rowHeight / EXCEL_ROW;
+    if (!(width > 1 && height > 1)) continue;
+    let item;
+    if (p.chart) item = chartElement(p.chart, width, height);
+    else if (MEDIA.test(p.media ?? "")) {
+      item = document.createElement("img");
+      item.src = `${DOC}/media?name=${encodeURIComponent(p.media)}`;
+      item.alt = p.description || "Picture";
+      item.draggable = false;
+    } else continue;
+    item.classList.add("drawing");
+    Object.assign(item.style, { insetInlineStart: left + "px", top: top + "px", width: width + "px", height: height + "px" });
+    layer.append(item);
+  }
+  wrap.append(table, layer);
+  return wrap;
+}
+
+// Empty cells under pictures and charts that reach past the sheet's data, so they sit on the grid as in Excel.
+function padForDrawings(sheet) {
+  if (!sheet.pictures?.length || sheet.padded) return;
+  sheet.padded = true;
+  let rows = sheet.rows.length, columns = sheet.columnWidths.length;
+  for (const p of sheet.pictures) {
+    rows = Math.max(rows, (p.toRow >= 0 ? p.toRow : p.row + Math.ceil(p.height / 20)) + 2);
+    columns = Math.max(columns, (p.toColumn >= 0 ? p.toColumn : p.column + Math.ceil(p.width / 64)) + 2);
+  }
+  rows = Math.min(rows, sheet.rows.length + 1000); columns = Math.min(columns, sheet.columnWidths.length + 100);
+  while (sheet.columnWidths.length < columns) sheet.columnWidths.push(8.43);
+  for (const values of sheet.rows) while (values.length < columns) values.push("");
+  while (sheet.rows.length < rows) { sheet.rows.push(Array(columns).fill("")); sheet.align.push(""); }
+}
+
+function renderChartSheet(sheet) {
+  const chart = sheet.pictures?.[0]?.chart;
+  if (!chart) {
+    const note = document.createElement("p");
+    note.className = "empty";
+    note.textContent = sheet.notice || "This chart sheet has no chart to show.";
+    scroller.replaceChildren(note);
+    return;
+  }
+  const width = Math.max(320, scroller.clientWidth - 32), height = Math.max(240, scroller.clientHeight - 32);
+  const item = chartElement(chart, width, height);
+  item.classList.add("chart-sheet");
+  scroller.replaceChildren(item);
+}
+
+// A chart drawn from its saved values as SVG. Charts keep the workbook's own look: white, with Office's colours.
+const SVG = "http://www.w3.org/2000/svg";
+const PALETTE = ["#4472c4", "#ed7d31", "#a5a5a5", "#ffc000", "#5b9bd5", "#70ad47", "#264478", "#9e480e", "#636363", "#997300"];
+const svg = (name, attributes = {}, text) => {
+  const element = document.createElementNS(SVG, name);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+  if (text !== undefined) element.textContent = text;                // text only, never markup
+  return element;
+};
+const colourOf = (series, i) => COLOUR.test(series?.color ?? "") ? series.color : PALETTE[i % PALETTE.length];
+const finite = v => typeof v === "number" && Number.isFinite(v);
+
+function niceTicks(min, max) {
+  if (min === max) { min -= 1; max += 1; }
+  const raw = (max - min) / 5, power = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(m => m * power).find(s => s >= raw);
+  const ticks = [];
+  for (let v = Math.floor(min / step) * step; v <= max + step * 0.001; v += step) ticks.push(Math.round(v / step) * step);
+  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step);
+  return ticks;
+}
+const tickLabel = (v, percent) => (percent ? `${Math.round(v)}%` : Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `${+(v / 1e3).toFixed(1)}k` : `${+v.toFixed(4)}`);
+
+function chartElement(chart, width, height) {
+  const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", class: "chart" });
+  root.setAttribute("aria-label", chart.title ? `Chart: ${chart.title}` : "Chart");
+  root.append(svg("rect", { x: 0.5, y: 0.5, width: width - 1, height: height - 1, fill: "#ffffff", stroke: "#d9d9d9" }));
+  const series = (chart.series ?? []).filter(s => Array.isArray(s.values));
+  let top = 10;
+  if (chart.title) { root.append(svg("text", { x: width / 2, y: 26, "text-anchor": "middle", class: "chart-title" }, chart.title)); top = 40; }
+  const round = chart.type === "pie" || chart.type === "doughnut";
+  const names = round ? chart.categories ?? [] : series.map(s => s.name);
+  const legendHeight = names.length && height > 160 ? 24 : 0;
+  if (legendHeight) {
+    const legend = svg("g", { class: "chart-legend" });
+    let lx = 0;
+    names.slice(0, 20).forEach((name, i) => {
+      const colour = round ? PALETTE[i % PALETTE.length] : colourOf(series[i], i);
+      legend.append(svg("rect", { x: lx, y: -8, width: 9, height: 9, fill: colour }), svg("text", { x: lx + 13, y: 0 }, name));
+      lx += 22 + Math.min(160, measureChart(name));
+    });
+    legend.setAttribute("transform", `translate(${Math.max(8, (width - lx) / 2)} ${height - 10})`);
+    root.append(legend);
+  }
+  const area = { left: 8, top, right: width - 10, bottom: height - 10 - legendHeight };
+  if (!series.length || area.right - area.left < 40 || area.bottom - area.top < 40) {
+    root.append(svg("text", { x: width / 2, y: height / 2, "text-anchor": "middle", class: "chart-note" }, chart.notice || "This chart has no data to show."));
+    return root;
+  }
+  if (round) drawRound(root, chart, series[0], area);
+  else if (chart.type === "scatter") drawScatter(root, series, area);
+  else drawAxes(root, chart, series, area);
+  if (chart.notice) root.append(svg("text", { x: width - 8, y: height - 4 - legendHeight, "text-anchor": "end", class: "chart-note" }, chart.notice));
+  return root;
+}
+
+const measureChart = text => { measure.font = '11px "Segoe UI"'; return measure.measureText(text).width; };
+
+// Column, bar, line and area charts: categories along one axis, values along the other.
+function drawAxes(root, chart, series, area) {
+  const categories = chart.categories ?? [];
+  const n = Math.max(categories.length, ...series.map(s => s.values.length));
+  const horizontal = chart.type === "bar", stacked = chart.stacked, percent = chart.percent;
+  const value = (s, i) => finite(series[s].values[i]) ? series[s].values[i] : 0;
+  const totals = Array.from({ length: n }, (_, i) => series.reduce((sum, _s, s) => sum + Math.abs(value(s, i)), 0) || 1);
+  const shown = (s, i) => percent ? value(s, i) / totals[i] * 100 : value(s, i);
+  let min = 0, max = 0;
+  for (let i = 0; i < n; i++) {
+    if (stacked) {
+      let up = 0, down = 0;
+      series.forEach((_s, s) => { const v = shown(s, i); if (v >= 0) up += v; else down += v; });
+      max = Math.max(max, up); min = Math.min(min, down);
+    } else series.forEach((_s, s) => { if (finite(series[s].values[i])) { max = Math.max(max, shown(s, i)); min = Math.min(min, shown(s, i)); } });
+  }
+  if (percent) { max = Math.min(max, 100); min = Math.max(min, -100); }
+  const ticks = niceTicks(min, max), low = ticks[0], high = ticks[ticks.length - 1];
+  const labelWidth = Math.min(80, Math.max(...ticks.map(t => measureChart(tickLabel(t, percent))))) + 8;
+  const categoryWidth = horizontal ? Math.min(140, Math.max(20, ...categories.slice(0, 200).map(measureChart))) + 8 : 0;
+  const plot = horizontal
+    ? { left: area.left + categoryWidth, top: area.top, right: area.right, bottom: area.bottom - 18 }
+    : { left: area.left + labelWidth, top: area.top, right: area.right, bottom: area.bottom - 18 };
+  const along = horizontal ? plot.bottom - plot.top : plot.right - plot.left;       // category axis length
+  const across = horizontal ? plot.right - plot.left : plot.bottom - plot.top;
+  const scale = v => (v - low) / (high - low) * across;
+  const grid = svg("g", { class: "chart-grid" });
+  for (const t of ticks) {
+    const p = scale(t);
+    if (horizontal) {
+      grid.append(svg("line", { x1: plot.left + p, x2: plot.left + p, y1: plot.top, y2: plot.bottom }));
+      grid.append(svg("text", { x: plot.left + p, y: plot.bottom + 14, "text-anchor": "middle" }, tickLabel(t, percent)));
+    } else {
+      grid.append(svg("line", { x1: plot.left, x2: plot.right, y1: plot.bottom - p, y2: plot.bottom - p }));
+      grid.append(svg("text", { x: plot.left - 6, y: plot.bottom - p + 4, "text-anchor": "end" }, tickLabel(t, percent)));
+    }
+  }
+  root.append(grid);
+  const band = along / Math.max(1, n);
+  const every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(along / (horizontal ? 16 : 60)))));
+  const labels = svg("g", { class: "chart-grid" });
+  for (let i = 0; i < n; i += every) {
+    const text = categories[i] ?? "", mid = band * (i + 0.5);
+    labels.append(horizontal
+      ? svg("text", { x: plot.left - 6, y: plot.top + mid + 4, "text-anchor": "end" }, text.length > 24 ? text.slice(0, 23) + "…" : text)
+      : svg("text", { x: plot.left + mid, y: plot.bottom + 14, "text-anchor": "middle" }, text.length > 16 ? text.slice(0, 15) + "…" : text));
+  }
+  root.append(labels);
+  const zero = scale(Math.min(Math.max(0, low), high));
+  const point = (i, v) => horizontal ? [plot.left + scale(v), plot.top + band * (i + 0.5)] : [plot.left + band * (i + 0.5), plot.bottom - scale(v)];
+  if (chart.type === "column" || chart.type === "bar") {
+    const gap = band * 0.25, inner = band - gap * 2, width = stacked ? inner : inner / series.length;
+    const base = Array(n).fill(0), baseDown = Array(n).fill(0);
+    series.forEach((s, k) => {
+      const group = svg("g", { fill: colourOf(s, k) });
+      for (let i = 0; i < n; i++) {
+        if (!finite(s.values[i])) continue;
+        const v = shown(k, i);
+        let from = 0;
+        if (stacked) { if (v >= 0) { from = base[i]; base[i] += v; } else { from = baseDown[i]; baseDown[i] += v; } }
+        const a = scale(Math.min(Math.max(from, low), high)), b = scale(Math.min(Math.max(from + v, low), high));
+        const offset = band * i + gap + (stacked ? 0 : width * k);
+        const [start, length] = [Math.min(a, b), Math.abs(b - a)];
+        group.append(horizontal
+          ? svg("rect", { x: plot.left + start, y: plot.top + offset, width: length, height: width })
+          : svg("rect", { x: plot.left + offset, y: plot.bottom - start - length, width, height: length }));
+      }
+      root.append(group);
+    });
+  } else {
+    const base = Array(n).fill(0);
+    const drawn = series.map((s, k) => {
+      const points = [];
+      for (let i = 0; i < n; i++) {
+        if (!finite(s.values[i]) && !stacked) { points.push(null); continue; }
+        const from = base[i], v = stacked ? from + shown(k, i) : shown(k, i);
+        if (stacked) base[i] = v;
+        points.push({ i, from, v });
+      }
+      return points;
+    });
+    drawn.forEach((points, k) => {
+      const colour = colourOf(series[k], k);
+      const valid = points.filter(Boolean);
+      if (!valid.length) return;
+      if (chart.type === "area") {
+        const upper = valid.map(p => point(p.i, p.v)), lower = valid.map(p => point(p.i, stacked ? p.from : Math.max(low, Math.min(0, high)))).reverse();
+        root.append(svg("polygon", { points: [...upper, ...lower].map(p => p.join(",")).join(" "), fill: colour, "fill-opacity": 0.85 }));
+      } else {
+        let path = "", pen = false;
+        for (const p of points) { if (!p) { pen = false; continue; } const [px, py] = point(p.i, p.v); path += `${pen ? "L" : "M"}${px},${py} `; pen = true; }
+        root.append(svg("path", { d: path, fill: "none", stroke: colour, "stroke-width": 2.25, "stroke-linejoin": "round" }));
+        if (n <= 60) for (const p of valid) { const [px, py] = point(p.i, p.v); root.append(svg("circle", { cx: px, cy: py, r: 3, fill: colour })); }
+      }
+    });
+  }
+  root.append(horizontal
+    ? svg("line", { x1: plot.left + zero, x2: plot.left + zero, y1: plot.top, y2: plot.bottom, class: "chart-axis" })
+    : svg("line", { x1: plot.left, x2: plot.right, y1: plot.bottom - zero, y2: plot.bottom - zero, class: "chart-axis" }));
+}
+
+function drawScatter(root, series, area) {
+  const xs = series.flatMap(s => (s.x?.length ? s.x : s.values.map((_v, i) => i + 1)).filter(finite));
+  const ys = series.flatMap(s => s.values.filter(finite));
+  if (!xs.length || !ys.length) return;
+  const xt = niceTicks(Math.min(...xs), Math.max(...xs)), yt = niceTicks(Math.min(0, ...ys), Math.max(0, ...ys));
+  const labelWidth = Math.min(80, Math.max(...yt.map(t => measureChart(tickLabel(t))))) + 8;
+  const plot = { left: area.left + labelWidth, top: area.top, right: area.right - 8, bottom: area.bottom - 18 };
+  const sx = v => plot.left + (v - xt[0]) / (xt[xt.length - 1] - xt[0]) * (plot.right - plot.left);
+  const sy = v => plot.bottom - (v - yt[0]) / (yt[yt.length - 1] - yt[0]) * (plot.bottom - plot.top);
+  const grid = svg("g", { class: "chart-grid" });
+  for (const t of yt) grid.append(svg("line", { x1: plot.left, x2: plot.right, y1: sy(t), y2: sy(t) }), svg("text", { x: plot.left - 6, y: sy(t) + 4, "text-anchor": "end" }, tickLabel(t)));
+  for (const t of xt) grid.append(svg("text", { x: sx(t), y: plot.bottom + 14, "text-anchor": "middle" }, tickLabel(t)));
+  root.append(grid, svg("line", { x1: plot.left, x2: plot.right, y1: plot.bottom, y2: plot.bottom, class: "chart-axis" }));
+  series.forEach((s, k) => {
+    const group = svg("g", { fill: colourOf(s, k) });
+    s.values.forEach((v, i) => {
+      const xv = s.x?.length ? s.x[i] : i + 1;
+      if (finite(v) && finite(xv)) group.append(svg("circle", { cx: sx(xv), cy: sy(v), r: 3.5 }));
+    });
+    root.append(group);
+  });
+}
+
+// Pie and doughnut charts show their first series, one slice per category.
+function drawRound(root, chart, series, area) {
+  const values = series.values.map(v => finite(v) && v > 0 ? v : 0), total = values.reduce((a, b) => a + b, 0);
+  if (!total) return;
+  const cx = (area.left + area.right) / 2, cy = (area.top + area.bottom) / 2, r = Math.max(10, Math.min(area.right - area.left, area.bottom - area.top) / 2 - 4);
+  const hole = chart.type === "doughnut" ? r * 0.5 : 0;
+  let angle = -Math.PI / 2;
+  values.forEach((v, i) => {
+    if (!v) return;
+    const sweep = v / total * Math.PI * 2, end = angle + sweep, colour = PALETTE[i % PALETTE.length];
+    if (sweep >= Math.PI * 2 - 1e-6) {
+      root.append(svg("circle", { cx, cy, r, fill: colour }));
+      if (hole) root.append(svg("circle", { cx, cy, r: hole, fill: "#ffffff" }));
+    } else {
+      const large = sweep > Math.PI ? 1 : 0, at = (a, radius) => `${cx + radius * Math.cos(a)},${cy + radius * Math.sin(a)}`;
+      const d = hole
+        ? `M${at(angle, r)} A${r},${r} 0 ${large} 1 ${at(end, r)} L${at(end, hole)} A${hole},${hole} 0 ${large} 0 ${at(angle, hole)} Z`
+        : `M${cx},${cy} L${at(angle, r)} A${r},${r} 0 ${large} 1 ${at(end, r)} Z`;
+      root.append(svg("path", { d, fill: colour, stroke: "#ffffff", "stroke-width": 1 }));
+    }
+    angle = end;
+  });
 }
 
 // First row index (into big.rows) under the sticky header, from the rendered geometry (works at any zoom).
@@ -348,7 +627,7 @@ scroller.addEventListener("scroll", () => {
   scrollQueued = true;
   requestAnimationFrame(() => { scrollQueued = false; update(false); });
 });
-window.addEventListener("resize", () => { if (big) update(true); });
+window.addEventListener("resize", () => { if (big) update(true); else if (workbook?.sheets[active]?.chartSheet) render(workbook.sheets[active]); });
 
 // The app searches large sheets (they are not all in the page) and returns up to 10,000 cells.
 async function findLarge(query, previous) {

@@ -1,6 +1,6 @@
 # Plain Viewer beta: a guide for testers
 
-Thank you for trying Plain Viewer. This is an early test version (0.3.0). It will have rough edges, and your reports help us find them.
+Thank you for trying Plain Viewer. This is an early test version (0.4.0). It will have rough edges, and your reports help us find them.
 
 ## What Plain Viewer is
 
@@ -13,10 +13,10 @@ Plain Viewer opens documents so you can read them. It does nothing else.
 It opens these files:
 
 - **Documents:** PDF (.pdf); Word (.docx, .doc, and templates and macro files .dotx .docm .dotm); PowerPoint (.pptx, .ppt, and shows, templates and macro files .ppsx .potx .pptm .potm .ppsm); Excel (.xlsx, .xls, and .xlsm .xltx .xltm); OpenDocument (.odt .ods .odp); Rich Text (.rtf).
-- **Pictures:** JPEG (.jpg .jpeg .jfif), PNG, GIF, BMP, icons (.ico), WebP, AVIF, SVG and TIFF (.tif .tiff, including multi-page scans).
+- **Pictures:** JPEG (.jpg .jpeg .jfif), PNG, GIF, BMP, icons (.ico), WebP, AVIF, SVG, TIFF (.tif .tiff, including multi-page scans) and iPhone photos (.heic .heif).
 - **Text and data:** text (.txt), CSV, Markdown (.md .markdown), JSON, XML, log files (.log), settings files (.ini) and YAML (.yaml .yml).
 
-Files with macros open with the macros removed or ignored: they never run, and the status line says so. Very old Word 6.0/95 and Excel 5.0/95 files and iPhone (HEIC) photos are not supported; Plain Viewer tells you so instead of opening them.
+Files with macros open with the macros removed or ignored: they never run, and the status line says so. Very old Word 6.0/95 and Excel 5.0/95 files are not supported; Plain Viewer tells you so instead of opening them.
 
 ## What you need
 
@@ -26,7 +26,7 @@ Files with macros open with the macros removed or ignored: they never run, and t
 
 ## Installing
 
-1. Run `PlainViewer-Setup-0.3.0-x64.exe` (about 400 MB).
+1. Run `PlainViewer-Setup-0.4.0-x64.exe` (about 400 MB).
 2. **"Windows protected your PC".** Windows shows this blue warning because the installer is not yet signed with a publisher certificate. It does not mean a virus was found. Click **More info**, check that the file name is `PlainViewer-Setup-0.3.0-x64.exe`, then click **Run anyway**.
 3. **Smart App Control.** On some newly set-up Windows 11 PCs, Smart App Control is switched on. It may block the installer or Plain Viewer completely, with no "Run anyway" button. If that happens, please tell us rather than switching Smart App Control off just for this test (on many Windows versions it cannot be switched back on without resetting the PC).
 4. Read and accept the terms page.
@@ -36,7 +36,7 @@ If you already have an earlier beta, just run the new installer: it updates Plai
 
 Plain Viewer installs for your Windows account only, in `%LOCALAPPDATA%\Programs\Plain Viewer`, and adds a Start menu entry.
 
-If you were given a checksum (a long code in a `.sha256` file), you can check the download in PowerShell with `Get-FileHash PlainViewer-Setup-0.3.0-x64.exe`; the code shown should match.
+If you were given a checksum (a long code in a `.sha256` file), you can check the download in PowerShell with `Get-FileHash PlainViewer-Setup-0.4.0-x64.exe`; the code shown should match.
 
 ## The installer's options
 
@@ -69,9 +69,9 @@ Please use your own everyday documents as well as any test files. Things worth t
 ## Known limitations in this version
 
 - **Word and PowerPoint** are shown by converting them to pages with LibreOffice, so they are close to, but not always exactly like, Microsoft Office: long Word documents can shift by a page, and fonts your PC does not have are replaced with the closest Windows font. Office's newer default font, Aptos, is not part of Windows. PowerPoint shows static slides: animations, transitions, sound and video do not play.
-- **Excel** shows the values saved in the file; it never recalculates formulas. If a formula has no saved result you see "Result unavailable" (open and save the file in a spreadsheet program to fix it). Cell colours, fonts, borders and alignment are shown; charts, pictures and conditional formatting are not yet. Row heights are not applied, so wrapped text shows only its first line. Hidden sheets stay hidden.
-- **Pictures** (and TIFF scans) have no text, so search is switched off for them. iPhone (HEIC) photos are not supported yet.
-- **Older and OpenDocument spreadsheets** (.xls, .ods) show their saved values without cell colours or fonts yet, and up to 10,000 rows per sheet.
+- **Excel** shows the values saved in the file; it never recalculates formulas. If a formula has no saved result you see "Result unavailable" (open and save the file in a spreadsheet program to fix it). Cell colours, fonts, borders and alignment are shown (also in .xls and .ods), and so are pictures and charts; conditional formatting is not yet. Row heights are not applied, so wrapped text shows only its first line. Hidden sheets stay hidden.
+- **Pictures** (and TIFF scans) have no text, so search is switched off for them. iPhone (HEIC) photos need Microsoft's "HEIF Image Extensions" and "HEVC Video Extensions" from the Microsoft Store (many PCs have them already); without them Plain Viewer says so.
+- **Excel charts** are drawn from the values saved with them. Common kinds (column, bar, line, area, pie, doughnut, scatter) are shown; others show a note. Shapes and text boxes are not shown. Charts and pictures in older (.xls) and OpenDocument (.ods) spreadsheets are not shown yet.
 - **Markdown:** pictures are shown as their description, never loaded. Embedded HTML is shown as text. Math and diagrams are shown as code.
 - **Large text files** (over 4 MB) are shown as numbered lines without word wrap, and copying works on whole lines.
 - **CSV** files can have up to 16,384 columns (as in Excel) and cannot be sorted or filtered.

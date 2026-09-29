@@ -99,6 +99,26 @@ export async function generateConverted() {
     `<table:table-row>${cell("Hello hostile spreadsheet")}${cell(7, `of:=['file:///${WEBDAV_UNC.replace(/\\/g, "/")}/linked.ods'#$Sheet1.A1]`)}</table:table-row></table:table></office:spreadsheet>`));
   rec("ods/attack-external.ods", "ods", "attack", { result: "open", kind: "sheet", sheets: ["Hello"], removed: 2, cells: [{ sheet: "Hello", ref: "B1", text: "7" }] }, own, { notes: "A linked table source and a formula referencing a file on a network share: both removed; the saved value 7 stays." });
   write("ods/zero-byte.ods", Buffer.alloc(0)); rec("ods/zero-byte.ods", "ods", "empty", { result: "error", error: "empty" }, "generator (empty file)");
+  // Cell styles: a named style with a parent (styles.xml), automatic styles (content.xml) and a column default style.
+  const SNS = NS.replace(' office:version="1.3"', "");
+  write("ods/styles.ods", await odf("ods",
+    `<office:spreadsheet><table:table table:name="Styles"><table:table-column/><table:table-column table:default-cell-style-name="ce1"/>` +
+    `<table:table-row><table:table-cell table:style-name="ce2" office:value-type="string"><text:p>Hello header</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Plain</text:p></table:table-cell></table:table-row>` +
+    `<table:table-row><table:table-cell table:style-name="ce1" office:value-type="string"><text:p>Boxed</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Column default</text:p></table:table-cell></table:table-row>` +
+    `</table:table></office:spreadsheet>`,
+    { styles: `<style:style style:name="ce1" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties fo:border="0.74pt solid #ff0000"/><style:text-properties fo:font-style="italic"/></style:style>` +
+        `<style:style style:name="ce2" style:family="table-cell" style:parent-style-name="Heading"><style:paragraph-properties fo:text-align="center"/></style:style>`,
+      extra: { "styles.xml": `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${SNS} office:version="1.3"><office:styles>` +
+        `<style:style style:name="Default" style:family="table-cell"><style:text-properties fo:font-size="10pt" fo:color="#000000"/></style:style>` +
+        `<style:style style:name="Heading" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties fo:background-color="#1d4ed8"/><style:text-properties fo:font-weight="bold" fo:color="#ffffff"/></style:style>` +
+        `</office:styles></office:document-styles>` } }));
+  rec("ods/styles.ods", "ods", "complex", { result: "open", kind: "sheet", sheets: ["Styles"],
+    styles: [{ ref: "A1", bold: true, fill: "#1d4ed8", color: "#ffffff" }, { ref: "A2", italic: true, top: "1 solid #ff0000", left: "1 solid #ff0000" }, { ref: "B2", italic: true }, { ref: "B1", italic: true }],
+    align: [{ ref: "A1", align: "c" }] }, own, { notes: "Named style with a parent, automatic styles and a column default style." });
+  // 12,000 rows: past the 10,000 kept in memory, so later rows come from the disk-backed row store.
+  const bigRows = Array.from({ length: 12000 }, (_, i) => `<table:table-row>${cell(i === 0 ? "Hello big sheet" : `Row ${i + 1}`)}${cell(i + 1)}</table:table-row>`).join("");
+  write("ods/large-12000-rows.ods", await odf("ods", `<office:spreadsheet><table:table table:name="Big">${bigRows}</table:table></office:spreadsheet>`));
+  rec("ods/large-12000-rows.ods", "ods", "large", { result: "open", kind: "sheet", sheets: ["Big"], cells: [{ sheet: "Big", ref: "A1", text: "Hello big sheet" }], storedRows: 12000, lastRow: "Row 12000" }, own, { notes: "12,000 rows: rows past 10,000 stream to the row store." });
 
   // ---- OpenDocument presentation ----
   write("odp/simple.odp", await odf("odp", `<office:presentation>${slide("One", "Hello OpenDocument presentation")}</office:presentation>`));
@@ -144,6 +164,11 @@ export async function generateConverted() {
     ["doc/attack-unc-image.doc", "doc", "attack", { result: "open", kind: "word", removedAtLeast: 1, text: ["Hello"] }, "Linked picture on a network share."],
     ["xls/simple.xls", "xls", "simple", { result: "open", kind: "sheet", sheets: ["Hello"], cells: [{ sheet: "Hello", ref: "B1", text: "42" }] }],
     ["xls/complex.xls", "xls", "complex", { result: "open", kind: "sheet", sheets: ["Summary", "Urdu"], cells: [{ sheet: "Summary", ref: "B7", text: "$20.00" }] }, "Includes an external workbook reference."],
+    ["xls/styles.xls", "xls", "complex", { result: "open", kind: "sheet", sheets: ["Styles"],
+      styles: [{ ref: "A1", bold: true, color: "#c00000" }, { ref: "B1", italic: true }, { ref: "C1", underline: true }, { ref: "D1", strike: true },
+        { ref: "A2", fill: "#ffff00" }, { ref: "C2", fill: "#00b050" }, { ref: "A3", bottom: "3 double #0000ff", left: "2 solid #000000" }, { ref: "B4", size: 1.455 }, { ref: "D4", wrap: true, vAlign: "top" }],
+      align: [{ ref: "B3", align: "c" }, { ref: "C3", align: "r" }], hiddenColumns: ["E"] }, "The styles workbook as .xls: fonts, fills, borders, alignment."],
+    ["xls/large-12000-rows.xls", "xls", "large", { result: "open", kind: "sheet", sheets: ["Big"], cells: [{ sheet: "Big", ref: "A1", text: "Hello big sheet" }], storedRows: 12000, lastRow: "Row 12000" }, "12,000 rows: rows past 10,000 stream to the row store."],
     ["ppt/simple.ppt", "ppt", "simple", { result: "open", kind: "slides", text: ["Hello"] }],
     ["ppt/complex.ppt", "ppt", "complex", { result: "open", kind: "slides", text: ["Hello"] }],
     ["ppt/attack-remote-image.ppt", "ppt", "attack", { result: "open", kind: "slides", removedAtLeast: 1, text: ["Hello"] }, "Linked picture to the listener."],
@@ -153,4 +178,20 @@ export async function generateConverted() {
     rec("doc/xls-named.doc", "doc", "wrong-extension", { result: "error", error: "mismatch" }, lo, { notes: "An Excel 97-2003 workbook with a .doc name." });
   }
   write("doc/zero-byte.doc", Buffer.alloc(0)); rec("doc/zero-byte.doc", "doc", "empty", { result: "error", error: "empty" }, "generator (empty file)");
+
+  // ---- HEIC photos (made by scripts/make-heic.ps1 with Windows' HEIF encoder, kept in git) ----
+  const heif = "Windows HEIF encoder (Microsoft HEIF Image Extensions and HEVC Video Extensions), from a picture drawn by the script (same codec the viewer decodes with)";
+  for (const [file, category, expect, notes] of [
+    ["heic/simple.heic", "simple", { result: "open", kind: "image", format: "HEIF", shown: [640, 480] }],
+    ["heic/complex-rotated.heic", "complex", { result: "open", kind: "image", format: "HEIF", shown: [600, 800] }, "Stored landscape (800 × 600) with orientation 6, as phones save upright portrait photos: shown portrait, arrow pointing up."],
+    ["heic/large-12mp.heic", "large", { result: "open", kind: "image", format: "HEIF", shown: [4032, 3024] }, "A 12-megapixel photo, the size of a typical phone photo."],
+  ]) if (fs.existsSync(path.join(CORPUS, file))) rec(file, "heic", category, expect, heif, notes ? { notes } : {});
+  if (fs.existsSync(path.join(CORPUS, "heic", "simple.heic"))) {
+    const photo = fs.readFileSync(path.join(CORPUS, "heic", "simple.heic"));
+    write("heic/damaged-truncated.heic", photo.subarray(0, Math.floor(photo.length / 2)));
+    rec("heic/damaged-truncated.heic", "heic", "damaged", { result: "error", error: "damaged", stage: "worker" }, heif + ", then cut in half", { notes: "Passes the app's checks; Windows' decoder in the worker refuses it." });
+  }
+  write("heic/jpeg-named.heic", fs.readFileSync(path.join(CORPUS, "images", "simple.jpg")));
+  rec("heic/jpeg-named.heic", "heic", "wrong-extension", { result: "open", kind: "image", format: "JPEG" }, "generator (the corpus's JPEG with a .heic name)", { notes: "Phones sometimes share JPEGs with a .heic name: identified by content and shown as JPEG, without the worker." });
+  write("heic/zero-byte.heic", Buffer.alloc(0)); rec("heic/zero-byte.heic", "heic", "empty", { result: "error", error: "empty" }, "generator (empty file)");
 }

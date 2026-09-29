@@ -68,7 +68,7 @@ Root: HKA; Subkey: "Software\PlainViewer\Capabilities"; ValueType: string; Value
 Root: HKA; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "Plain Viewer"; ValueData: "Software\PlainViewer\Capabilities"; Flags: uninsdeletevalue; Tasks: openwith
 Root: HKA; Subkey: "Software\Classes\Applications\PlainViewer.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Plain Viewer"; Flags: uninsdeletekey; Tasks: openwith
 Root: HKA; Subkey: "Software\Classes\Applications\PlainViewer.exe\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\PlainViewer.exe"" ""%1"""; Tasks: openwith
-#dim Ext[44]
+#dim Ext[47]
 #define Ext[0] "pdf"
 #define Ext[1] "docx"
 #define Ext[2] "docm"
@@ -113,7 +113,10 @@ Root: HKA; Subkey: "Software\Classes\Applications\PlainViewer.exe\shell\open\com
 #define Ext[41] "csv"
 #define Ext[42] "md"
 #define Ext[43] "markdown"
-#dim Kind[44]
+#define Ext[44] "heic"
+#define Ext[45] "heif"
+#define Ext[46] "hif"
+#dim Kind[47]
 #define Kind[0] "PDF document"
 #define Kind[1] "Word document"
 #define Kind[2] "Word macro-enabled document"
@@ -158,6 +161,9 @@ Root: HKA; Subkey: "Software\Classes\Applications\PlainViewer.exe\shell\open\com
 #define Kind[41] "CSV file"
 #define Kind[42] "Markdown document"
 #define Kind[43] "Markdown document"
+#define Kind[44] "HEIC photo"
+#define Kind[45] "HEIF photo"
+#define Kind[46] "HEIF photo"
 #define i
 #sub FileType
 Root: HKA; Subkey: "Software\Classes\.{#Ext[i]}\OpenWithProgids"; ValueType: string; ValueName: "PlainViewer.{#Ext[i]}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: openwith

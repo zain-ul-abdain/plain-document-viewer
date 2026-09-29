@@ -48,6 +48,18 @@ p.empty { margin: 32px; color: var(--muted); font-size: 15px; }
 }
 #tabs button[aria-selected="true"] { background: var(--tab-active); border-color: var(--grid); border-bottom: 2px solid var(--accent); font-weight: 600; }
 #tabs button:focus-visible { outline: 2px solid var(--accent); }
+/* Pictures and charts: a layer over the cells (z-index 0) and under row numbers, frozen rows and column letters. */
+.drawings { position: relative; width: max-content; }
+.drawings .layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.drawing { position: absolute; box-sizing: border-box; object-fit: fill; }
+svg.chart { display: block; font: 11px "Segoe UI", system-ui, sans-serif; forced-color-adjust: none; }
+svg.chart text { fill: #595959; }
+svg.chart .chart-title { font-size: 14px; fill: #404040; }
+svg.chart .chart-note { font-style: italic; }
+svg.chart .chart-grid line { stroke: #e3e3e3; }
+svg.chart .chart-axis { stroke: #a6a6a6; }
+svg.chart-sheet { margin: 16px; }
+img.drawing { forced-color-adjust: none; }
 @media (forced-colors: active) {
   /* forced-color-adjust: none, or Chromium draws its dark text backplate over the Mark colour and MarkText is unreadable. */
   .grid td.hit { forced-color-adjust: none; background: Mark; color: MarkText; }

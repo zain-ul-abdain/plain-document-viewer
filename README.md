@@ -23,7 +23,7 @@ Open a file, read it, close it. Offline, no Microsoft Office needed, and it neve
 | Word and other documents | .docx .docm .dotx .dotm, .doc, .odt, .rtf |
 | Excel and other spreadsheets | .xlsx .xlsm .xltx .xltm, .xls, .ods |
 | PowerPoint and other presentations | .pptx .pptm .potx .potm .ppsx .ppsm, .ppt, .odp |
-| Pictures | .jpg .jpeg .jfif .png .gif .bmp .ico .webp .avif .svg .tif .tiff |
+| Pictures | .jpg .jpeg .jfif .png .gif .bmp .ico .webp .avif .svg .tif .tiff .heic .heif |
 | Text and data | .txt .csv .md .markdown .json .xml .log .ini .yaml .yml |
 
 Files with macros open with the macros removed or ignored: they never run. What each format shows, and what it does not, is in [docs/SUPPORT.md](docs/SUPPORT.md).

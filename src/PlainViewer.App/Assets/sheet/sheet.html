@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- Cell values are display text prepared by the worker. They are inserted as text only, never as HTML. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://doc.plainviewer.invalid; img-src 'none'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; worker-src 'none'">
+<!-- Cell values are display text prepared by the worker. They are inserted as text only, never as HTML.
+     Pictures come only from the app, which serves files the worker and the app both checked. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://doc.plainviewer.invalid; img-src https://doc.plainviewer.invalid; font-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; worker-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Spreadsheet</title>
 <link rel="stylesheet" href="sheet.css">

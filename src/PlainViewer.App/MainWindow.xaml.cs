@@ -227,9 +227,15 @@ public partial class MainWindow : Window
                     var sheetStore = openedSheets[i] = name == $"sheet{i}" ? RowStore.Open(work, name) : throw new InvalidDataException("Unexpected worker output.");
                     if (sheetStore.Count != loaded.Sheets[i].RowCount) throw new InvalidDataException("Unexpected worker output.");
                 }
+                // Pictures on sheets: files the worker wrote to the work folder, under names only it may use.
+                for (int i = 0; i < loaded.Sheets.Count; i++)
+                    foreach (var picture in loaded.Sheets[i].Pictures.Where(p => p.Media.Length > 0))
+                        if (ImageFiles.ContentTypeOf(picture.Media) is null || !picture.Media.StartsWith($"media-{i}-", StringComparison.Ordinal) || !File.Exists(Path.Combine(work, picture.Media)))
+                            throw new InvalidDataException("Unexpected worker output.");
             }
             if (loading != operation) return;
-            bool stores = opened is not null || openedSheets.Count > 0;
+            bool media = loaded.Sheets.Any(s => s.Pictures.Any(p => p.Media.Length > 0));
+            bool stores = opened is not null || openedSheets.Count > 0 || media;
             ReplaceRowStore(opened, openedSheets, stores ? work : null);
             if (stores) { opened = null; openedSheets = []; work = null; }
             if (loaded.Kind == "sheet") await LoadSheets(loaded, operation.Token);
@@ -260,7 +266,7 @@ public partial class MainWindow : Window
         storeSearch?.Dispose(); storeSearch = null; storeMatch = -1;
         CsvGrid.ItemsSource = null;
         var previous = sheetStores; sheetStores = sheets ?? [];
-        WebPane.Data = sheetStores.Count > 0 ? SheetRequest : null;
+        WebPane.Data = sheetStores.Count > 0 || folder is not null ? SheetRequest : null;
         rowStore?.Dispose(); foreach (var old in previous.Values) old.Dispose();
         if (rowStoreFolder is not null) OfficeConverter.Delete(rowStoreFolder);
         rowStore = store; rowStoreFolder = folder;
@@ -269,6 +275,16 @@ public partial class MainWindow : Window
     // Answers the spreadsheet page's requests for rows and searches of large sheets. Runs on a background thread.
     private byte[]? SheetRequest(string path, System.Collections.Specialized.NameValueCollection query)
     {
+        if (path == "/media")
+        {
+            // Only a picture the worker wrote, and only if its bytes are still the kind of picture its name says.
+            string name = query["name"] ?? "";
+            if (rowStoreFolder is not { } folder || ImageFiles.ContentTypeOf(name) is not { } type) return null;
+            var file = new FileInfo(Path.Combine(folder, name));
+            if (!file.Exists || file.Length > 20L * 1024 * 1024) return null;
+            byte[] bytes = File.ReadAllBytes(file.FullName);
+            return ImageFiles.Identify(bytes)?.ContentType == type ? bytes : null;
+        }
         if (!int.TryParse(query["sheet"], out int sheet) || !sheetStores.TryGetValue(sheet, out var store)) return null;
         if (path == "/rows")
         {
@@ -466,15 +482,32 @@ public partial class MainWindow : Window
     private async Task<DocumentView> LoadPicture(string path, CancellationToken cancellation)
     {
         var picture = await Task.Run(() => ImageFiles.Snapshot(path), cancellation);
+        string notice = "";
+        if (picture.Format == "HEIF")
+        {
+            // HEIC photos: the worker decodes them with Windows' own codec and writes a PNG to a work folder.
+            string work = OfficeConverter.NewWorkFolder();
+            try
+            {
+                var converted = await WorkerClient.Load(path, "Auto", "Auto", work, cancellation);
+                var file = new FileInfo(Path.Combine(work, "picture.png"));
+                if (converted.Kind != "image" || converted.Store != "picture.png" || !file.Exists || file.Length > 1024L * 1024 * 1024) throw new InvalidDataException("Unexpected worker output.");
+                picture = ImageFiles.Identify(await File.ReadAllBytesAsync(file.FullName, cancellation)) is { Format: "PNG" } png ? png : throw new InvalidDataException("Unexpected worker output.");
+                notice = converted.Notice;
+            }
+            finally { OfficeConverter.Delete(work); }
+        }
         Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
         WebPane.Visibility = Visibility.Visible;
         await WebPane.LoadPicture(picture, IsDarkTheme(), cancellation);
-        return new DocumentView
+        var view = new DocumentView
         {
             Kind = "image", Encoding = picture.Format + " picture",
             Notice = picture.Incomplete ? "This picture file is incomplete (cut short, for example by an interrupted download), so part of it may be missing. Get a complete copy to see all of it."
-                : picture.Format == "SVG" ? "SVG pictures are shown as still images: any scripts or linked content in them never run or load." : ""
+                : picture.Format == "SVG" ? "SVG pictures are shown as still images: any scripts or linked content in them never run or load." : notice
         };
+        if (notice.Length > 0) view.Encoding = "HEIC picture";
+        return view;
     }
     private void ThumbnailsChanged(object s, RoutedEventArgs e)
     {

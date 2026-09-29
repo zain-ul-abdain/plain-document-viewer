@@ -61,8 +61,13 @@ try {
     'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\variant.ppsx', 'images\complex.png', 'images\complex-rotated-exif.jpg', 'images\complex.webp',
     'images\complex.avif', 'images\complex.svg', 'images\attack-svg-active.svg', 'images\simple.gif', 'images\simple.ico',
     'odt\complex.odt', 'doc\attack-remote-image.doc', 'xls\complex.xls', 'ods\complex.ods', 'tiff\scan-3-pages.tiff', 'rtf\attack.rtf'
-  $open = @(@($native) + $(if ($webViews) { @($web) } else { @() }) | ForEach-Object { Join-Path $corpus $_ })
-  $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx',
+  $web += 'xlsx\drawings.xlsx'
+  # HEIC photos need Windows' HEIF and HEVC codecs from the Microsoft Store; without them the photo is refused with a
+  # message naming them (a clean Windows Sandbox usually has neither).
+  $heicCodecs = [bool](Get-AppxPackage -Name Microsoft.HEIFImageExtension -ErrorAction SilentlyContinue) -and [bool](Get-AppxPackage -Name Microsoft.HEVCVideoExtension* -ErrorAction SilentlyContinue)
+  Log "HEIC codecs present: $heicCodecs"
+  $open = @(@($native) + $(if ($webViews) { @($web) + $(if ($heicCodecs) { @('heic\complex-rotated.heic') } else { @() }) } else { @() }) | ForEach-Object { Join-Path $corpus $_ })
+  $refuse = @($(if ($webViews -and -not $heicCodecs) { @('heic\simple.heic') } else { @() })) + @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx',
     'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\damaged-truncated.docx',
     'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx', 'images\attack-pixel-bomb.png', 'images\tiff-named.png', 'images\not-a-picture.jpg') | ForEach-Object { '!' + (Join-Path $corpus $_) }
   $code = Run $app (@('--smoke-test') + $open + $refuse) (Join-Path $results 'smoke.txt')

@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
 using System.Xml;
 using ExcelNumberFormat;
 namespace PlainViewer.Core;
@@ -9,14 +10,15 @@ namespace PlainViewer.Core;
 // Reads Excel 97-2003 (.xls) and OpenDocument (.ods) spreadsheets as display text, like the .xlsx reader: only saved
 // values are shown and formulas are never evaluated. (Converting these files with LibreOffice recalculated them, which
 // the specification forbids: tested with an .xls whose saved result had been changed.) Nothing a file refers to is
-// opened. Sheets are kept in memory up to the same limits as the .xlsx preview (10,000 rows, 256 columns and 300,000
-// cells), with a notice when a sheet is cut.
+// opened. Cell formatting (fonts, fills, borders, alignment) becomes CellStyles like the .xlsx reader's. The first
+// 10,000 rows of a sheet stay in memory; with a store folder, longer sheets stream every row to a row store there,
+// as for .xlsx.
 public static class LegacySpreadsheets
 {
     public static readonly string[] Extensions = [".xls", ".ods"];
     public static bool Handles(string path) => Extensions.Contains(Path.GetExtension(path).ToLowerInvariant());
 
-    public static DocumentView Load(string path, CultureInfo? culture = null)
+    public static DocumentView Load(string path, CultureInfo? culture = null, string? storeFolder = null)
     {
         culture ??= CultureInfo.CurrentCulture;
         TextFiles.ValidateLocalPath(path);
@@ -45,7 +47,7 @@ public static class LegacySpreadsheets
                     throw new DocumentException("This workbook is protected with a password. Password-protected workbooks cannot be opened in this version. Remove the password in Excel, or ask the sender for an unprotected copy.");
                 if (!file.Has("Workbook") && !file.Has("Book")) throw new DocumentException(Named());
                 if (file.Find("Workbook") is null) throw new DocumentException("This is an Excel 5.0 or Excel 95 workbook, which is older than this viewer supports. Save it in a newer format to view it.");
-                return new Excel97(file, culture).Read();
+                return new Excel97(file, culture, storeFolder).Read();
             }
             if (head.StartsWith("PK\u0003\u0004"u8))
             {
@@ -55,7 +57,7 @@ public static class LegacySpreadsheets
                 string mime = "";
                 if (zip.GetEntry("mimetype") is { Length: < 200 } entry) using (var reader = new StreamReader(entry.Open())) mime = reader.ReadToEnd().Trim();
                 if (mime != "application/vnd.oasis.opendocument.spreadsheet") throw new DocumentException(Named());
-                return new OpenDocumentSheets(zip).Read();
+                return new OpenDocumentSheets(zip, storeFolder).Read();
             }
         }
         catch (InvalidDataException) { throw Damaged(); }
@@ -66,54 +68,138 @@ public static class LegacySpreadsheets
 
     private static DocumentException Damaged() => new("This spreadsheet is damaged or incomplete, so it cannot be shown. Try another copy of the file.");
 
-    // Rows and cells collected for one sheet, then laid out as SheetData (dense rows from A1, as the .xlsx reader does).
-    private sealed class SheetBuilder(string name)
+    // Distinct cell styles of a workbook; entry 0 is the plain default.
+    private sealed class StyleTable
     {
-        public readonly SheetData Sheet = new() { Name = name };
-        public readonly SortedDictionary<int, SortedDictionary<int, (string Text, char Align)>> Cells = [];
-        public readonly Dictionary<int, double> Widths = [];          // column -> Excel character width (0 = hidden)
-        public double DefaultWidth = 8.43;
-        public bool Truncated;
-        public void Add(int row, int column, string text, char align, ref int budget)
+        public readonly List<CellStyle> Table = [new()];
+        private readonly Dictionary<string, int> known = new() { [JsonSerializer.Serialize(new CellStyle())] = 0 };
+        public int Add(CellStyle style)
         {
-            if (row >= Spreadsheets.MaxRowsPerSheet || column >= Spreadsheets.MaxColumns || budget <= 0) { Truncated = true; return; }
-            if (text.Length == 0) return;
-            if (!Cells.TryGetValue(row, out var line)) Cells[row] = line = [];
-            if (!line.ContainsKey(column)) budget--;
-            line[column] = (text, align);
-        }
-        public SheetData Build()
-        {
-            int columns = Math.Max(Sheet.FrozenColumns, Cells.Count == 0 ? 0 : Cells.Values.Max(r => r.Count == 0 ? 0 : r.Keys.Max() + 1));
-            int rows = Math.Max(Sheet.FrozenRows, Cells.Count == 0 ? 0 : Cells.Keys.Max() + 1);
-            for (int r = 0; r < rows; r++)
-            {
-                var text = new string[columns]; var align = new char[columns];
-                Array.Fill(text, ""); Array.Fill(align, 'l');
-                if (Cells.TryGetValue(r, out var line)) foreach (var (c, (t, a)) in line) { text[c] = t; align[c] = a; }
-                Sheet.Rows.Add(text); Sheet.Align.Add(new string(align));
-            }
-            for (int c = 0; c < columns; c++) Sheet.ColumnWidths.Add(Math.Round(Widths.TryGetValue(c, out double w) ? w : DefaultWidth, 2));
-            Sheet.RowCount = rows;
-            Sheet.HiddenRows = Sheet.HiddenRows.Where(r => r <= rows).ToList();
-            Sheet.Merges = Sheet.Merges.Where(m => m[0] < rows && m[1] < columns)
-                .Select(m => new[] { m[0], m[1], Math.Min(m[2], rows - 1), Math.Min(m[3], columns - 1) }).ToList();
-            if (rows == 0) Sheet.Notice = "This sheet is empty.";
-            return Sheet;
+            string key = JsonSerializer.Serialize(style);
+            if (!known.TryGetValue(key, out int index)) { index = known[key] = Table.Count; Table.Add(style); }
+            return index;
         }
     }
 
-    private static string Notes(int hidden, bool truncated, List<string> extra)
+    // One sheet's cells. The first rows are kept in memory for the first screen; with a store folder, a sheet longer
+    // than that (or beyond the workbook's in-memory cell budget) streams every row, in order, to a row store.
+    private sealed class SheetBuilder(string name, int index, string? storeFolder, StyleTable styles) : IDisposable
+    {
+        public readonly SheetData Sheet = new() { Name = name };
+        public readonly Dictionary<int, double> Widths = [];          // column -> Excel character width (0 = hidden)
+        public double DefaultWidth = 8.43;
+        public bool Truncated;
+        private readonly SortedDictionary<int, SortedDictionary<int, (string Text, char Align, int Style)>> memory = [];
+        private SortedDictionary<int, (string Text, char Align, int Style)> pending = [];
+        private RowStoreWriter? store;
+        private int stored, pendingRow = -1, columns;
+
+        public void Add(int row, int column, string text, char align, int style, ref int budget)
+        {
+            if (column >= Spreadsheets.MaxColumns) { Truncated = true; return; }
+            if (text.Length == 0 && !styles.Table[style].Visible) return;
+            if (store is null)
+            {
+                bool full = row >= Spreadsheets.MaxRowsPerSheet || (budget <= 0 && !(memory.TryGetValue(row, out var r) && r.ContainsKey(column)));
+                if (!full)
+                {
+                    if (!memory.TryGetValue(row, out var line)) memory[row] = line = [];
+                    if (!line.ContainsKey(column)) budget--;
+                    line[column] = (text, align, style); columns = Math.Max(columns, column + 1);
+                    return;
+                }
+                if (storeFolder is null) { Truncated = true; return; }
+                StartStore();
+            }
+            if (row >= Spreadsheets.MaxStoredRows) { Truncated = true; return; }
+            if (row < pendingRow || row < stored)
+                throw new DocumentException("This workbook lists the rows of a large sheet out of order, which this viewer cannot show.");
+            if (row > pendingRow) { Flush(); pendingRow = row; }
+            pending[column] = (text, align, style); columns = Math.Max(columns, column + 1);
+        }
+
+        // Writes the rows read so far; the last one (it may be incomplete when the cell budget ran out within it)
+        // becomes the row being streamed, and leaves the in-memory first screen.
+        private void StartStore()
+        {
+            store = new RowStoreWriter(storeFolder!, $"sheet{index}");
+            if (memory.Count == 0) return;
+            int last = memory.Keys.Max();
+            for (int r = 0; r < last; r++) Write(r, memory.GetValueOrDefault(r) ?? []);
+            pending = memory[last]; pendingRow = last;
+            memory.Remove(last);
+        }
+
+        private void Flush()
+        {
+            if (pendingRow < 0) return;
+            Write(pendingRow, pending);
+            pending = []; pendingRow = -1;
+        }
+
+        // Row `row` as [layout, cell, cell, ...], after empty rows for any gap.
+        private void Write(int row, SortedDictionary<int, (string Text, char Align, int Style)> cells)
+        {
+            while (stored < row) { store!.Add([""]); stored++; }
+            int width = cells.Count == 0 ? 0 : cells.Keys.Max() + 1;
+            var fields = new string[width + 1];
+            Array.Fill(fields, "");
+            foreach (var (c, cell) in cells) fields[c + 1] = cell.Text;
+            fields[0] = Layout(cells, width);
+            store!.Add(fields); stored++;
+        }
+
+        // Alignment characters, then "|" and a style number per cell if any cell has one (see SheetData.Align).
+        private static string Layout(SortedDictionary<int, (string Text, char Align, int Style)> cells, int width)
+        {
+            var align = new char[width]; var style = new int[width];
+            Array.Fill(align, 'l');
+            foreach (var (c, cell) in cells) if (c < width) { align[c] = cell.Align; style[c] = cell.Style; }
+            return style.Any(s => s != 0) ? new string(align) + "|" + string.Join('.', style) : new string(align);
+        }
+
+        public SheetData Build()
+        {
+            if (store is not null) { Flush(); store.Complete(); Sheet.Store = $"sheet{index}"; }
+            int width = Math.Max(Sheet.FrozenColumns, columns);
+            int inMemory = memory.Count == 0 ? 0 : memory.Keys.Max() + 1;
+            int rows = Math.Max(Sheet.FrozenRows, store is not null ? stored : inMemory);
+            // The first screen: every row of a sheet that did not need a store; otherwise only the rows complete in memory
+            // (the page reads every later row from the store).
+            int firstScreen = store is not null ? inMemory : rows;
+            for (int r = 0; r < firstScreen; r++)
+            {
+                var cells = memory.GetValueOrDefault(r) ?? [];
+                var text = new string[width]; Array.Fill(text, "");
+                foreach (var (c, cell) in cells) if (c < width) text[c] = cell.Text;
+                Sheet.Rows.Add(text); Sheet.Align.Add(Layout(cells, width));
+            }
+            for (int c = 0; c < width; c++) Sheet.ColumnWidths.Add(Math.Round(Widths.TryGetValue(c, out double w) ? w : DefaultWidth, 2));
+            Sheet.RowCount = rows;
+            if (store is not null) Sheet.FrozenRows = Math.Min(Sheet.FrozenRows, Sheet.Rows.Count);
+            Sheet.HiddenRows = Sheet.HiddenRows.Where(r => r <= rows).ToList();
+            Sheet.Merges = Sheet.Merges.Where(m => m[0] < rows && m[1] < width)
+                .Select(m => new[] { m[0], m[1], Math.Min(m[2], rows - 1), Math.Min(m[3], width - 1) }).ToList();
+            if (rows == 0) Sheet.Notice = "This sheet is empty.";
+            return Sheet;
+        }
+
+        public void Dispose() => store?.Dispose();
+    }
+
+    private static string Notes(int hidden, bool truncated, bool stored, List<string> extra)
     {
         var notes = new List<string>(extra);
         if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
-        if (truncated) notes.Add($"Preview limit: only the first {Spreadsheets.MaxRowsPerSheet:N0} rows and {Spreadsheets.MaxColumns} columns of each sheet, up to {Spreadsheets.MaxCellsPerWorkbook:N0} cells in total, are shown.");
+        if (truncated) notes.Add(stored
+            ? $"Only the first {Spreadsheets.MaxColumns} columns and {Spreadsheets.MaxStoredRows:N0} rows of each sheet are shown."
+            : $"Preview limit: only the first {Spreadsheets.MaxRowsPerSheet:N0} rows and {Spreadsheets.MaxColumns} columns of each sheet, up to {Spreadsheets.MaxCellsPerWorkbook:N0} cells in total, are shown.");
         return string.Join(" ", notes);
     }
 
     // ---- Excel 97-2003 (BIFF8) ----
 
-    private sealed class Excel97(CompoundFile file, CultureInfo culture)
+    private sealed class Excel97(CompoundFile file, CultureInfo culture, string? storeFolder)
     {
         private const string Label = "Excel 97–2003 workbook";
         private byte[] data = [];
@@ -121,9 +207,14 @@ public static class LegacySpreadsheets
         private readonly Dictionary<int, string> custom = [];
         private readonly List<int> formats = [];             // per XF: number format id
         private readonly List<char> horizontal = [];         // per XF: l, r, c or '\0' (general)
+        private readonly List<int> xfStyles = [];            // per XF: index into the style table
+        private readonly List<(bool Bold, bool Italic, bool Underline, bool Strike, int Height, int Colour, string Name)> fonts = [];
+        private readonly string[] palette = (string[])WorkbookStyles.Palette.Clone();
+        private readonly List<(int Offset, int Length)> xfRecords = [];
+        private readonly StyleTable styles = new();
         private readonly Dictionary<string, NumberFormat> cache = [];
-        private bool date1904, truncated;
-        private int budget = Spreadsheets.MaxCellsPerWorkbook, macros;
+        private bool date1904, truncated, stored;
+        private int budget = Spreadsheets.MaxCellsPerWorkbook;
 
         private readonly record struct Record(int Type, int Offset, int Length);
 
@@ -157,9 +248,21 @@ public static class LegacySpreadsheets
                     case 0x041E when length >= 5:
                         custom[BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at))] = XlString(at + 2, at + length, twoByteCount: true, out _);
                         break;
-                    case 0x00E0 when length >= 10:
+                    case 0x0031 when length >= 16:
+                        {
+                            ushort flags = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2));
+                            fonts.Add((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 6)) >= 600, (flags & 0x0002) != 0, data[at + 10] != 0, (flags & 0x0008) != 0,
+                                BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)), BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4)), XlString(at + 14, at + length, twoByteCount: false, out _)));
+                        }
+                        break;
+                    case 0x0092 when length >= 2:
+                        for (int k = 0, count = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)); k < count && 8 + k < 64 && 2 + k * 4 + 4 <= length; k++)
+                            palette[8 + k] = $"#{data[at + 2 + k * 4]:x2}{data[at + 3 + k * 4]:x2}{data[at + 4 + k * 4]:x2}";
+                        break;
+                    case 0x00E0 when length >= 20:
                         formats.Add(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2)));
                         horizontal.Add((data[at + 6] & 0x07) switch { 1 => 'l', 2 => 'c', 3 => 'r', 5 => 'l', 6 => 'c', 7 => 'l', _ => '\0' });
+                        xfRecords.Add((at, length));
                         break;
                     case 0x0085 when length >= 8:
                         sheets.Add((XlString(at + 6, at + length, twoByteCount: false, out _), data[at + 4] & 0x03, data[at + 5], BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(at))));
@@ -167,8 +270,8 @@ public static class LegacySpreadsheets
                     case 0x00FC: ReadStrings(globals, i); break;
                 }
             }
-            macros = file.Has("_VBA_PROJECT_CUR") ? 1 : 0;
-            var view = new DocumentView { Kind = "sheet", Encoding = Label, CellStyles = [new()] };
+            foreach (var (at, _) in xfRecords) xfStyles.Add(styles.Add(Style(at)));   // after PALETTE and every FONT
+            var view = new DocumentView { Kind = "sheet", Encoding = Label, CellStyles = styles.Table };
             int hidden = 0;
             var extra = new List<string>();
             foreach (var (name, state, type, offset) in sheets)
@@ -176,12 +279,45 @@ public static class LegacySpreadsheets
                 if (state != 0) { hidden++; continue; }
                 if (type != 0) { extra.Add($"The {(type == 2 ? "chart" : "macro")} sheet \"{name}\" is not shown in this version."); continue; }
                 if (offset < 0 || offset >= data.Length) throw Damaged();
-                view.Sheets.Add(ReadSheet(name, offset));
+                view.Sheets.Add(ReadSheet(name, offset, view.Sheets.Count));
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
-            if (macros > 0) extra.Insert(0, "This workbook contains macros. They were ignored and never ran.");
-            view.Notice = Notes(hidden, truncated, extra);
+            if (file.Has("_VBA_PROJECT_CUR")) extra.Insert(0, "This workbook contains macros. They were ignored and never ran.");
+            view.Notice = Notes(hidden, truncated, stored, extra);
             return view;
+        }
+
+        private string? Colour(int icv) => icv is >= 0 and < 64 ? palette[icv] : null;   // 64 and above: system (automatic) colours
+
+        private static string? Border(int kind, string? colour) => kind switch
+        {
+            0 => null,
+            1 or 7 => $"1 solid {colour ?? "#000000"}", 2 => $"2 solid {colour ?? "#000000"}", 3 or 9 or 11 => $"1 dashed {colour ?? "#000000"}",
+            4 => $"1 dotted {colour ?? "#000000"}", 5 => $"3 solid {colour ?? "#000000"}", 6 => $"3 double {colour ?? "#000000"}", _ => $"2 dashed {colour ?? "#000000"}"
+        };
+
+        // A cell format (XF record) as a CellStyle: its font, fill, borders, wrapping, vertical alignment and indent.
+        private CellStyle Style(int at)
+        {
+            int fontIndex = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at));
+            if (fontIndex >= 4) fontIndex--;                        // BIFF has no font 4
+            var font = fontIndex >= 0 && fontIndex < fonts.Count ? fonts[fontIndex] : default;
+            var baseFont = fonts.Count > 0 ? fonts[0] : default;
+            uint lines = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 10)), more = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 14));
+            int fill = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 18)) & 0x7F;
+            string? colour = fonts.Count > 0 && font.Colour != baseFont.Colour ? Colour(font.Colour) : null;
+            return new CellStyle
+            {
+                Bold = font.Bold, Italic = font.Italic, Underline = font.Underline, Strike = font.Strike, Color = colour,
+                Size = font.Height > 0 && baseFont.Height > 0 && font.Height != baseFont.Height ? Math.Round((double)font.Height / baseFont.Height, 3) : 0,
+                Font = font.Name is { } n && n != baseFont.Name ? WorkbookStyles.SafeName(n) : null,
+                Fill = (more >> 26) == 1 ? Colour(fill) : null,
+                Wrap = (data[at + 6] & 0x08) != 0,
+                VAlign = ((data[at + 6] >> 4) & 0x07) switch { 0 => "top", 1 => "middle", _ => null },
+                Indent = data[at + 8] & 0x0F,
+                Left = Border((int)(lines & 0xF), Colour((int)((lines >> 16) & 0x7F))), Right = Border((int)((lines >> 4) & 0xF), Colour((int)((lines >> 23) & 0x7F))),
+                Top = Border((int)((lines >> 8) & 0xF), Colour((int)(more & 0x7F))), Bottom = Border((int)((lines >> 12) & 0xF), Colour((int)((more >> 7) & 0x7F)))
+            };
         }
 
         // The shared string table, which continues across CONTINUE records; each continuation of a string's
@@ -205,7 +341,7 @@ public static class LegacySpreadsheets
                     int take = (int)Math.Min(bytes, chunks[chunk].End - at); at += take; bytes -= take;
                 }
             }
-            for (int s = 0; s < unique && s < 1_000_000; s++)
+            for (int s = 0; s < unique && s < 4_000_000; s++)
             {
                 int count = Int16(); byte flags = Byte();
                 int runs = (flags & 0x08) != 0 ? Int16() : 0;
@@ -243,6 +379,7 @@ public static class LegacySpreadsheets
             Spreadsheets.FormatValue(value, xf >= 0 && xf < formats.Count ? formats[xf] : 0, custom, culture, date1904, cache);
 
         private char Align(int xf, char natural) => xf >= 0 && xf < horizontal.Count && horizontal[xf] != '\0' ? horizontal[xf] : natural;
+        private int StyleOf(int xf) => xf >= 0 && xf < xfStyles.Count ? xfStyles[xf] : 0;
 
         private static double Rk(uint rk)
         {
@@ -255,11 +392,12 @@ public static class LegacySpreadsheets
             0x00 => "#NULL!", 0x07 => "#DIV/0!", 0x0F => "#VALUE!", 0x17 => "#REF!", 0x1D => "#NAME?", 0x24 => "#NUM!", 0x2A => "#N/A", _ => "#N/A"
         };
 
-        private SheetData ReadSheet(string name, int offset)
+        private SheetData ReadSheet(string name, int offset, int index)
         {
             var records = Records(offset);
             if (records.Count == 0 || records[0].Type != 0x0809) throw Damaged();
-            var sheet = new SheetBuilder(name);
+            using var sheet = new SheetBuilder(name, index, storeFolder, styles);
+            void Cell(int row, int column, string text, int xf, char natural) => sheet.Add(row, column, text, Align(xf, natural), StyleOf(xf), ref budget);
             for (int i = 0; i < records.Count; i++)
             {
                 var (type, at, length) = records[i];
@@ -268,37 +406,39 @@ public static class LegacySpreadsheets
                 int Xf() => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4));
                 switch (type)
                 {
-                    case 0x0203 when length >= 14: sheet.Add(Row(), Column(), Number(BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)), Xf()), Align(Xf(), 'r'), ref budget); break;
-                    case 0x027E when length >= 10: sheet.Add(Row(), Column(), Number(Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6))), Xf()), Align(Xf(), 'r'), ref budget); break;
+                    case 0x0203 when length >= 14: Cell(Row(), Column(), Number(BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)), Xf()), Xf(), 'r'); break;
+                    case 0x027E when length >= 10: Cell(Row(), Column(), Number(Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6))), Xf()), Xf(), 'r'); break;
                     case 0x00BD when length >= 6:
                         for (int k = 0, first = Column(); 4 + k * 6 + 6 <= length - 2; k++)
                         {
                             int xf = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4 + k * 6));
-                            sheet.Add(Row(), first + k, Number(Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6 + k * 6))), xf), Align(xf, 'r'), ref budget);
+                            Cell(Row(), first + k, Number(Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6 + k * 6))), xf), xf, 'r');
                         }
                         break;
+                    case 0x0201 when length >= 6: Cell(Row(), Column(), "", Xf(), 'l'); break;                    // empty, formatted
+                    case 0x00BE when length >= 6:
+                        for (int k = 0, first = Column(); 4 + k * 2 + 2 <= length - 2; k++) Cell(Row(), first + k, "", BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4 + k * 2)), 'l');
+                        break;
                     case 0x00FD when length >= 10:
-                        int index = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(at + 6));
-                        sheet.Add(Row(), Column(), index >= 0 && index < strings.Count ? strings[index] : "", Align(Xf(), 'l'), ref budget);
+                        int string_ = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(at + 6));
+                        Cell(Row(), Column(), string_ >= 0 && string_ < strings.Count ? strings[string_] : "", Xf(), 'l');
                         break;
-                    case 0x0204 when length >= 9: sheet.Add(Row(), Column(), XlString(at + 6, at + length, twoByteCount: true, out _), Align(Xf(), 'l'), ref budget); break;
-                    case 0x0205 when length >= 8:
-                        sheet.Add(Row(), Column(), data[at + 7] == 0 ? (data[at + 6] != 0 ? "TRUE" : "FALSE") : Error(data[at + 6]), Align(Xf(), 'c'), ref budget);
-                        break;
+                    case 0x0204 when length >= 9: Cell(Row(), Column(), XlString(at + 6, at + length, twoByteCount: true, out _), Xf(), 'l'); break;
+                    case 0x0205 when length >= 8: Cell(Row(), Column(), data[at + 7] == 0 ? (data[at + 6] != 0 ? "TRUE" : "FALSE") : Error(data[at + 6]), Xf(), 'c'); break;
                     case 0x0006 when length >= 20:
                         // The saved result: a number, or (when the last two bytes are 0xFFFF) a string in the next STRING
                         // record, a boolean, an error or an empty string.
                         if (BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 12)) != 0xFFFF)
-                            sheet.Add(Row(), Column(), Number(BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)), Xf()), Align(Xf(), 'r'), ref budget);
+                            Cell(Row(), Column(), Number(BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)), Xf()), Xf(), 'r');
                         else
                             switch (data[at + 6])
                             {
                                 case 0:
                                     if (i + 1 < records.Count && records[i + 1].Type == 0x0207 && records[i + 1].Length >= 3)
-                                        sheet.Add(Row(), Column(), XlString(records[i + 1].Offset, records[i + 1].Offset + records[i + 1].Length, twoByteCount: true, out _), Align(Xf(), 'l'), ref budget);
+                                        Cell(Row(), Column(), XlString(records[i + 1].Offset, records[i + 1].Offset + records[i + 1].Length, twoByteCount: true, out _), Xf(), 'l');
                                     break;
-                                case 1: sheet.Add(Row(), Column(), data[at + 8] != 0 ? "TRUE" : "FALSE", Align(Xf(), 'c'), ref budget); break;
-                                case 2: sheet.Add(Row(), Column(), Error(data[at + 8]), Align(Xf(), 'c'), ref budget); break;
+                                case 1: Cell(Row(), Column(), data[at + 8] != 0 ? "TRUE" : "FALSE", Xf(), 'c'); break;
+                                case 2: Cell(Row(), Column(), Error(data[at + 8]), Xf(), 'c'); break;
                             }
                         break;
                     case 0x0208 when length >= 16:
@@ -328,21 +468,40 @@ public static class LegacySpreadsheets
                         break;
                 }
             }
-            truncated |= sheet.Truncated;
-            return sheet.Build();
+            var built = sheet.Build();
+            truncated |= sheet.Truncated; stored |= built.Store.Length > 0;
+            return built;
         }
     }
 
     // ---- OpenDocument spreadsheet ----
 
     // Each cell's paragraphs are the text the producing application displayed when it saved the file, so they are
-    // shown as they are (no formatting is re-applied and no formula is evaluated).
-    private sealed class OpenDocumentSheets(ZipArchive zip)
+    // shown as they are (no number formatting is re-applied and no formula is evaluated). Cell styles come from the
+    // named styles (styles.xml) and the automatic styles (content.xml), following their parents.
+    private sealed class OpenDocumentSheets(ZipArchive zip, string? storeFolder)
     {
+        private const string TableNs = "urn:oasis:names:tc:opendocument:xmlns:table:1.0";
+        private const string OfficeNs = "urn:oasis:names:tc:opendocument:xmlns:office:1.0";
+        private const string StyleNs = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
+        private const string FoNs = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0";
         private readonly Dictionary<string, double> columnWidths = [];   // column style -> Excel character width
         private readonly HashSet<string> hiddenTables = [];              // table styles with display="false"
+        private readonly Dictionary<string, Props> cellStyles = [];      // cell style name -> its own properties
+        private readonly Dictionary<string, (int Style, char Align)> resolved = [];
+        private readonly StyleTable styles = new();
         private int budget = Spreadsheets.MaxCellsPerWorkbook;
-        private bool truncated;
+        private bool truncated, stored;
+
+        // Properties a cell style sets itself (null: inherited from its parent).
+        private sealed class Props
+        {
+            public string? Parent;
+            public bool? Bold, Italic, Underline, Strike, Wrap;
+            public string? Color, Fill, Font, VAlign, Top, Right, Bottom, Left;
+            public double? Size;
+            public char? Align;
+        }
 
         public DocumentView Read()
         {
@@ -352,61 +511,65 @@ public static class LegacySpreadsheets
                     if (reader.ReadToEnd().Contains("encryption-data", StringComparison.Ordinal))
                         throw new DocumentException("This spreadsheet is protected with a password. Password-protected files cannot be opened in this version. Remove the password in the application that made it, or ask the sender for an unprotected copy.");
             var content = zip.GetEntry("content.xml") ?? throw Damaged();
+            if (zip.GetEntry("styles.xml") is { } common) using (var r = Open(common)) while (r.Read()) if (r.NodeType == XmlNodeType.Element && r.LocalName == "style") ReadStyle(r);
             var frozen = ReadFrozen();
-            var view = new DocumentView { Kind = "sheet", Encoding = "OpenDocument spreadsheet", CellStyles = [new()] };
+            var view = new DocumentView { Kind = "sheet", Encoding = "OpenDocument spreadsheet", CellStyles = styles.Table };
             int hidden = 0;
             var extra = new List<string>();
             if (zip.Entries.Any(e => e.FullName.StartsWith("Basic/", StringComparison.OrdinalIgnoreCase) || e.FullName.StartsWith("Scripts/", StringComparison.OrdinalIgnoreCase)))
                 extra.Add("This spreadsheet contains macros. They were ignored and never ran.");
-            using var r = Open(content);
-            SheetBuilder? sheet = null;
-            int row = -1;
-            while (r.Read())
+            using (var r = Open(content))
             {
-                if (r.NodeType == XmlNodeType.EndElement && r.LocalName == "table" && sheet is not null)
-                { truncated |= sheet.Truncated; view.Sheets.Add(sheet.Build()); sheet = null; continue; }
-                if (r.NodeType != XmlNodeType.Element) continue;
-                switch (r.LocalName)
+                SheetBuilder? sheet = null;
+                var columnDefaults = new List<string?>();
+                int row = -1;
+                try
                 {
-                    case "style" when sheet is null: ReadStyle(r); break;
-                    case "table" when r.NamespaceURI.EndsWith(":table:1.0", StringComparison.Ordinal):
-                        string name = r.GetAttribute("name", TableNs) ?? $"Sheet{view.Sheets.Count + hidden + 1}";
-                        if (hiddenTables.Contains(r.GetAttribute("style-name", TableNs) ?? "")) { hidden++; r.Skip(); continue; }
-                        sheet = new SheetBuilder(name); row = -1;
-                        if (frozen.TryGetValue(name, out var split)) { sheet.Sheet.FrozenColumns = split.Columns; sheet.Sheet.FrozenRows = split.Rows; }
-                        if (r.IsEmptyElement) { view.Sheets.Add(sheet.Build()); sheet = null; }
-                        break;
-                    case "table-column" when sheet is not null:
+                    while (r.Read())
+                    {
+                        if (r.NodeType == XmlNodeType.EndElement && r.LocalName == "table" && sheet is not null)
+                        { var built = sheet.Build(); truncated |= sheet.Truncated; stored |= built.Store.Length > 0; view.Sheets.Add(built); sheet.Dispose(); sheet = null; continue; }
+                        if (r.NodeType != XmlNodeType.Element) continue;
+                        switch (r.LocalName)
                         {
-                            int repeat = Repeat(r, "number-columns-repeated");
-                            double width = columnWidths.GetValueOrDefault(r.GetAttribute("style-name", TableNs) ?? "", sheet.DefaultWidth);
-                            if (r.GetAttribute("visibility", TableNs) is "collapse" or "filter") width = 0;
-                            int start = sheet.Widths.Count;
-                            for (int k = 0; k < repeat && start + k < Spreadsheets.MaxColumns; k++) sheet.Widths[start + k] = width;
+                            case "style" when sheet is null: ReadStyle(r); break;
+                            case "table" when r.NamespaceURI == TableNs:
+                                string name = r.GetAttribute("name", TableNs) ?? $"Sheet{view.Sheets.Count + hidden + 1}";
+                                if (hiddenTables.Contains(r.GetAttribute("style-name", TableNs) ?? "")) { hidden++; r.Skip(); continue; }
+                                sheet = new SheetBuilder(name, view.Sheets.Count, storeFolder, styles); row = -1; columnDefaults.Clear();
+                                if (frozen.TryGetValue(name, out var split)) { sheet.Sheet.FrozenColumns = split.Columns; sheet.Sheet.FrozenRows = split.Rows; }
+                                if (r.IsEmptyElement) { view.Sheets.Add(sheet.Build()); sheet.Dispose(); sheet = null; }
+                                break;
+                            case "table-column" when sheet is not null:
+                                {
+                                    int repeat = Repeat(r, "number-columns-repeated");
+                                    double width = columnWidths.GetValueOrDefault(r.GetAttribute("style-name", TableNs) ?? "", sheet.DefaultWidth);
+                                    if (r.GetAttribute("visibility", TableNs) is "collapse" or "filter") width = 0;
+                                    string? defaultStyle = r.GetAttribute("default-cell-style-name", TableNs);
+                                    for (int k = 0; k < repeat && columnDefaults.Count < Spreadsheets.MaxColumns; k++)
+                                    { sheet.Widths[columnDefaults.Count] = width; columnDefaults.Add(defaultStyle); }
+                                }
+                                break;
+                            case "table-row" when sheet is not null:
+                                {
+                                    int repeat = Repeat(r, "number-rows-repeated");
+                                    bool hiddenRow = r.GetAttribute("visibility", TableNs) is "collapse" or "filter";
+                                    if (r.IsEmptyElement) { row += repeat; break; }
+                                    row++;
+                                    if (hiddenRow) sheet.Sheet.HiddenRows.Add(row + 1);
+                                    ReadRow(r, sheet, row, repeat, columnDefaults);
+                                    if (repeat > 1) row += repeat - 1;
+                                }
+                                break;
                         }
-                        break;
-                    case "table-row" when sheet is not null:
-                        {
-                            int repeat = Repeat(r, "number-rows-repeated");
-                            bool hiddenRow = r.GetAttribute("visibility", TableNs) is "collapse" or "filter";
-                            if (r.IsEmptyElement) { row += repeat; break; }
-                            row++;
-                            // A repeated row with content repeats its cells too; only the first copy is read, and further
-                            // copies are materialised only while within the limits.
-                            if (hiddenRow) sheet.Sheet.HiddenRows.Add(row + 1);
-                            ReadRow(r, sheet, row, repeat);
-                            if (repeat > 1) row += repeat - 1;
-                        }
-                        break;
+                    }
                 }
+                finally { sheet?.Dispose(); }
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This spreadsheet has no visible sheets to show.");
-            view.Notice = Notes(hidden, truncated, extra);
+            view.Notice = Notes(hidden, truncated, stored, extra);
             return view;
         }
-
-        private const string TableNs = "urn:oasis:names:tc:opendocument:xmlns:table:1.0";
-        private const string OfficeNs = "urn:oasis:names:tc:opendocument:xmlns:office:1.0";
 
         private static XmlReader Open(ZipArchiveEntry entry) => XmlReader.Create(entry.Open(), new XmlReaderSettings
         { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersFromEntities = 1024, IgnoreComments = true, IgnoreProcessingInstructions = true, CloseInput = true });
@@ -414,22 +577,91 @@ public static class LegacySpreadsheets
         private static int Repeat(XmlReader r, string attribute) =>
             int.TryParse(r.GetAttribute(attribute, TableNs), NumberStyles.None, CultureInfo.InvariantCulture, out int n) && n > 0 ? n : 1;
 
-        // Automatic styles: column widths (converted to Excel character units, as the grid expects) and hidden tables.
+        // A style: column widths (in Excel character units, as the grid expects), hidden tables, and cell properties.
         private void ReadStyle(XmlReader r)
         {
-            string name = r.GetAttribute("name", "urn:oasis:names:tc:opendocument:xmlns:style:1.0") ?? "";
-            if (r.IsEmptyElement) return;
-            int depth = r.Depth;
-            while (r.Read() && r.Depth > depth)
+            string name = r.GetAttribute("name", StyleNs) ?? "";
+            bool cell = r.GetAttribute("family", StyleNs) == "table-cell";
+            var props = new Props { Parent = r.GetAttribute("parent-style-name", StyleNs) };
+            if (!r.IsEmptyElement)
             {
-                if (r.NodeType != XmlNodeType.Element) continue;
-                if (r.LocalName == "table-column-properties" && Length(r.GetAttribute("column-width", "urn:oasis:names:tc:opendocument:xmlns:style:1.0")) is double px)
-                    columnWidths[name] = Math.Max(0, Math.Round((px - 5) / 7, 2));
-                if (r.LocalName == "table-properties" && r.GetAttribute("display", TableNs) == "false") hiddenTables.Add(name);
+                int depth = r.Depth;
+                while (r.Read() && r.Depth > depth)
+                {
+                    if (r.NodeType != XmlNodeType.Element) continue;
+                    switch (r.LocalName)
+                    {
+                        case "table-column-properties" when Length(r.GetAttribute("column-width", StyleNs)) is double px:
+                            columnWidths[name] = Math.Max(0, Math.Round((px - 5) / 7, 2)); break;
+                        case "table-properties" when r.GetAttribute("display", TableNs) == "false": hiddenTables.Add(name); break;
+                        case "text-properties" when cell:
+                            if (r.GetAttribute("font-weight", FoNs) is { } weight) props.Bold = weight == "bold" || (int.TryParse(weight, out int w) && w >= 600);
+                            if (r.GetAttribute("font-style", FoNs) is { } italic) props.Italic = italic == "italic";
+                            if (r.GetAttribute("text-underline-style", StyleNs) is { } underline) props.Underline = underline != "none";
+                            if (r.GetAttribute("text-line-through-style", StyleNs) is { } strike) props.Strike = strike != "none";
+                            if (WorkbookStyles.Hex(r.GetAttribute("color", FoNs)?.TrimStart('#')) is { } colour) props.Color = colour;
+                            if (Length(r.GetAttribute("font-size", FoNs)) is double size) props.Size = size;
+                            if (r.GetAttribute("font-name", StyleNs) is { } font) props.Font = WorkbookStyles.SafeName(font);
+                            break;
+                        case "table-cell-properties" when cell:
+                            if (r.GetAttribute("background-color", FoNs) is { } fill) props.Fill = fill == "transparent" ? "" : WorkbookStyles.Hex(fill.TrimStart('#'));
+                            if (r.GetAttribute("wrap-option", FoNs) is { } wrap) props.Wrap = wrap == "wrap";
+                            if (r.GetAttribute("vertical-align", StyleNs) is { } vertical) props.VAlign = vertical is "top" or "middle" ? vertical : "";
+                            if (r.GetAttribute("border", FoNs) is { } all) props.Top = props.Right = props.Bottom = props.Left = Border(all);
+                            if (r.GetAttribute("border-top", FoNs) is { } top) props.Top = Border(top);
+                            if (r.GetAttribute("border-right", FoNs) is { } right) props.Right = Border(right);
+                            if (r.GetAttribute("border-bottom", FoNs) is { } bottom) props.Bottom = Border(bottom);
+                            if (r.GetAttribute("border-left", FoNs) is { } left) props.Left = Border(left);
+                            break;
+                        case "paragraph-properties" when cell && r.GetAttribute("text-align", FoNs) is { } align:
+                            props.Align = align switch { "center" => 'c', "end" or "right" => 'r', _ => 'l' }; break;
+                    }
+                }
             }
+            if (cell && name.Length > 0) cellStyles[name] = props;
         }
 
-        // A length such as "2.258cm" in pixels at 96 dpi.
+        // "0.74pt solid #000000" as the grid's border form ("" for none).
+        private static string Border(string value)
+        {
+            var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 || parts.Contains("none")) return "";
+            double px = parts.Select(Length).FirstOrDefault(v => v is not null) ?? 1;
+            string kind = parts.FirstOrDefault(p => p is "solid" or "dashed" or "dotted" or "double") ?? "solid";
+            string colour = parts.Select(p => WorkbookStyles.Hex(p.TrimStart('#'))).FirstOrDefault(c => c is not null) ?? "#000000";
+            return $"{(kind == "double" ? 3 : px <= 1.4 ? 1 : px <= 2.7 ? 2 : 3)} {kind} {colour}";
+        }
+
+        // The effective style of a named cell style: its own properties over its parents', compared with "Default".
+        private (int Style, char Align) Resolve(string? name)
+        {
+            name ??= "Default";
+            if (resolved.TryGetValue(name, out var known)) return known;
+            var chain = new List<Props>();
+            for (string? n = name; n is not null && chain.Count < 16 && cellStyles.TryGetValue(n, out var p); n = p.Parent) chain.Add(p);
+            T? Pick<T>(Func<Props, T?> get) where T : class => chain.Select(get).FirstOrDefault(v => v is not null);
+            T? PickValue<T>(Func<Props, T?> get) where T : struct => chain.Select(get).FirstOrDefault(v => v.HasValue);
+            var baseProps = cellStyles.GetValueOrDefault("Default");
+            string? colour = Pick(p => p.Color), fill = Pick(p => p.Fill), font = Pick(p => p.Font);
+            double? size = PickValue(p => p.Size), baseSize = baseProps?.Size;
+            var style = new CellStyle
+            {
+                Bold = PickValue(p => p.Bold) ?? false, Italic = PickValue(p => p.Italic) ?? false,
+                Underline = PickValue(p => p.Underline) ?? false, Strike = PickValue(p => p.Strike) ?? false,
+                Color = colour is not null && colour != baseProps?.Color ? colour : null,     // the default text colour stays automatic
+                Fill = fill is { Length: > 0 } ? fill : null,
+                Font = font is not null && font != baseProps?.Font ? font : null,
+                Size = size is > 0 && baseSize is > 0 && Math.Abs(size.Value - baseSize.Value) > 0.01 ? Math.Round(size.Value / baseSize.Value, 3) : 0,
+                Wrap = PickValue(p => p.Wrap) ?? false, VAlign = Pick(p => p.VAlign) is { Length: > 0 } v ? v : null,
+                Top = Pick(p => p.Top) is { Length: > 0 } t ? t : null, Right = Pick(p => p.Right) is { Length: > 0 } rr ? rr : null,
+                Bottom = Pick(p => p.Bottom) is { Length: > 0 } b ? b : null, Left = Pick(p => p.Left) is { Length: > 0 } l ? l : null
+            };
+            var result = (styles.Add(style), PickValue(p => p.Align) ?? '\0');
+            resolved[name] = result;
+            return result;
+        }
+
+        // A length such as "2.258cm" in pixels at 96 dpi (font sizes in points use the same unit).
         private static double? Length(string? value)
         {
             if (value is null) return null;
@@ -438,29 +670,31 @@ public static class LegacySpreadsheets
             return null;
         }
 
-        private void ReadRow(XmlReader r, SheetBuilder sheet, int row, int rowRepeat)
+        private void ReadRow(XmlReader r, SheetBuilder sheet, int row, int rowRepeat, List<string?> columnDefaults)
         {
             int depth = r.Depth, column = 0;
-            var cells = new List<(int Column, string Text, char Align)>();
+            var cells = new List<(int Column, string Text, char Align, int Style)>();
             while (r.Read() && r.Depth > depth)
             {
                 if (r.NodeType != XmlNodeType.Element || r.Depth != depth + 1) continue;
                 if (r.LocalName is not ("table-cell" or "covered-table-cell")) { r.Skip(); continue; }
                 int repeat = Repeat(r, "number-columns-repeated");
                 string type = r.GetAttribute("value-type", OfficeNs) ?? "";
+                var (style, align) = Resolve(r.GetAttribute("style-name", TableNs) ?? (column < columnDefaults.Count ? columnDefaults[column] : null));
                 int spanColumns = Repeat(r, "number-columns-spanned"), spanRows = Repeat(r, "number-rows-spanned");
-                if (r.LocalName == "table-cell" && (spanColumns > 1 || spanRows > 1) && column < Spreadsheets.MaxColumns && row < Spreadsheets.MaxRowsPerSheet)
+                if (r.LocalName == "table-cell" && (spanColumns > 1 || spanRows > 1) && column < Spreadsheets.MaxColumns && row < Spreadsheets.MaxStoredRows)
                     sheet.Sheet.Merges.Add([row, column, row + spanRows - 1, Math.Min(Spreadsheets.MaxColumns - 1, column + spanColumns - 1)]);
                 string text = CellText(r);
-                char align = type switch { "float" or "percentage" or "currency" or "date" or "time" => 'r', "boolean" => 'c', _ => 'l' };
-                if (text.Length > 0) for (int k = 0; k < repeat && column + k < Spreadsheets.MaxColumns && k < 1024; k++) cells.Add((column + k, text, align));
+                char natural = type switch { "float" or "percentage" or "currency" or "date" or "time" => 'r', "boolean" => 'c', _ => 'l' };
+                if (text.Length > 0 || styles.Table[style].Visible)
+                    for (int k = 0; k < repeat && column + k < Spreadsheets.MaxColumns && k < 1024; k++) cells.Add((column + k, text, align == '\0' ? natural : align, style));
                 column += repeat;
             }
-            // Rows repeated with the same content (rare apart from empty rows) are laid out while within the limits.
+            // Rows repeated with the same content (rare apart from empty rows) are laid out, within the row limit.
             for (int k = 0; k < rowRepeat && (k == 0 || cells.Count > 0); k++)
             {
-                if (row + k >= Spreadsheets.MaxRowsPerSheet) { if (cells.Count > 0) sheet.Truncated = true; break; }
-                foreach (var (c, t, a) in cells) sheet.Add(row + k, c, t, a, ref budget);
+                if (row + k >= Spreadsheets.MaxStoredRows) { if (cells.Count > 0) sheet.Truncated = true; break; }
+                foreach (var (c, t, a, s) in cells) sheet.Add(row + k, c, t, a, s, ref budget);
             }
         }
 
@@ -477,7 +711,7 @@ public static class LegacySpreadsheets
                     switch (r.LocalName)
                     {
                         case "p": if (paragraphs++ > 0) text.Append('\n'); break;
-                        case "s": text.Append(' ', Math.Min(1000, Repeat2(r))); break;
+                        case "s": text.Append(' ', Math.Min(1000, Spaces(r))); break;
                         case "tab": text.Append('\t'); break;
                         case "line-break": text.Append('\n'); break;
                         case "annotation": r.Skip(); break;                // comments are not cell text
@@ -489,7 +723,7 @@ public static class LegacySpreadsheets
             return text.ToString();
         }
 
-        private static int Repeat2(XmlReader r) =>
+        private static int Spaces(XmlReader r) =>
             int.TryParse(r.GetAttribute("c", "urn:oasis:names:tc:opendocument:xmlns:text:1.0"), NumberStyles.None, CultureInfo.InvariantCulture, out int n) && n > 0 ? n : 1;
 
         // Frozen rows and columns per sheet, from settings.xml (split mode 2 = frozen).
@@ -497,16 +731,17 @@ public static class LegacySpreadsheets
         {
             var result = new Dictionary<string, (int, int)>();
             if (zip.GetEntry("settings.xml") is not { } settings) return result;
+            const string ConfigNs = "urn:oasis:names:tc:opendocument:xmlns:config:1.0";
             using var r = Open(settings);
             string? table = null; var values = new Dictionary<string, string>();
             int tablesDepth = -1;
             while (r.Read())
             {
-                if (r.NodeType == XmlNodeType.Element && r.LocalName == "config-item-map-named" && r.GetAttribute("name", "urn:oasis:names:tc:opendocument:xmlns:config:1.0") == "Tables") tablesDepth = r.Depth;
+                if (r.NodeType == XmlNodeType.Element && r.LocalName == "config-item-map-named" && r.GetAttribute("name", ConfigNs) == "Tables") tablesDepth = r.Depth;
                 else if (tablesDepth >= 0 && r.NodeType == XmlNodeType.Element && r.LocalName == "config-item-map-entry" && r.Depth == tablesDepth + 1)
-                { table = r.GetAttribute("name", "urn:oasis:names:tc:opendocument:xmlns:config:1.0"); values.Clear(); }
+                { table = r.GetAttribute("name", ConfigNs); values.Clear(); }
                 else if (table is not null && r.NodeType == XmlNodeType.Element && r.LocalName == "config-item")
-                    values[r.GetAttribute("name", "urn:oasis:names:tc:opendocument:xmlns:config:1.0") ?? ""] = r.ReadElementContentAsString();
+                    values[r.GetAttribute("name", ConfigNs) ?? ""] = r.ReadElementContentAsString();
                 else if (table is not null && r.NodeType == XmlNodeType.EndElement && r.LocalName == "config-item-map-entry" && r.Depth == tablesDepth + 1)
                 {
                     int Value(string key) => values.TryGetValue(key, out var v) && int.TryParse(v, out int n) ? n : 0;

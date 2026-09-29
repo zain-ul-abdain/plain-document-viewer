@@ -103,13 +103,14 @@ internal sealed class DocumentWebView : Border
             e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(new MemoryStream(bytes, false), 200, "OK", JsonHeaders(contentType));
             return;
         }
-        // Rows and searches of large sheets, answered from the row stores on a background thread.
-        if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == DocumentHost && Data is { } data && uri.AbsolutePath is "/rows" or "/find")
+        // Rows and searches of large sheets, and pictures placed on sheets, answered by the window on a background thread.
+        if (uri.Scheme == Uri.UriSchemeHttps && uri.Host == DocumentHost && Data is { } data && uri.AbsolutePath is "/rows" or "/find" or "/media")
         {
             var deferral = e.GetDeferral();
             var environment = web.CoreWebView2.Environment;
             var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
             string path = uri.AbsolutePath;
+            string type = path == "/media" ? ImageFiles.ContentTypeOf(query["name"] ?? "") ?? "application/octet-stream" : "application/json; charset=utf-8";
             _ = Task.Run(() =>
             {
                 try { return data(path, query); }
@@ -117,7 +118,7 @@ internal sealed class DocumentWebView : Border
             }).ContinueWith(task => Dispatcher.InvokeAsync(() =>
             {
                 e.Response = task.Result is { } body
-                    ? environment.CreateWebResourceResponse(new MemoryStream(body, false), 200, "OK", JsonHeaders("application/json; charset=utf-8"))
+                    ? environment.CreateWebResourceResponse(new MemoryStream(body, false), 200, "OK", JsonHeaders(type))
                     : environment.CreateWebResourceResponse(null, 404, "Not found", "");
                 deferral.Complete();
             }), TaskScheduler.Default);
