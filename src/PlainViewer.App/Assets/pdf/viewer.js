@@ -70,9 +70,9 @@ function buildThumbnails() {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.page = String(i);
-    button.setAttribute("aria-label", `Slide ${i}`);
+    button.setAttribute("aria-label", `${slides ? "Slide" : "Page"} ${i}`);
     const canvas = document.createElement("canvas");
-    canvas.style.width = "150px"; canvas.style.height = "84px";
+    canvas.style.width = "150px"; canvas.style.height = slides ? "84px" : "194px";   // until the page is drawn
     const label = document.createElement("span");
     label.textContent = String(i);
     button.append(canvas, label);
@@ -80,10 +80,20 @@ function buildThumbnails() {
     thumbs.append(button);
     observer.observe(button);
   }
-  markThumbnail(1);
+  markThumbnail(viewer.currentPageNumber);
+}
+// Documents: the same strip, shown on request and built the first time it opens.
+let thumbnailsBuilt = false;
+function showThumbnails(show) {
+  document.body.classList.toggle("thumbnails", show);
+  thumbs.setAttribute("aria-label", slides ? "Slides" : "Pages");
+  if (show && !thumbnailsBuilt && viewer.pdfDocument) { thumbnailsBuilt = true; buildThumbnails(); }
+  if (show) markThumbnail(viewer.currentPageNumber);
+  const value = viewer.currentScaleValue;                  // the pages area changed width: keep a fit setting true
+  if (value === "page-fit" || value === "page-width") requestAnimationFrame(() => { viewer.currentScaleValue = value; });
 }
 function markThumbnail(number) {
-  if (!slides) return;
+  if (!slides && !document.body.classList.contains("thumbnails")) return;
   for (const button of thumbs.children) {
     const current = Number(button.dataset.page) === number;
     button.classList.toggle("current", current);
@@ -204,6 +214,9 @@ host?.addEventListener("message", event => {
       break;
     case "focus":
       container.focus();
+      break;
+    case "thumbnails":
+      if (!slides) showThumbnails(!!m.show);
       break;
   }
 });

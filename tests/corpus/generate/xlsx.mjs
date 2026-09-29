@@ -24,7 +24,51 @@ async function stable(buffer) {
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
 }
 
+// Cell styles: fonts, fills (direct and theme colours with tint), borders, alignment, indent, wrap, text that spills
+// over empty neighbours, a styled empty cell and a hidden column.
+function stylesWorkbook() {
+  const wb = workbook();
+  const ws = wb.addWorksheet("Styles");
+  ws.columns = [{ width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14, hidden: true }, { width: 14 }];
+  const set = (ref, value, style) => { const cell = ws.getCell(ref); cell.value = value; Object.assign(cell, style); };
+  set("A1", "Bold red", { font: { bold: true, color: { argb: "FFC00000" } } });
+  set("B1", "Italic", { font: { italic: true } });
+  set("C1", "Underlined", { font: { underline: true } });
+  set("D1", "Struck", { font: { strike: true } });
+  set("A2", "Yellow fill", { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } } });
+  set("B2", "Theme fill", { fill: { type: "pattern", pattern: "solid", fgColor: { theme: 4, tint: 0.3999755851924192 } } });
+  set("C2", null, { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FF00B050" } } });
+  set("A3", "Boxed", { border: { top: { style: "thin", color: { argb: "FF0000FF" } }, bottom: { style: "double", color: { argb: "FF0000FF" } },
+    left: { style: "medium" }, right: { style: "dashed", color: { argb: "FFFF0000" } } } });
+  set("B3", "Centred", { alignment: { horizontal: "center" } });
+  set("C3", "Right", { alignment: { horizontal: "right" } });
+  set("D3", 1234.5, { alignment: { horizontal: "left" }, numFmt: "#,##0.00" });
+  set("A4", "Indented", { alignment: { indent: 2 } });
+  set("B4", "Big text", { font: { size: 16 } });
+  set("C4", "Consolas", { font: { name: "Consolas" } });
+  set("D4", "Wrapped text that is long", { alignment: { wrapText: true, vertical: "top" } });
+  // Spill: A5 runs over the empty B5:D5; A6 cannot, because B6 has content.
+  set("A5", "Hello spill: this text is longer than its column and runs over the empty cells beside it", {});
+  set("A6", "No room to spill here", {}); set("B6", "Neighbour", {});
+  set("F1", "After hidden E", {});
+  return wb;
+}
+
 export async function generateXlsx({ large }) {
+  {
+    write("xlsx/styles.xlsx", await stable(await stylesWorkbook().xlsx.writeBuffer()));
+    record({ id: "xlsx-styles", file: "xlsx/styles.xlsx", format: "xlsx", category: "complex", producer, licence,
+      expect: { result: "open", sheets: ["Styles"],
+        cells: [{ sheet: "Styles", ref: "D3", text: "1,234.50" }, { sheet: "Styles", ref: "A5", text: "Hello spill: this text is longer than its column and runs over the empty cells beside it" }],
+        styles: [
+          { ref: "A1", bold: true, color: "#c00000" }, { ref: "B1", italic: true }, { ref: "C1", underline: true }, { ref: "D1", strike: true },
+          { ref: "A2", fill: "#ffff00" }, { ref: "B2", fill: "#95b3d7" }, { ref: "C2", fill: "#00b050" },
+          { ref: "A3", top: "1 solid #0000ff", bottom: "3 double #0000ff", left: "2 solid #000000", right: "1 dashed #ff0000" },
+          { ref: "A4", indent: 2 }, { ref: "B4", size: 1.455 }, { ref: "C4", font: "Consolas" }, { ref: "D4", wrap: true, vAlign: "top" }],
+        align: [{ ref: "B3", align: "c" }, { ref: "C3", align: "r" }, { ref: "D3", align: "l" }],
+        hiddenColumns: ["E"] },
+      rules: SAFE_RULES, notes: "Theme fill: accent1 of the Office 2007 theme exceljs writes (#4f81bd) lightened by 40% is #95b3d7, as Excel shows it. Wrapped text shows its first line (row heights are not applied). A5 must spill over B5:D5; A6 must not." });
+  }
   // Simple
   {
     const wb = workbook();

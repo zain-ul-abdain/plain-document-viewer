@@ -8,9 +8,9 @@ html, body { margin: 0; height: 100%; background: var(--background); overflow: h
 @media (forced-colors: active) { .pdfViewer .page { forced-color-adjust: none; border: 1px solid CanvasText; } }
 /* Slides mode: thumbnail strip on the left, one slide in the main area. */
 #thumbs { display: none; }
-body.slides #thumbs { display: flex; flex-direction: column; gap: 10px; position: absolute; inset: 0 auto 0 0; width: 208px;
+body.slides #thumbs, body.thumbnails #thumbs { display: flex; flex-direction: column; gap: 10px; position: absolute; inset: 0 auto 0 0; width: 208px;
   overflow-x: hidden; overflow-y: auto; padding: 10px 8px; box-sizing: border-box; background: var(--background); border-right: 1px solid rgba(128, 128, 128, 0.35); }
-body.slides #viewerContainer { inset: 0 0 0 208px; }
+body.slides #viewerContainer, body.thumbnails #viewerContainer { inset: 0 0 0 208px; }
 #thumbs button { display: flex; align-items: flex-start; gap: 6px; padding: 4px; border: 2px solid transparent; border-radius: 4px;
   background: transparent; color: inherit; cursor: pointer; font: 12px "Segoe UI", sans-serif; }
 #thumbs button canvas { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); order: 2; }

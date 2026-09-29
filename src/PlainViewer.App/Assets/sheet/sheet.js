@@ -81,6 +81,8 @@ function frame(sheet) {
     group.append(col);
     offsets.push(x); x += pixels(sheet.columnWidths[c]);
   }
+  // An exact width keeps the fixed layout: columns keep the workbook's widths instead of growing to fit their text.
+  table.style.width = x + "px";
   table.append(group);
   return { table, offsets };
 }
@@ -164,7 +166,10 @@ function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
   tr.append(header);
   const data = cellsOf(sheet, r);
   if (!data) { tr.classList.add("loading"); tr.setAttribute("aria-busy", "true"); }
-  const [values, align] = data ?? [[], ""];
+  const [values, layout] = data ?? [[], ""];
+  const [align, styleText] = layout.split("|");
+  const styleIds = styleText ? styleText.split(".").map(Number) : null;
+  const styleOf = c => (styleIds && workbook.styles?.[styleIds[c]]) || null;
   const current = big && bigHits?.list[hitIndex] ? bigHits.list[hitIndex].join(",") : null;
   for (let c = 0; c < values.length; c++) {
     const key = `${r},${c}`;
@@ -175,14 +180,62 @@ function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
     if (align[c] === "r") td.className = "r"; else if (align[c] === "c") td.className = "c";
     if (values[c] === "Result unavailable") td.classList.add("unavailable");
     if (sheet.columnWidths[c] <= 0) td.classList.add("hidden-col");
+    const style = styleOf(c);
+    if (style) applyStyle(td, style);
     const span = spans.get(key);
     if (span) { td.rowSpan = span[0]; td.colSpan = span[1]; td.classList.add("merged"); }
-    if (c < sheet.frozenColumns) { td.classList.add("frozen-col"); td.style.insetInlineStart = offsets[c] + "px"; }
+    else {
+      // Like Excel, left-aligned text too long for its cell runs on over empty cells beside it.
+      const extra = spill(sheet, r, c, values, align[c] ?? "l", style, spans, covered, styleOf);
+      if (extra > 0) { td.colSpan = extra + 1; td.classList.add("spill"); c += extra; }
+    }
+    if (+td.dataset.c < sheet.frozenColumns) { td.classList.add("frozen-col"); td.style.insetInlineStart = offsets[td.dataset.c] + "px"; }
     if (isFrozen) td.style.top = `calc(var(--row) * ${r + 1})`;
     if (big && bigHits?.set.has(key)) td.classList.add(key === current ? "current" : "hit");
     tr.append(td);
   }
   return tr;
+}
+
+// Cell styles from the workbook. Every value is checked here as well: only a known form reaches the page's CSS.
+const COLOUR = /^#[0-9a-f]{6}$/;
+const FONT_NAME = /^[\p{L}\p{N} \-]{1,64}$/u;
+function applyStyle(td, style) {
+  const s = td.style;
+  if (style.bold) s.fontWeight = "700";
+  if (style.italic) s.fontStyle = "italic";
+  const lines = [style.underline && "underline", style.strike && "line-through"].filter(Boolean);
+  if (lines.length) s.textDecorationLine = lines.join(" ");
+  if (COLOUR.test(style.color ?? "")) s.color = style.color;
+  if (COLOUR.test(style.fill ?? "")) {
+    s.backgroundColor = style.fill;
+    if (!style.color) s.color = "#000000";                        // automatic text on a fill is black, as in Excel
+  }
+  if (typeof style.size === "number" && style.size > 0) s.fontSize = `${Math.min(1.5, Math.max(0.6, style.size)) * 13}px`;
+  if (FONT_NAME.test(style.font ?? "")) s.fontFamily = `"${style.font}", "Segoe UI", system-ui, sans-serif`;
+  if (style.vAlign === "top" || style.vAlign === "middle") s.verticalAlign = style.vAlign;
+  if (Number.isInteger(style.indent) && style.indent > 0) s.paddingInlineStart = `${4 + Math.min(15, style.indent) * 9}px`;
+  for (const [side, value] of [["Top", style.top], ["Right", style.right], ["Bottom", style.bottom], ["Left", style.left]]) {
+    const m = /^([123]) (solid|dashed|dotted|double) (#[0-9a-f]{6})$/.exec(value ?? "");
+    if (m) s[`border${side}`] = `${m[1]}px ${m[2]} ${m[3]}`;
+  }
+}
+
+const measure = document.createElement("canvas").getContext("2d");
+function spill(sheet, r, c, values, align, style, spans, covered, styleOf) {
+  const text = values[c];
+  if (!text || align !== "l" || style?.wrap) return 0;
+  measure.font = `${style?.bold ? "700 " : ""}${style?.italic || text === "Result unavailable" ? "italic " : ""}13px "Segoe UI"`;
+  const needed = measure.measureText(text).width + 8;
+  let room = pixels(sheet.columnWidths[c]), extra = 0;
+  // Stays within the frozen columns, and stops at the first cell with content, a fill or a border, or a merge.
+  const last = c < sheet.frozenColumns ? sheet.frozenColumns - 1 : sheet.columnWidths.length - 1;
+  while (room < needed && c + extra + 1 <= last) {
+    const next = c + extra + 1, key = `${r},${next}`;
+    if ((values[next] ?? "") !== "" || spans.has(key) || covered.has(key) || styleOf(next)) break;
+    room += pixels(sheet.columnWidths[next]); extra++;
+  }
+  return room >= needed || extra > 0 ? extra : 0;
 }
 
 // ---- Large sheets: only rows near the viewport are in the page; spacers stand in for the rest. ----

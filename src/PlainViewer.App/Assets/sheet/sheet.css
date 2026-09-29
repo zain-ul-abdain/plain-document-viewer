@@ -36,7 +36,9 @@ table.grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; 
 .grid td.merged { white-space: normal; vertical-align: middle; }
 .grid td.hit { background: var(--hit); }
 .grid td.current { background: var(--current); outline: 2px solid var(--accent); outline-offset: -2px; }
-.grid .hidden-col { padding: 0; border-width: 0; }
+/* A hidden column takes no width: its cells have no padding, border or text size (the table is sized to its content,
+   so a zero column width alone would still leave room for a column letter). */
+.grid .hidden-col { padding: 0; border-width: 0; font-size: 0; }
 tbody.chunk { content-visibility: auto; }
 p.empty { margin: 32px; color: var(--muted); font-size: 15px; }
 #tabs { display: flex; gap: 2px; padding: 4px 8px 6px; background: var(--tabs); border-top: 1px solid var(--grid); overflow-x: auto; flex-shrink: 0; }

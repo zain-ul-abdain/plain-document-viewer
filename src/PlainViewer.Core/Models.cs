@@ -14,6 +14,7 @@ public sealed class DocumentView
     public int Columns { get; set; }
     public List<ViewBlock> Blocks { get; set; } = [];
     public List<SheetData> Sheets { get; set; } = [];
+    public List<CellStyle> CellStyles { get; set; } = [];   // workbooks: entry 0 is the plain default style
 }
 public sealed class ViewBlock
 {
@@ -42,6 +43,30 @@ public static class LinkPolicy
         (uri.Scheme == "http" || uri.Scheme == "https" || uri.Scheme == "mailto");
 }
 
+// How one kind of cell looks, from the workbook's styles. Colours are "#rrggbb"; borders are "<px> <solid|dashed|
+// dotted|double> #rrggbb". Built only from parsed numbers and names, never copied as text from the file. Size is
+// relative to the workbook's default font (0 = same). Default values are left out of the JSON, so each style stays small.
+public sealed class CellStyle
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public bool Bold { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public bool Italic { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public bool Underline { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public bool Strike { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Color { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Fill { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public double Size { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Font { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public bool Wrap { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? VAlign { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public int Indent { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Top { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Right { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Bottom { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Left { get; set; }
+    // A fill or border shows even in an empty cell.
+    public bool Visible => Fill is not null || Top is not null || Right is not null || Bottom is not null || Left is not null;
+}
+
 // Spreadsheet sheet as display text. Cells hold what Excel would show; formulas are never recalculated.
 public sealed class SheetData
 {
@@ -50,7 +75,9 @@ public sealed class SheetData
     public int FrozenRows { get; set; }
     public int FrozenColumns { get; set; }
     public List<string[]> Rows { get; set; } = [];          // dense from A1; row i is Excel row i + 1
-    public List<string> Align { get; set; } = [];           // one character per cell: l, r or c
+    // One character per cell (l, r or c); rows with styled cells add "|" and a style number (into
+    // DocumentView.CellStyles) per cell, separated by ".", for example "lrc|0.4.4".
+    public List<string> Align { get; set; } = [];
     public List<double> ColumnWidths { get; set; } = [];    // Excel character units; 0 means hidden
     public List<int> HiddenRows { get; set; } = [];         // Excel row numbers
     public List<int[]> Merges { get; set; } = [];           // [firstRow, firstColumn, lastRow, lastColumn], zero-based

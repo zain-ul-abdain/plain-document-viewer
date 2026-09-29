@@ -28,7 +28,7 @@ try
     Test("Full disk recognised, other IO errors not", () => {
         Check(DiskSpace.IsFull(new IOException("full", unchecked((int)0x80070070))) && DiskSpace.IsFull(new IOException("full", unchecked((int)0x80070027))));
         Check(!DiskSpace.IsFull(new IOException("locked", unchecked((int)0x80070020))) && !DiskSpace.IsFull(new InvalidDataException("x"))); });
-    Test("CSV column resource limit", () => Throws<DocumentException>(() => Csv.Read(new StringReader(new string(',', 600)), ',').ToList()));
+    Test("CSV column resource limit", () => { Csv.Read(new StringReader(new string(',', 1000)), ',').ToList(); Throws<DocumentException>(() => Csv.Read(new StringReader(new string(',', Csv.MaxColumns)), ',').ToList()); });
     Test("UTF BOM and Windows-1252", () => { Check(TextFiles.Detect([255, 254, 65, 0]).Encoding.CodePage == 1200); Check(TextFiles.Detect([0x93, 65, 0x94]).Encoding.CodePage == 1252); });
     Test("UTF-16 heuristic", () => Check(TextFiles.Detect([65, 0, 66, 0, 67, 0]).Encoding.CodePage == 1200));
     Test("UTF-8 partial sample", () => Check(TextFiles.Detect([65, 0xe2, 0x82]).Encoding.CodePage == 65001));
@@ -267,6 +267,34 @@ try
                         Check(Spreadsheets.TryRange(merge.GetProperty("range").GetString()!, out var range));
                         Check(view.Sheets.Single(s => s.Name == merge.GetProperty("sheet").GetString()).Merges.Any(m => m.SequenceEqual(range)));
                     }
+                // Styles, alignment and hidden columns of the first sheet, as the grid page receives them.
+                (string Align, int Style) Layout(string reference)
+                {
+                    Check(Spreadsheets.TryCell(reference, out int row, out int column));
+                    string[] parts = view.Sheets[0].Align[row - 1].Split('|');
+                    return (parts[0][column].ToString(), parts.Length > 1 ? int.Parse(parts[1].Split('.')[column]) : 0);
+                }
+                var camel = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+                if (expect.TryGetProperty("styles", out var styles))
+                    foreach (var item in styles.EnumerateArray())
+                    {
+                        string reference = item.GetProperty("ref").GetString()!;
+                        var actual = System.Text.Json.JsonSerializer.SerializeToElement(view.CellStyles[Layout(reference).Style], camel);
+                        foreach (var property in item.EnumerateObject().Where(p => p.Name != "ref"))
+                        {
+                            var got = actual.GetProperty(property.Name);
+                            bool same = property.Value.ValueKind == System.Text.Json.JsonValueKind.Number
+                                ? got.ValueKind == System.Text.Json.JsonValueKind.Number && Math.Abs(got.GetDouble() - property.Value.GetDouble()) < 0.01
+                                : got.ToString() == property.Value.ToString();
+                            if (!same) throw new Exception($"{reference} {property.Name}: got {got}, expected {property.Value}");
+                        }
+                    }
+                if (expect.TryGetProperty("align", out var aligns))
+                    foreach (var item in aligns.EnumerateArray())
+                        if (Layout(item.GetProperty("ref").GetString()!).Align != item.GetProperty("align").GetString()) throw new Exception($"{item.GetProperty("ref")} alignment");
+                if (expect.TryGetProperty("hiddenColumns", out var hiddenColumns))
+                    foreach (var letter in hiddenColumns.EnumerateArray())
+                    { Check(Spreadsheets.TryCell(letter.GetString() + "1", out _, out int column)); Check(view.Sheets[0].ColumnWidths[column] == 0); }
                 if (expect.TryGetProperty("rightToLeft", out var rtl))
                     Check(rtl.EnumerateArray().All(n => view.Sheets.Single(s => s.Name == n.GetString()).RightToLeft));
             }

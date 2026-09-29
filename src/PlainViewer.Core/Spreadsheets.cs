@@ -78,8 +78,7 @@ public static class Spreadsheets
     private sealed class Reader(ZipArchive zip, CultureInfo culture, string? storeFolder)
     {
         private readonly Dictionary<string, NumberFormat> formats = [];
-        private readonly Dictionary<int, string> customFormats = [];
-        private readonly List<int> cellFormats = [];
+        private WorkbookStyles styles = new();
         private List<string> strings = [];
         private bool date1904;
         private int cellBudget = MaxCellsPerWorkbook;
@@ -102,13 +101,16 @@ public static class Spreadsheets
                             r.GetAttribute("id", RelationshipNs) ?? r.GetAttribute("id", StrictRelationshipNs) ?? ""));
                 }
             }
+            string? stylesPart = null, themePart = null;
             foreach (var rel in workbookRels.Values)
             {
                 if (rel.Type.EndsWith("/sharedStrings", StringComparison.Ordinal)) strings = ReadSharedStrings(rel.Target);
-                else if (rel.Type.EndsWith("/styles", StringComparison.Ordinal)) ReadStyles(rel.Target);
+                else if (rel.Type.EndsWith("/styles", StringComparison.Ordinal) && zip.GetEntry(rel.Target) is not null) stylesPart = rel.Target;
+                else if (rel.Type.EndsWith("/theme", StringComparison.Ordinal) && zip.GetEntry(rel.Target) is not null) themePart = rel.Target;
             }
+            styles = WorkbookStyles.Read(Open, stylesPart, themePart);
 
-            var view = new DocumentView { Kind = "sheet", Encoding = "Excel workbook" };
+            var view = new DocumentView { Kind = "sheet", Encoding = "Excel workbook", CellStyles = styles.Table };
             var notes = new List<string>();
             int hidden = 0;
             foreach (var (name, state, id) in sheets)
@@ -215,27 +217,10 @@ public static class Spreadsheets
             return list;
         }
 
-        private void ReadStyles(string part)
-        {
-            if (zip.GetEntry(part) is null) return;
-            using var r = Open(part);
-            bool inCellXfs = false;
-            while (r.Read())
-            {
-                if (r.NodeType == XmlNodeType.Element)
-                {
-                    if (r.LocalName == "numFmt" && int.TryParse(r.GetAttribute("numFmtId"), out int id) && r.GetAttribute("formatCode") is { } code) customFormats[id] = code;
-                    else if (r.LocalName == "cellXfs" && !r.IsEmptyElement) inCellXfs = true;
-                    else if (r.LocalName == "xf" && inCellXfs) cellFormats.Add(int.TryParse(r.GetAttribute("numFmtId"), out int f) ? f : 0);
-                }
-                else if (r.NodeType == XmlNodeType.EndElement && r.LocalName == "cellXfs") inCellXfs = false;
-            }
-        }
-
         private SheetData ReadSheet(string name, string part, int index)
         {
             var sheet = new SheetData { Name = name };
-            var rows = new SortedDictionary<int, List<(int Column, string Text, char Align)>>();
+            var rows = new SortedDictionary<int, List<(int Column, string Text, char Align, int Style)>>();
             var widths = new List<(int Min, int Max, double Width, bool Hidden)>();
             double defaultWidth = 8.43;
             int maxRow = 0, maxColumn = 0, rowNumber = 0, stored = 0;
@@ -306,11 +291,10 @@ public static class Spreadsheets
             maxColumn = Math.Max(maxColumn, sheet.FrozenColumns);
             foreach (var (row, cells) in rows)
             {
-                var text = new string[maxColumn]; var align = new char[maxColumn];
-                Array.Fill(text, ""); Array.Fill(align, 'l');
-                foreach (var (column, value, a) in cells) { text[column] = value; align[column] = a; }
+                var text = Empty(maxColumn);
                 while (sheet.Rows.Count < row - 1) { sheet.Rows.Add(Empty(maxColumn)); sheet.Align.Add(new string('l', maxColumn)); }
-                sheet.Rows.Add(text); sheet.Align.Add(new string(align));
+                foreach (var (column, value, _, _) in cells) text[column] = value;
+                sheet.Rows.Add(text); sheet.Align.Add(Layout(cells, maxColumn));
             }
             while (sheet.Rows.Count < maxRow) { sheet.Rows.Add(Empty(maxColumn)); sheet.Align.Add(new string('l', maxColumn)); }
             for (int c = 1; c <= maxColumn; c++)
@@ -330,7 +314,16 @@ public static class Spreadsheets
 
         private static string[] Empty(int count) { var row = new string[count]; Array.Fill(row, ""); return row; }
 
-        private RowStoreWriter StartStore(int index, SortedDictionary<int, List<(int Column, string Text, char Align)>> rows, ref int stored)
+        // A row's alignment characters, then "|" and its cells' style numbers if any cell has a style (see SheetData.Align).
+        private static string Layout(List<(int Column, string Text, char Align, int Style)> cells, int width)
+        {
+            var align = new char[width]; Array.Fill(align, 'l');
+            var style = new int[width];
+            foreach (var (column, _, a, s) in cells) { align[column] = a; style[column] = s; }
+            return style.Any(s => s != 0) ? new string(align) + "|" + string.Join('.', style) : new string(align);
+        }
+
+        private RowStoreWriter StartStore(int index, SortedDictionary<int, List<(int Column, string Text, char Align, int Style)>> rows, ref int stored)
         {
             var store = new RowStoreWriter(storeFolder!, $"sheet{index}");
             try { foreach (var (row, cells) in rows) Store(store, ref stored, row, cells); }
@@ -340,23 +333,23 @@ public static class Spreadsheets
 
         private static readonly string[] EmptyStoredRow = [""];
 
-        // Appends Excel row `row` (after empty rows for any gap) as [alignment, cell, cell, ...].
-        private static void Store(RowStoreWriter store, ref int stored, int row, List<(int Column, string Text, char Align)> cells)
+        // Appends Excel row `row` (after empty rows for any gap) as [alignment and styles, cell, cell, ...].
+        private static void Store(RowStoreWriter store, ref int stored, int row, List<(int Column, string Text, char Align, int Style)> cells)
         {
             while (stored < row - 1) { store.Add(EmptyStoredRow); stored++; }
             int width = cells.Count == 0 ? 0 : cells.Max(cell => cell.Column) + 1;
-            var fields = new string[width + 1]; var align = new char[width];
-            Array.Fill(fields, ""); Array.Fill(align, 'l');
-            foreach (var (column, text, a) in cells) { fields[column + 1] = text; align[column] = a; }
-            fields[0] = new string(align);
+            var fields = new string[width + 1];
+            Array.Fill(fields, "");
+            foreach (var (column, text, _, _) in cells) fields[column + 1] = text;
+            fields[0] = Layout(cells, width);
             store.Add(fields); stored++;
         }
 
         // Reads one <row>; returns its cells and leaves the reader positioned after </row>. `limited`: count cells
         // against the workbook's in-memory budget (rows streamed to a row store are not limited by it).
-        private List<(int, string, char)> ReadRow(XmlReader r, int rowNumber, ref int maxColumn, bool limited)
+        private List<(int, string, char, int)> ReadRow(XmlReader r, int rowNumber, ref int maxColumn, bool limited)
         {
-            var cells = new List<(int, string, char)>();
+            var cells = new List<(int, string, char, int)>();
             int column = -1;
             r.Read();
             while (!r.EOF && !(r.NodeType == XmlNodeType.EndElement && r.LocalName == "row"))
@@ -381,7 +374,12 @@ public static class Spreadsheets
                     if (column < MaxColumns && (!limited || cellBudget > 0))
                     {
                         string text = Display(type, value, inline, formula, style, out char align);
-                        if (text.Length > 0) { cells.Add((column, text, align)); maxColumn = Math.Max(maxColumn, column + 1); if (limited) cellBudget--; }
+                        bool known = style >= 0 && style < styles.StyleIds.Count;
+                        int look = known ? styles.StyleIds[style] : 0;
+                        if (known && styles.Horizontal[style] != '\0') align = styles.Horizontal[style];
+                        // Empty cells matter only when their fill or border shows.
+                        if (text.Length > 0 || styles.Table[look].Visible)
+                        { cells.Add((column, text, align, look)); maxColumn = Math.Max(maxColumn, column + 1); if (limited) cellBudget--; }
                     }
                     else truncated = true;
                 }
@@ -416,14 +414,14 @@ public static class Spreadsheets
 
         private string FormatNumber(double value, int style)
         {
-            int id = style >= 0 && style < cellFormats.Count ? cellFormats[style] : 0;
+            int id = style >= 0 && style < styles.NumberFormats.Count ? styles.NumberFormats[style] : 0;
             // Built-in 14 and 22 follow the viewer's regional short date, as Excel does.
-            if (id is 14 or 22 && !customFormats.ContainsKey(id))
+            if (id is 14 or 22 && !styles.CustomFormats.ContainsKey(id))
             {
                 var date = FromSerial(value);
                 return id == 14 ? date.ToString(culture.DateTimeFormat.ShortDatePattern, culture) : date.ToString(culture.DateTimeFormat.ShortDatePattern + " H:mm", culture);
             }
-            string code = customFormats.TryGetValue(id, out var custom) ? custom : BuiltInFormats.GetValueOrDefault(id, "General");
+            string code = styles.CustomFormats.TryGetValue(id, out var custom) ? custom : BuiltInFormats.GetValueOrDefault(id, "General");
             if (!formats.TryGetValue(code, out var format)) formats[code] = format = new NumberFormat(code);
             try { return format.IsValid ? format.Format(value, culture, date1904) : value.ToString("G15", culture); }
             catch (Exception) { return value.ToString("G15", culture); }

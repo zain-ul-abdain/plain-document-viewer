@@ -216,6 +216,7 @@ internal sealed class DocumentWebView : Border
     public void Step(int delta) => Post(new { type = "step", delta });
     public void ChangeSheet(int delta) => Post(new { type = "sheet", delta });
     public void Rotate(int delta) => Post(new { type = "rotate", delta });
+    public void ShowThumbnails(bool show) => Post(new { type = "thumbnails", show });
     public void SetTheme(bool dark) => Post(new { type = "theme", dark });
     public void FocusDocument() { web.Focus(); Post(new { type = "focus" }); }
 

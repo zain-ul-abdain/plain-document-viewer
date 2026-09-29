@@ -3,6 +3,7 @@ namespace PlainViewer.Core;
 
 public static class Csv
 {
+    public const int MaxColumns = 16_384;   // Excel's own limit
     public static char DetectDelimiter(string sample)
     {
         var counts = new Dictionary<char, int> { [','] = 0, [';'] = 0, ['\t'] = 0 }; bool quoted = false;
@@ -38,7 +39,7 @@ public static class Csv
             if (c == delimiter)
             {
                 row.Add(field.ToString()); field.Clear(); closed = false;
-                if (row.Count >= 512) throw new DocumentException("This CSV exceeds the 512-column preview limit.");
+                if (row.Count >= MaxColumns) throw new DocumentException("This CSV has more than 16,384 columns (the most Excel allows), which is more than this viewer can show.");
             }
             else if (c is '\r' or '\n')
             {

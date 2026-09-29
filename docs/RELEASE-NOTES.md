@@ -1,5 +1,26 @@
 # Release notes
 
+## 0.2.0 — beta: more formats, Excel formatting, thumbnails (September 2026)
+
+Install over any earlier beta; nothing needs uninstalling first.
+
+### New file types
+
+- **Pictures:** JPEG, PNG, GIF, BMP, icons, WebP, AVIF and SVG. Zoom, fit, and rotate (view only; the file never changes). Phone photos appear the right way up. Pictures are decoded inside the same sandbox as PDFs; an SVG is only ever shown as a picture, so anything active in it never runs and nothing it points to is loaded. A cut-short picture shows what it can, with a notice.
+- **Office templates, shows and files with macros:** .dotx .docm .dotm, .ppsx .potx .pptm .potm .ppsm, .xlsm .xltx .xltm. Macros are removed or ignored and never run, and the status line says so.
+- **Data files as plain text:** JSON, XML, log, INI and YAML files. They are never interpreted: XML entities and references stay exactly as written.
+- "Open with" is offered for all of these (the installer option lists them); your default apps still do not change.
+
+### Improvements
+
+- **Excel formatting:** fonts (bold, italic, underline, strikethrough, colour, size, typeface), fill colours, borders, alignment and indent, including theme colours. Text on a coloured fill stays readable in dark mode. Columns keep the workbook's widths, long text spills over empty neighbouring cells as in Excel, and hidden columns take no space.
+- **Page thumbnails** for PDF and Word documents: the Thumbnails button beside the page number (remembered).
+- **CSV:** up to 16,384 columns (was 512).
+
+### Still not shown
+
+Excel charts, pictures, conditional formatting and row heights (wrapped text shows its first line); TIFF and HEIC pictures; older .doc/.xls/.ppt, OpenDocument and RTF files (planned for 0.3.0).
+
 ## 0.1.1 — beta update (September 2026)
 
 Fixes from the first beta feedback. Install over 0.1.0; nothing needs uninstalling first.

@@ -116,6 +116,7 @@ public partial class MainWindow : Window
             if (Environment.GetEnvironmentVariable("PLAINVIEWER_CAPTURE_DIR") is { Length: > 0 } captures)
             {
                 // Optional visual evidence for manual review: one PNG per document (and per sheet).
+                if (document.Kind is "pdf" or "word") ThumbnailsToggle.IsChecked = true;   // shows the thumbnail strip too
                 Directory.CreateDirectory(captures); await Task.Delay(800);
                 await WebPane.Capture(Path.Combine(captures, Path.GetFileName(path) + ".png"));
                 for (int sheet = 2; document.Kind == "sheet" && sheet <= WebPane.Pages; sheet++)
@@ -305,6 +306,10 @@ public partial class MainWindow : Window
         PageLabel.Text = document.Kind == "slides" ? "Slide" : "Page";
         System.Windows.Automation.AutomationProperties.SetName(PageBox, document.Kind == "slides" ? "Go to slide number" : "Go to page number");
         EncodingChoice.IsEnabled = !web;
+        // Page thumbnails beside PDF and Word documents, on request (slides always have their strip).
+        bool documentPages = document.Kind is "pdf" or "word";
+        ThumbnailsToggle.Visibility = documentPages ? Visibility.Visible : Visibility.Collapsed;
+        if (documentPages && ThumbnailsToggle.IsChecked == true) WebPane.ShowThumbnails(true);
         if (web) { DelimiterChoice.IsEnabled = false; lastQuery = ""; matchIndex = -1; WebPane.FocusDocument(); return; }
         DelimiterChoice.IsEnabled = document.Kind == "csv";
         if (document.Kind is "csv" or "lines")
@@ -465,6 +470,12 @@ public partial class MainWindow : Window
                 : picture.Format == "SVG" ? "SVG pictures are shown as still images: any scripts or linked content in them never run or load." : ""
         };
     }
+    private void ThumbnailsChanged(object s, RoutedEventArgs e)
+    {
+        bool show = ThumbnailsToggle.IsChecked == true;
+        if (document?.Kind is "pdf" or "word") WebPane.ShowThumbnails(show);
+        if (AppSettings.Enabled && AppSettings.Current.Thumbnails != show) { AppSettings.Current.Thumbnails = show; AppSettings.Save(); }
+    }
     private void RotateLeft(object s, RoutedEventArgs e) => WebPane.Rotate(-1);
     private void RotateRight(object s, RoutedEventArgs e) => WebPane.Rotate(1);
     private async Task<DocumentView> LoadPdf(string path, CancellationToken cancellation)
@@ -479,7 +490,7 @@ public partial class MainWindow : Window
     private async Task LoadSheets(DocumentView view, CancellationToken cancellation)
     {
         // The worker has already turned the workbook into display text; the page only lays it out.
-        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { sheets = view.Sheets },
+        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { sheets = view.Sheets, styles = view.CellStyles },
             new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
         Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
         WebPane.Visibility = Visibility.Visible;
@@ -565,6 +576,7 @@ public partial class MainWindow : Window
     {
         var settings = AppSettings.Current;
         ThemeChoice.SelectedIndex = settings.Theme switch { "Light" => 1, "Dark" => 2, _ => 0 };
+        ThumbnailsToggle.IsChecked = settings.Thumbnails;
         if (settings.Bounds(MinWidth, MinHeight) is { } bounds)
         {
             int others = Application.Current.Windows.OfType<MainWindow>().Count(w => w != this && w.IsVisible);
