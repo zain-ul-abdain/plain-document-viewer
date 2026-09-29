@@ -28,6 +28,7 @@ $jobs = @(
   @('docx\simple.docx', 'doc\simple.doc'), @('docx\complex-20-pages.docx', 'doc\complex-20-pages.doc'),
   @('docx\attack-remote-image.docx', 'doc\attack-remote-image.doc'), @('docx\attack-unc-image.docx', 'doc\attack-unc-image.doc'),
   @('xlsx\simple.xlsx', 'xls\simple.xls'), @('xlsx\complex.xlsx', 'xls\complex.xls'), @('xlsx\styles.xlsx', 'xls\styles.xls'), @('ods\large-12000-rows.ods', 'xls\large-12000-rows.xls'),
+  @('xlsx\drawings.xlsx', 'xls\drawings.xls'), @('xlsx\drawings.xlsx', 'ods\drawings.ods'),
   @('pptx\simple.pptx', 'ppt\simple.ppt'), @('pptx\complex.pptx', 'ppt\complex.ppt'), @('pptx\attack-remote-image.pptx', 'ppt\attack-remote-image.ppt'))
 try {
   foreach ($job in $jobs) {

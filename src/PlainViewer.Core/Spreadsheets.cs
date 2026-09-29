@@ -138,9 +138,7 @@ public static class Spreadsheets
                 view.Sheets.Add(ReadSheet(name, rel.Target, view.Sheets.Count));
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
-            if (pictureBudget.Unsupported > 0) notes.Add($"{pictureBudget.Unsupported} picture{(pictureBudget.Unsupported == 1 ? " is" : "s are")} in a format this viewer cannot show (for example EMF or WMF) and {(pictureBudget.Unsupported == 1 ? "is" : "are")} left out.");
-            if (pictureBudget.Skipped > 0) notes.Add($"{pictureBudget.Skipped} picture{(pictureBudget.Skipped == 1 ? " is" : "s are")} left out because the workbook's pictures are larger than this viewer shows at once.");
-            if (pictureBudget.Linked > 0) notes.Add($"{pictureBudget.Linked} linked picture{(pictureBudget.Linked == 1 ? " is" : "s are")} stored outside this file and {(pictureBudget.Linked == 1 ? "is" : "are")} not loaded.");
+            notes.AddRange(SheetDrawings.Notes(pictureBudget));
             if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
             if (formulasWithoutResult > 0)
                 notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show{(formulasWithoutResult == 1 ? "s" : "")} \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");

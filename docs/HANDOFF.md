@@ -261,4 +261,11 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **HEIC:** the worker now targets `net10.0-windows` with WPF so `Worker/HeifPictures.cs` can decode with Windows' own HEIF codec (only that decoder is accepted), apply the orientation and write `picture.png`; the app re-identifies it as PNG and shows it in the picture view. Decision D11 in DECISIONS.md (no decoder bundled). Fixtures: `scripts/make-heic.ps1` (kept in git, remade only with -Force). The installer registers .heic .heif .hif.
 - Verified: see TEST-RESULTS.md (core 163, smoke 70, security 64/64 with 0 requests, installer built, Windows Sandbox clean-PC test passed, including the missing-codec message).
 - **Published** with Zain's approval: https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.4.0 (pre-release, tag at 1fe12ac; installer, .sha256, BETA.md, BETA-FEEDBACK.md).
-- **Open:** charts and pictures in .xls/.ods; conditional formatting; row heights; Narrator and scaling checks (Zain); signing.
+- **Open:** conditional formatting; row heights; Narrator and scaling checks (Zain); signing.
+
+## Agent 2, 30 September 2026: charts and pictures in .xls and .ods (not yet released)
+
+- **.ods:** `Core/OpenDocumentDrawings.cs` reads draw:frame elements anchored to cells (inside `CellText`) or to the sheet (`table:shapes`, converted to a cell by `SheetDrawings.CellAt` once widths are known). Charts come from `Object N/content.xml`'s cached local-table; orientation (series in columns or rows) follows the series' own range.
+- **.xls:** `Core/LegacySpreadsheets.Drawings.cs` (partial `Excel97`): picture store from MSODRAWINGGROUP, shapes and anchors from each sheet's MSODRAWING, paired in order with OBJ records (ot 8 picture, 5 chart). Charts are parsed in a first pass (`FindCharts`) so `ReadSheet` keeps the saved values of cells their series refer to (`chartCells`); `ResolveCharts` builds them after all sheets. `Records` now follows nested BOF/EOF.
+- Shared helpers in `SheetDrawings`: `Fits`, `AddPicture`, `Notes`, `ColumnPixels`, `CellAt`.
+- Verified: see TEST-RESULTS.md. Not verified with Excel-made .xls files (chart cache, chart sheets, JPEG/DIB). Version not bumped; the installer was not rebuilt.

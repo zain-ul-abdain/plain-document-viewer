@@ -169,10 +169,31 @@ export async function generateConverted() {
         { ref: "A2", fill: "#ffff00" }, { ref: "C2", fill: "#00b050" }, { ref: "A3", bottom: "3 double #0000ff", left: "2 solid #000000" }, { ref: "B4", size: 1.455 }, { ref: "D4", wrap: true, vAlign: "top" }],
       align: [{ ref: "B3", align: "c" }, { ref: "C3", align: "r" }], hiddenColumns: ["E"] }, "The styles workbook as .xls: fonts, fills, borders, alignment."],
     ["xls/large-12000-rows.xls", "xls", "large", { result: "open", kind: "sheet", sheets: ["Big"], cells: [{ sheet: "Big", ref: "A1", text: "Hello big sheet" }], storedRows: 12000, lastRow: "Row 12000" }, "12,000 rows: rows past 10,000 stream to the row store."],
+    ["xls/drawings.xls", "xls", "complex", { result: "open", kind: "sheet", sheets: ["Sales", "Trend"], cells: [{ sheet: "Sales", ref: "A7", text: "Hello pictures" }],
+      drawings: [{ sheet: "Sales", pictures: 1, charts: ["column:Sales by month:2", "pie:January share:1"], values: ["120,150,90,170", "80,95,130,110"], categories: "Jan,Feb,Mar,Apr", values2: ["120,80"], categories2: "North,South" }, { sheet: "Trend", pictures: 0, charts: ["line:Trend:2"] }] },
+      "The pictures-and-charts workbook as .xls: the picture in the drawing group, charts as chart substreams whose series refer to the Sales cells (LibreOffice saves no chart cache), and the chart sheet as a worksheet with its chart."],
+    ["ods/drawings.ods", "ods", "complex", { result: "open", kind: "sheet", sheets: ["Sales", "Trend"], cells: [{ sheet: "Sales", ref: "A7", text: "Hello pictures" }],
+      drawings: [{ sheet: "Sales", pictures: 1, charts: ["column:Sales by month:2", "pie:January share:1"], values: ["120,150,90,170", "80,95,130,110"], categories: "Jan,Feb,Mar,Apr", values2: ["120,80"], categories2: "North,South" }, { sheet: "Trend", pictures: 0, charts: ["line:Trend:2"] }] },
+      "The pictures-and-charts workbook as .ods: the picture and charts anchored to cells, the former chart sheet's chart anchored to the sheet; charts keep their cached data table."],
     ["ppt/simple.ppt", "ppt", "simple", { result: "open", kind: "slides", text: ["Hello"] }],
     ["ppt/complex.ppt", "ppt", "complex", { result: "open", kind: "slides", text: ["Hello"] }],
     ["ppt/attack-remote-image.ppt", "ppt", "attack", { result: "open", kind: "slides", removedAtLeast: 1, text: ["Hello"] }, "Linked picture to the listener."],
   ]) if (fs.existsSync(path.join(CORPUS, file))) rec(file, format, category, expect, lo, notes ? { notes } : {});
+  // Hostile: the .ods pictures workbook with three linked pictures in cell A7 (a web address, a network share and a
+  // path outside the file). They must be counted and never opened.
+  if (fs.existsSync(path.join(CORPUS, "ods", "drawings.ods"))) {
+    const zip = await JSZip.loadAsync(fs.readFileSync(path.join(CORPUS, "ods", "drawings.ods")));
+    const frame = (n, href) => `<draw:frame draw:name="Linked ${n}" svg:width="1in" svg:height="0.5in" svg:x="0in" svg:y="0in"><draw:image xlink:href="${href}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>`;
+    const content = (await zip.file("content.xml").async("string")).replace("<text:p>Hello pictures</text:p>",
+      "<text:p>Hello pictures</text:p>" + frame(1, `${LISTENER}/ods-linked-picture.png`) + frame(2, `file:${WEBDAV_UNC.replace(/\\/g, "/")}/ods-linked-picture.png`) + frame(3, "../ods-linked-picture.png"));
+    if (!content.includes("Linked 3")) throw new Error("drawings.ods: cell A7 not found");
+    zip.file("content.xml", content);
+    zip.file("mimetype", "application/vnd.oasis.opendocument.spreadsheet", { compression: "STORE" });
+    zip.forEach((_, f) => { f.date = FIXED_DATE; });
+    write("ods/attack-linked-picture.ods", await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+    rec("ods/attack-linked-picture.ods", "ods", "attack", { result: "open", kind: "sheet", sheets: ["Sales", "Trend"], cells: [{ sheet: "Sales", ref: "A7", text: "Hello pictures" }], drawings: [{ sheet: "Sales", pictures: 1 }] },
+      `${lo}, edited with JSZip`, { notes: "Three linked pictures (web address, network share, a path outside the file): never opened; the notice counts them; the cell text is unchanged." });
+  }
   if (fs.existsSync(path.join(CORPUS, "xls", "simple.xls"))) {
     write("doc/xls-named.doc", fs.readFileSync(path.join(CORPUS, "xls", "simple.xls")));
     rec("doc/xls-named.doc", "doc", "wrong-extension", { result: "error", error: "mismatch" }, lo, { notes: "An Excel 97-2003 workbook with a .doc name." });

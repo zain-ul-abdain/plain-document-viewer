@@ -54,13 +54,15 @@ function stylesWorkbook() {
   return wb;
 }
 
-// A chart part: one chart of the given kind with cached categories and values (no cell references).
-function chartXml({ kind, title, categories, series }) {
+// A chart part: one chart of the given kind with cached categories and values, and references to the cells they came
+// from (series in columns B, C, ... of rows 2-5 by default; a pie chart of one row passes `across`).
+function chartXml({ kind, title, categories, series, across }) {
   const strCache = values => `<c:strCache><c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:strCache>`;
   const numCache = values => `<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:numCache>`;
   const ser = series.map(([name, values, colour], i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:strRef><c:f>Sales!$${"BC"[i] ?? "B"}$1</c:f>${strCache([name])}</c:strRef></c:tx>` +
     (colour ? `<c:spPr><a:solidFill><a:srgbClr val="${colour}"/></a:solidFill></c:spPr>` : "") +
-    `<c:cat><c:strRef><c:f>Sales!$A$2:$A$5</c:f>${strCache(categories)}</c:strRef></c:cat><c:val><c:numRef><c:f>Sales!$B$2:$B$5</c:f>${numCache(values)}</c:numRef></c:val></c:ser>`).join("");
+    `<c:cat><c:strRef><c:f>${across ? across.cat : "Sales!$A$2:$A$5"}</c:f>${strCache(categories)}</c:strRef></c:cat>` +
+    `<c:val><c:numRef><c:f>${across ? across.val : `Sales!$${"BC"[i] ?? "B"}$2:$${"BC"[i] ?? "B"}$5`}</c:f>${numCache(values)}</c:numRef></c:val></c:ser>`).join("");
   const axes = kind === "pieChart" ? "" : '<c:axId val="1"/><c:axId val="2"/>';
   const body = kind === "barChart" ? `<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${ser}${axes}</c:barChart>`
     : kind === "lineChart" ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${ser}<c:marker val="1"/>${axes}</c:lineChart>`
@@ -265,7 +267,7 @@ export async function generateXlsx({ large }) {
     zip.file(relsPath, (await zip.file(relsPath).async("string")).replace("</Relationships>", chartRel("rIdChart1", 1) + chartRel("rIdChart2", 2) + "</Relationships>"));
     const months = ["Jan", "Feb", "Mar", "Apr"];
     zip.file("xl/charts/chart1.xml", chartXml({ kind: "barChart", title: "Sales by month", categories: months, series: [["North", [120, 150, 90, 170], "4472C4"], ["South", [80, 95, 130, 110], "ED7D31"]] }));
-    zip.file("xl/charts/chart2.xml", chartXml({ kind: "pieChart", title: "January share", categories: ["North", "South"], series: [["January", [120, 80]]] }));
+    zip.file("xl/charts/chart2.xml", chartXml({ kind: "pieChart", title: "January share", categories: ["North", "South"], series: [["January", [120, 80]]], across: { cat: "Sales!$B$1:$C$1", val: "Sales!$B$2:$C$2" } }));
     zip.file("xl/charts/chart3.xml", chartXml({ kind: "lineChart", title: "Trend", categories: months, series: [["North", [120, 150, 90, 170], "70AD47"], ["South", [80, 95, 130, 110]]] }));
     // The chart sheet "Trend".
     zip.file("xl/chartsheets/sheet2.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><chartsheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr/><sheetViews><sheetView workbookViewId="0"/></sheetViews><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/><drawing r:id="rId1"/></chartsheet>`);
@@ -286,7 +288,7 @@ export async function generateXlsx({ large }) {
     write("xlsx/drawings.xlsx", await stable(await zip.generateAsync({ type: "nodebuffer" })));
     record({ id: "xlsx-drawings", file: "xlsx/drawings.xlsx", format: "xlsx", category: "complex", producer: `${producer}, charts added as hand-written DrawingML with JSZip`, licence,
       expect: { result: "open", sheets: ["Sales", "Trend"], text: ["Hello pictures"],
-        drawings: [{ sheet: "Sales", pictures: 1, charts: ["column:Sales by month:2", "pie:January share:1"] }, { sheet: "Trend", chartSheet: true, charts: ["line:Trend:2"] }] },
+        drawings: [{ sheet: "Sales", pictures: 1, charts: ["column:Sales by month:2", "pie:January share:1"], values: ["120,150,90,170", "80,95,130,110"], categories: "Jan,Feb,Mar,Apr", values2: ["120,80"], categories2: "North,South" }, { sheet: "Trend", chartSheet: true, charts: ["line:Trend:2"] }] },
       rules: SAFE_RULES, notes: "The picture is the corpus's own PNG. Charts are drawn from their cached values; the chart sheet shows its chart filling the view." });
   }
 

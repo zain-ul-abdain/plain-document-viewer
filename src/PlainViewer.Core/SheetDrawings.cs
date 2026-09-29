@@ -36,16 +36,10 @@ internal static class SheetDrawings
                 string? embed = blip?.Attributes().FirstOrDefault(a => a.Name.LocalName == "embed")?.Value;
                 if (embed is null) { if (blip?.Attributes().Any(a => a.Name.LocalName == "link") == true) budget.Linked++; continue; }
                 if (!rels.TryGetValue(embed, out var rel) || entry(rel.Target) is not { } media) continue;
-                if (media.Length > MaxPictureBytes || media.Length > budget.Bytes || budget.Pictures <= 0) { budget.Skipped++; continue; }
+                if (!Fits(media.Length, budget)) continue;
                 byte[] bytes = new byte[media.Length];
                 using (var stream = media.Open()) stream.ReadExactly(bytes);
-                var picture = ImageFiles.Identify(bytes);
-                if (picture is null || picture.Format is "SVG" or "HEIF" || (long)picture.Width * picture.Height > ImageFiles.PixelLimit) { budget.Unsupported++; continue; }
-                budget.Bytes -= bytes.Length; budget.Pictures--;
-                string name = $"media-{sheet}-{result.Count}.{picture.ContentType.Split('/')[1].Replace("x-icon", "ico")}";
-                if (folder is not null) File.WriteAllBytes(Path.Combine(folder, name), bytes);
-                placed.Media = name;
-                result.Add(placed);
+                AddPicture(bytes, placed, folder, sheet, budget, result);
             }
             else if (content?.Name.LocalName == "graphicFrame")
             {
@@ -60,6 +54,53 @@ internal static class SheetDrawings
             }
         }
         return result;
+    }
+
+    // Whether a picture of this many bytes may still be read (counted as skipped if not).
+    public static bool Fits(long length, Budget budget)
+    {
+        if (length <= MaxPictureBytes && length <= budget.Bytes && budget.Pictures > 0) return true;
+        budget.Skipped++;
+        return false;
+    }
+
+    // A picture's bytes, checked by ImageFiles (format from the bytes, pixel limit) and written to the work folder as
+    // media-<sheet>-<n>.<type>, the only names the app serves. Formats the page cannot show are counted, not added.
+    public static void AddPicture(byte[] bytes, SheetPicture placed, string? folder, int sheet, Budget budget, List<SheetPicture> result)
+    {
+        if (!Fits(bytes.Length, budget)) return;
+        var picture = ImageFiles.Identify(bytes);
+        if (picture is null || picture.Format is "SVG" or "HEIF" || (long)picture.Width * picture.Height > ImageFiles.PixelLimit) { budget.Unsupported++; return; }
+        budget.Bytes -= bytes.Length; budget.Pictures--;
+        string name = $"media-{sheet}-{result.Count}.{picture.ContentType.Split('/')[1].Replace("x-icon", "ico")}";
+        if (folder is not null) File.WriteAllBytes(Path.Combine(folder, name), bytes);
+        placed.Media = name;
+        result.Add(placed);
+    }
+
+    // The workbook's notices about pictures that are not shown.
+    public static IEnumerable<string> Notes(Budget budget)
+    {
+        if (budget.Unsupported > 0) yield return $"{budget.Unsupported} picture{(budget.Unsupported == 1 ? " is" : "s are")} in a format this viewer cannot show (for example EMF or WMF) and {(budget.Unsupported == 1 ? "is" : "are")} left out.";
+        if (budget.Skipped > 0) yield return $"{budget.Skipped} picture{(budget.Skipped == 1 ? " is" : "s are")} left out because the workbook's pictures are larger than this viewer shows at once.";
+        if (budget.Linked > 0) yield return $"{budget.Linked} linked picture{(budget.Linked == 1 ? " is" : "s are")} stored outside this file and {(budget.Linked == 1 ? "is" : "are")} not loaded.";
+    }
+
+    // Grid geometry shared with the page (sheet.js): a column is width × 7 + 5 pixels, a row 20 Excel pixels.
+    public const double RowPixels = 20;
+    public static double ColumnPixels(SheetData sheet, int column)
+    {
+        double width = column < sheet.ColumnWidths.Count ? sheet.ColumnWidths[column] : 8.43;
+        return width <= 0 ? 0 : Math.Round(width * 7 + 5);
+    }
+
+    // A position in pixels from the sheet's top-left corner as a cell and an offset within it.
+    public static (int Column, double ColumnOffset, int Row, double RowOffset) CellAt(SheetData sheet, double x, double y)
+    {
+        int column = 0;
+        while (column < Spreadsheets.MaxColumns - 1 && x >= ColumnPixels(sheet, column)) { x -= ColumnPixels(sheet, column); column++; }
+        int row = (int)Math.Min(Spreadsheets.MaxStoredRows - 1, Math.Floor(Math.Max(0, y) / RowPixels));
+        return (column, Math.Max(0, x), row, Math.Max(0, y) - row * RowPixels);
     }
 
     private static string? Attribute(XElement? element, string name) => element?.Attributes().FirstOrDefault(a => a.Name.LocalName == name)?.Value;

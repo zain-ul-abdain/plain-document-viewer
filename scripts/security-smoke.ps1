@@ -9,7 +9,7 @@ $log = Join-Path ([IO.Path]::GetTempPath()) "plainviewer-requests-$PID.jsonl"
 $corpus = Join-Path $repoRoot 'tests\corpus'
 
 # Hostile or broken files that should still open safely, and files that must be refused with a clear message.
-$open = @('pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\complex.xlsx', 'xlsx\attack-linked-picture.xlsx',
+$open = @('pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\complex.xlsx', 'xlsx\attack-linked-picture.xlsx', 'ods\attack-linked-picture.ods',
   'docx\attack-remote-image.docx', 'docx\attack-unc-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx',
   'pptx\attack-remote-image.pptx', 'docx\complex-20-pages.docx', 'pptx\complex.pptx',
   'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\macro.pptm', 'images\attack-svg-active.svg', 'data\attack-xxe.xml',

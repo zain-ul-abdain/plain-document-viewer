@@ -312,7 +312,7 @@ try
                 if (expect.TryGetProperty("drawings", out var drawings))
                 {
                     string folder = NewFolder("media-" + Path.GetFileName(path));
-                    var drawn = Spreadsheets.Load(path, culture, folder);
+                    var drawn = LegacySpreadsheets.Handles(path) ? LegacySpreadsheets.Load(path, culture, folder) : Spreadsheets.Load(path, culture, folder);
                     foreach (var item in drawings.EnumerateArray())
                     {
                         int index = drawn.Sheets.FindIndex(s => s.Name == item.GetProperty("sheet").GetString());
@@ -329,6 +329,17 @@ try
                             Check(sheet.Pictures.Where(p => p.Chart is not null).All(p => p.Chart!.Categories.Count > 0 && p.Chart.Series.All(s => s.Values.Count > 0 && s.Values.All(v => v is not null))));
                         }
                         Check(item.TryGetProperty("chartSheet", out _) == sheet.ChartSheet);
+                        // Series values and categories, as saved, of the first ("values") and second ("values2") chart.
+                        foreach (var (suffix, n) in new[] { ("", 0), ("2", 1) })
+                            if (item.TryGetProperty("values" + suffix, out var values))
+                            {
+                                var chart = sheet.Pictures.Where(p => p.Chart is not null).ElementAt(n).Chart!;
+                                var got = chart.Series.Select(s => string.Join(",", s.Values.Select(v => v?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"))).ToArray();
+                                var wanted = values.EnumerateArray().Select(v => v.GetString()!).ToArray();
+                                if (!got.SequenceEqual(wanted)) throw new Exception($"{sheet.Name} chart {n + 1} values: got {string.Join(" | ", got)}");
+                                if (item.TryGetProperty("categories" + suffix, out var categories) && string.Join(",", chart.Categories) != categories.GetString())
+                                    throw new Exception($"{sheet.Name} chart {n + 1} categories: got {string.Join(",", chart.Categories)}");
+                            }
                     }
                     if (fixture.GetProperty("category").GetString() == "attack") Check(drawn.Notice.Contains("linked picture"));
                 }

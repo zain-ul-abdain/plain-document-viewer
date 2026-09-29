@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Xml;
+using System.Xml.Linq;
 using ExcelNumberFormat;
 namespace PlainViewer.Core;
 
@@ -13,7 +14,7 @@ namespace PlainViewer.Core;
 // opened. Cell formatting (fonts, fills, borders, alignment) becomes CellStyles like the .xlsx reader's. The first
 // 10,000 rows of a sheet stay in memory; with a store folder, longer sheets stream every row to a row store there,
 // as for .xlsx.
-public static class LegacySpreadsheets
+public static partial class LegacySpreadsheets
 {
     public static readonly string[] Extensions = [".xls", ".ods"];
     public static bool Handles(string path) => Extensions.Contains(Path.GetExtension(path).ToLowerInvariant());
@@ -199,7 +200,7 @@ public static class LegacySpreadsheets
 
     // ---- Excel 97-2003 (BIFF8) ----
 
-    private sealed class Excel97(CompoundFile file, CultureInfo culture, string? storeFolder)
+    private sealed partial class Excel97(CompoundFile file, CultureInfo culture, string? storeFolder)
     {
         private const string Label = "Excel 97–2003 workbook";
         private byte[] data = [];
@@ -218,18 +219,34 @@ public static class LegacySpreadsheets
 
         private readonly record struct Record(int Type, int Offset, int Length);
 
+        // The records of the substream starting at `from`, including any substream nested in it (an embedded chart has
+        // its own BOF and EOF), up to its own EOF.
         private List<Record> Records(int from)
         {
             var list = new List<Record>();
+            int depth = 0;
             for (int at = from; at + 4 <= data.Length;)
             {
                 int type = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)), length = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2));
                 if (at + 4 + length > data.Length) throw Damaged();
                 list.Add(new Record(type, at + 4, length));
                 at += 4 + length;
-                if (type == 0x000A) break;                         // EOF of this substream
+                if (type == 0x0809) depth++;
+                else if (type == 0x000A && --depth <= 0) break;   // EOF of this substream
             }
             return list;
+        }
+
+        // The index of the EOF that ends the substream whose BOF is at `start`.
+        private static int SubstreamEnd(List<Record> records, int start)
+        {
+            int depth = 0;
+            for (int i = start; i < records.Count; i++)
+            {
+                if (records[i].Type == 0x0809) depth++;
+                else if (records[i].Type == 0x000A && --depth == 0) return i;
+            }
+            return records.Count - 1;
         }
 
         public DocumentView Read()
@@ -268,23 +285,45 @@ public static class LegacySpreadsheets
                         sheets.Add((XlString(at + 6, at + length, twoByteCount: false, out _), data[at + 4] & 0x03, data[at + 5], BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(at))));
                         break;
                     case 0x00FC: ReadStrings(globals, i); break;
+                    case 0x00EB: drawingGroup = Joined(globals, i); break;
+                    case 0x01AE when length >= 4: supBooks.Add(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2)) == 0x0401); break;
+                    case 0x0017 when length >= 2:
+                        for (int k = 0, count = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)); k < count && 2 + k * 6 + 6 <= length; k++)
+                            externSheets.Add((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2 + k * 6)), BinaryPrimitives.ReadInt16LittleEndian(data.AsSpan(at + 4 + k * 6))));
+                        break;
                 }
             }
             foreach (var (at, _) in xfRecords) xfStyles.Add(styles.Add(Style(at)));   // after PALETTE and every FONT
+            blips = BlipStore(drawingGroup);
             var view = new DocumentView { Kind = "sheet", Encoding = Label, CellStyles = styles.Table };
             int hidden = 0;
             var extra = new List<string>();
-            foreach (var (name, state, type, offset) in sheets)
+            // Charts first, so that reading the sheets can keep the cell values their series refer to.
+            for (int tab = 0; tab < sheets.Count; tab++)
+                if (sheets[tab].State == 0 && sheets[tab].Type is 0 or 2 && sheets[tab].Offset >= 0 && sheets[tab].Offset < data.Length) FindCharts(sheets[tab].Offset);
+            for (int tab = 0; tab < sheets.Count; tab++)
             {
+                var (name, state, type, offset) = sheets[tab];
                 if (state != 0) { hidden++; continue; }
-                if (type != 0) { extra.Add($"The {(type == 2 ? "chart" : "macro")} sheet \"{name}\" is not shown in this version."); continue; }
+                if (type is not (0 or 2)) { extra.Add($"The macro sheet \"{name}\" is not shown in this version."); continue; }
                 if (offset < 0 || offset >= data.Length) throw Damaged();
-                view.Sheets.Add(ReadSheet(name, offset, view.Sheets.Count));
+                view.Sheets.Add(type == 2 ? ReadChartSheet(name, offset) : ReadSheet(name, offset, view.Sheets.Count, tab));
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
+            ResolveCharts();
             if (file.Has("_VBA_PROJECT_CUR")) extra.Insert(0, "This workbook contains macros. They were ignored and never ran.");
+            extra.AddRange(SheetDrawings.Notes(pictureBudget));
             view.Notice = Notes(hidden, truncated, stored, extra);
             return view;
+        }
+
+        // A record's data joined with the CONTINUE records that follow it.
+        private byte[] Joined(List<Record> records, int index)
+        {
+            var joined = new MemoryStream();
+            joined.Write(data, records[index].Offset, records[index].Length);
+            for (int i = index + 1; i < records.Count && records[i].Type == 0x003C && joined.Length < 64L * 1024 * 1024; i++) joined.Write(data, records[i].Offset, records[i].Length);
+            return joined.ToArray();
         }
 
         private string? Colour(int icv) => icv is >= 0 and < 64 ? palette[icv] : null;   // 64 and above: system (automatic) colours
@@ -392,27 +431,56 @@ public static class LegacySpreadsheets
             0x00 => "#NULL!", 0x07 => "#DIV/0!", 0x0F => "#VALUE!", 0x17 => "#REF!", 0x1D => "#NAME?", 0x24 => "#NUM!", 0x2A => "#N/A", _ => "#N/A"
         };
 
-        private SheetData ReadSheet(string name, int offset, int index)
+        private SheetData ReadSheet(string name, int offset, int index, int tab)
         {
             var records = Records(offset);
             if (records.Count == 0 || records[0].Type != 0x0809) throw Damaged();
             using var sheet = new SheetBuilder(name, index, storeFolder, styles);
-            void Cell(int row, int column, string text, int xf, char natural) => sheet.Add(row, column, text, Align(xf, natural), StyleOf(xf), ref budget);
-            for (int i = 0; i < records.Count; i++)
+            var wanted = chartRanges.GetValueOrDefault(tab);
+            void Cell(int row, int column, string text, int xf, char natural, double? value = null)
+            {
+                sheet.Add(row, column, text, Align(xf, natural), StyleOf(xf), ref budget);
+                // Cells a chart refers to keep their saved value for the chart.
+                if (wanted is not null && chartCells.Count < 200_000 && wanted.Any(r => row >= r.Row1 && row <= r.Row2 && column >= r.Column1 && column <= r.Column2))
+                    chartCells[(tab, row, column)] = (value, text);
+            }
+            var drawing = new MemoryStream();
+            var objects = new List<(int Kind, int Chart)>();                    // OBJ records in order: kind, and the chart substream's BOF offset
+            for (int i = 1; i < records.Count; i++)
             {
                 var (type, at, length) = records[i];
+                if (type == 0x0809)
+                {
+                    // A nested substream (an embedded chart) belongs to the object before it; its records are not cells.
+                    if (objects.Count > 0 && objects[^1].Kind == 5) objects[^1] = (5, at);
+                    i = SubstreamEnd(records, i);
+                    continue;
+                }
+                if (type == 0x00EC && drawing.Length < 64L * 1024 * 1024)
+                {
+                    drawing.Write(data, at, length);
+                    for (; i + 1 < records.Count && records[i + 1].Type == 0x003C; i++) drawing.Write(data, records[i + 1].Offset, records[i + 1].Length);
+                    continue;
+                }
+                if (type == 0x005D && length >= 6 && BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)) == 0x0015)
+                { objects.Add((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4)), -1)); continue; }
                 int Row() => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at));
                 int Column() => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2));
                 int Xf() => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4));
                 switch (type)
                 {
-                    case 0x0203 when length >= 14: Cell(Row(), Column(), Number(BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)), Xf()), Xf(), 'r'); break;
-                    case 0x027E when length >= 10: Cell(Row(), Column(), Number(Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6))), Xf()), Xf(), 'r'); break;
+                    case 0x0203 when length >= 14:
+                        { double v = BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)); Cell(Row(), Column(), Number(v, Xf()), Xf(), 'r', v); }
+                        break;
+                    case 0x027E when length >= 10:
+                        { double v = Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6))); Cell(Row(), Column(), Number(v, Xf()), Xf(), 'r', v); }
+                        break;
                     case 0x00BD when length >= 6:
                         for (int k = 0, first = Column(); 4 + k * 6 + 6 <= length - 2; k++)
                         {
                             int xf = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4 + k * 6));
-                            Cell(Row(), first + k, Number(Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6 + k * 6))), xf), xf, 'r');
+                            double v = Rk(BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 6 + k * 6)));
+                            Cell(Row(), first + k, Number(v, xf), xf, 'r', v);
                         }
                         break;
                     case 0x0201 when length >= 6: Cell(Row(), Column(), "", Xf(), 'l'); break;                    // empty, formatted
@@ -429,7 +497,7 @@ public static class LegacySpreadsheets
                         // The saved result: a number, or (when the last two bytes are 0xFFFF) a string in the next STRING
                         // record, a boolean, an error or an empty string.
                         if (BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 12)) != 0xFFFF)
-                            Cell(Row(), Column(), Number(BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)), Xf()), Xf(), 'r');
+                        { double v = BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(at + 6)); Cell(Row(), Column(), Number(v, Xf()), Xf(), 'r', v); }
                         else
                             switch (data[at + 6])
                             {
@@ -470,6 +538,8 @@ public static class LegacySpreadsheets
             }
             var built = sheet.Build();
             truncated |= sheet.Truncated; stored |= built.Store.Length > 0;
+            built.Pictures = Drawings(built, index, drawing.ToArray(), objects, storeFolder);
+            if (built.Pictures.Count > 0 && built.RowCount == 0) built.Notice = "";
             return built;
         }
     }
@@ -485,6 +555,7 @@ public static class LegacySpreadsheets
         private const string OfficeNs = "urn:oasis:names:tc:opendocument:xmlns:office:1.0";
         private const string StyleNs = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
         private const string FoNs = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0";
+        private const string DrawNs = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
         private readonly Dictionary<string, double> columnWidths = [];   // column style -> Excel character width
         private readonly HashSet<string> hiddenTables = [];              // table styles with display="false"
         private readonly Dictionary<string, Props> cellStyles = [];      // cell style name -> its own properties
@@ -492,6 +563,9 @@ public static class LegacySpreadsheets
         private readonly StyleTable styles = new();
         private int budget = Spreadsheets.MaxCellsPerWorkbook;
         private bool truncated, stored;
+        private readonly SheetDrawings.Budget pictureBudget = new();
+        private List<SheetPicture> pictures = [], pageAnchored = [];
+        private int sheetIndex;
 
         // Properties a cell style sets itself (null: inherited from its parent).
         private sealed class Props
@@ -528,7 +602,7 @@ public static class LegacySpreadsheets
                     while (r.Read())
                     {
                         if (r.NodeType == XmlNodeType.EndElement && r.LocalName == "table" && sheet is not null)
-                        { var built = sheet.Build(); truncated |= sheet.Truncated; stored |= built.Store.Length > 0; view.Sheets.Add(built); sheet.Dispose(); sheet = null; continue; }
+                        { view.Sheets.Add(Finish(sheet)); sheet.Dispose(); sheet = null; continue; }
                         if (r.NodeType != XmlNodeType.Element) continue;
                         switch (r.LocalName)
                         {
@@ -537,8 +611,15 @@ public static class LegacySpreadsheets
                                 string name = r.GetAttribute("name", TableNs) ?? $"Sheet{view.Sheets.Count + hidden + 1}";
                                 if (hiddenTables.Contains(r.GetAttribute("style-name", TableNs) ?? "")) { hidden++; r.Skip(); continue; }
                                 sheet = new SheetBuilder(name, view.Sheets.Count, storeFolder, styles); row = -1; columnDefaults.Clear();
+                                sheetIndex = view.Sheets.Count; pictures = []; pageAnchored = [];
                                 if (frozen.TryGetValue(name, out var split)) { sheet.Sheet.FrozenColumns = split.Columns; sheet.Sheet.FrozenRows = split.Rows; }
                                 if (r.IsEmptyElement) { view.Sheets.Add(sheet.Build()); sheet.Dispose(); sheet = null; }
+                                break;
+                            case "shapes" when sheet is not null && r.NamespaceURI == TableNs:
+                                // Frames anchored to the sheet rather than to a cell.
+                                using (var subtree = r.ReadSubtree())
+                                    foreach (var frame in XElement.Load(subtree).Elements(XName.Get("frame", DrawNs)))
+                                        if (OpenDocumentDrawings.Frame(frame, zip, storeFolder, sheetIndex, pictureBudget, pictures, 0, 0) is { } placed) pageAnchored.Add(placed);
                                 break;
                             case "table-column" when sheet is not null:
                                 {
@@ -567,8 +648,21 @@ public static class LegacySpreadsheets
                 finally { sheet?.Dispose(); }
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This spreadsheet has no visible sheets to show.");
+            extra.AddRange(SheetDrawings.Notes(pictureBudget));
             view.Notice = Notes(hidden, truncated, stored, extra);
             return view;
+        }
+
+        // The built sheet with its pictures and charts; those anchored to the sheet get their cell from the column widths.
+        private SheetData Finish(SheetBuilder sheet)
+        {
+            var built = sheet.Build();
+            truncated |= sheet.Truncated; stored |= built.Store.Length > 0;
+            foreach (var picture in pageAnchored)
+                (picture.Column, picture.ColumnOffset, picture.Row, picture.RowOffset) = SheetDrawings.CellAt(built, picture.ColumnOffset, picture.RowOffset);
+            built.Pictures = pictures;
+            if (pictures.Count > 0 && built.RowCount == 0) built.Notice = "";
+            return built;
         }
 
         private static XmlReader Open(ZipArchiveEntry entry) => XmlReader.Create(entry.Open(), new XmlReaderSettings
@@ -684,7 +778,7 @@ public static class LegacySpreadsheets
                 int spanColumns = Repeat(r, "number-columns-spanned"), spanRows = Repeat(r, "number-rows-spanned");
                 if (r.LocalName == "table-cell" && (spanColumns > 1 || spanRows > 1) && column < Spreadsheets.MaxColumns && row < Spreadsheets.MaxStoredRows)
                     sheet.Sheet.Merges.Add([row, column, row + spanRows - 1, Math.Min(Spreadsheets.MaxColumns - 1, column + spanColumns - 1)]);
-                string text = CellText(r);
+                string text = CellText(r, row, column);
                 char natural = type switch { "float" or "percentage" or "currency" or "date" or "time" => 'r', "boolean" => 'c', _ => 'l' };
                 if (text.Length > 0 || styles.Table[style].Visible)
                     for (int k = 0; k < repeat && column + k < Spreadsheets.MaxColumns && k < 1024; k++) cells.Add((column + k, text, align == '\0' ? natural : align, style));
@@ -698,15 +792,22 @@ public static class LegacySpreadsheets
             }
         }
 
-        // The cell's paragraphs (text:p) joined by line breaks, with <text:s/>, <text:tab/> and <text:line-break/>.
-        private static string CellText(XmlReader r)
+        // The cell's paragraphs (text:p) joined by line breaks, with <text:s/>, <text:tab/> and <text:line-break/>. Pictures,
+        // charts and shapes anchored to the cell are not cell text: frames are read as drawings, other shapes are skipped.
+        private string CellText(XmlReader r, int row, int column)
         {
             if (r.IsEmptyElement) return "";
             var text = new StringBuilder();
             int depth = r.Depth, paragraphs = 0;
             while (r.Read() && r.Depth > depth)
             {
-                if (r.NodeType == XmlNodeType.Element)
+                if (r.NodeType == XmlNodeType.Element && r.NamespaceURI == DrawNs)
+                {
+                    // A subtree reader leaves the main reader on the drawing's end, so the loop continues after it.
+                    using var subtree = r.ReadSubtree();
+                    if (r.LocalName == "frame") OpenDocumentDrawings.Frame(XElement.Load(subtree), zip, storeFolder, sheetIndex, pictureBudget, pictures, row, column);
+                }
+                else if (r.NodeType == XmlNodeType.Element)
                 {
                     switch (r.LocalName)
                     {
@@ -714,7 +815,7 @@ public static class LegacySpreadsheets
                         case "s": text.Append(' ', Math.Min(1000, Spaces(r))); break;
                         case "tab": text.Append('\t'); break;
                         case "line-break": text.Append('\n'); break;
-                        case "annotation": r.Skip(); break;                // comments are not cell text
+                        case "annotation": using (r.ReadSubtree()) { } break;   // comments are not cell text
                     }
                 }
                 else if (r.NodeType is XmlNodeType.Text or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace && r.Depth > depth + 1) text.Append(r.Value);
