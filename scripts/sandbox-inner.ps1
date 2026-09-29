@@ -25,7 +25,8 @@ function Install([string]$tasks, [string]$logName) {
 
 try {
   $rules = 'Plain Viewer - block network - '
-  Log "Clean machine: Windows $([Environment]::OSVersion.Version); C++ runtime in System32: $(Test-Path "$env:WINDIR\System32\vcruntime140.dll"); WebView2: $(WebView2Version); network adapters up: $(@(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up').Count)"
+  $build = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
+  Log "Clean machine: Windows $($build.ProductName) $($build.DisplayVersion), build $($build.CurrentBuild).$($build.UBR); C++ runtime in System32: $(Test-Path "$env:WINDIR\System32\vcruntime140.dll"); WebView2: $(WebView2Version); network adapters up: $(@(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up').Count)"
 
   # Local copies: the app refuses files it cannot treat as local, and mapped folders are read-only.
   $corpus = Join-Path $env:USERPROFILE 'corpus'
@@ -85,7 +86,9 @@ try {
   if ($output) { Log "  $output" }
   Expect ($LASTEXITCODE -eq 0) "keyboard: every toolbar control and the document are reachable with Tab, and Tab leaves the document (exit $LASTEXITCODE)"
   # High contrast (switches the sandbox's theme): images for review in results\high-contrast.
-  Log (& powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\Test\input\high-contrast-capture.ps1' -App $app -Corpus $corpus -Out (Join-Path $results 'high-contrast') @webSwitch 2>&1 | Out-String).Trim()
+  $contrast = (& powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\Test\input\high-contrast-capture.ps1' -App $app -Corpus $corpus -Out (Join-Path $results 'high-contrast') @webSwitch 2>&1 | Out-String).Trim()
+  Log $contrast
+  Expect ($contrast -match 'switched on: True; views captured with exit code 0: [1-9]') 'high contrast: every view captured'
 
   $uninstall = Start-Process -FilePath (Join-Path $dir 'unins000.exe') -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
   Start-Sleep -Seconds 3

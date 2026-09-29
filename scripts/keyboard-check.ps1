@@ -20,6 +20,12 @@ foreach ($sample in $samples) {
       if ($status -and $status.Current.Name -like 'Read only*') { break }
       Start-Sleep -Milliseconds 300
     }
+    if (-not $window -or -not ($status -and $status.Current.Name -like 'Read only*')) {
+      # The app did not open the file (or did not start): that fails the check rather than testing another window.
+      $problems++
+      Add-Content -LiteralPath $Log -Value "FAIL keyboard ${sample}: the window did not open the file within 60 seconds"
+      continue
+    }
     Start-Sleep -Seconds 1
     $window.SetFocus()
     $stops = for ($i = 0; $i -lt 45; $i++) {
@@ -37,6 +43,7 @@ foreach ($sample in $samples) {
       $(if ($ok) { 'PASS' } else { 'FAIL' }), $sample, $reached.Count, $toolbar.Count, ($firstDocument -ge 0), $left,
       ((@($stops | Select-Object -First 25 | ForEach-Object { if ($_.InDocument) { "[document]" } else { $_.Name } }) -join ' > ')))
   }
+  catch { $problems++; Add-Content -LiteralPath $Log -Value "FAIL keyboard ${sample}: $($_.Exception.Message)" }
   finally { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
 }
-exit $problems
+exit [math]::Min($problems, 100)

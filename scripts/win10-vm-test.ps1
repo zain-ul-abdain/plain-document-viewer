@@ -9,8 +9,10 @@
 # files; at first sign-in they are copied to C:\Test and the checks run. Windows is not activated (testing only).
 # The virtual machine, its disk and the second image are deleted afterwards unless -Keep is given; the Windows image
 # is kept. Results: <Work>\results (results.txt, done.txt, captures).
-param([Parameter(Mandatory)][string]$Iso, [string]$Installer, [string]$Work = (Join-Path $env:USERPROFILE 'PlainViewerWin10Test'),
-  [string]$Edition = 'Windows 10 Pro', [int]$TimeoutMinutes = 150, [switch]$Keep)
+# -Update <.msu> installs a Windows update (for example the latest cumulative update from the Microsoft Update Catalog)
+# at first sign-in and restarts before the checks, to test an up-to-date Windows 10.
+param([Parameter(Mandatory)][string]$Iso, [string]$Installer, [string]$Update, [string]$Work = (Join-Path $env:USERPROFILE 'PlainViewerWin10Test'),
+  [string]$Edition = 'Windows 10 Pro', [int]$TimeoutMinutes = 240, [switch]$Keep)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $Iso = (Resolve-Path -LiteralPath $Iso).Path
@@ -19,6 +21,7 @@ if (-not $Installer) {
 }
 if (-not $Installer -or -not (Test-Path -LiteralPath $Installer)) { throw 'No installer found: run scripts\package.ps1 first.' }
 $Installer = (Resolve-Path -LiteralPath $Installer).Path
+if ($Update) { $Update = (Resolve-Path -LiteralPath $Update).Path }
 
 # Hyper-V needs administrator rights: restart elevated and wait (the output goes to host.log).
 $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -27,7 +30,7 @@ $hostLog = Join-Path $Work 'host.log'
 if (-not $elevated) {
   if (Test-Path -LiteralPath $hostLog) { Remove-Item -LiteralPath $hostLog -Force }
   $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Iso', "`"$Iso`"", '-Installer', "`"$Installer`"", '-Work', "`"$Work`"",
-    '-Edition', "`"$Edition`"", '-TimeoutMinutes', $TimeoutMinutes) + $(if ($Keep) { @('-Keep') } else { @() })
+    '-Edition', "`"$Edition`"", '-TimeoutMinutes', $TimeoutMinutes) + $(if ($Keep) { @('-Keep') } else { @() }) + $(if ($Update) { @('-Update', "`"$Update`"") } else { @() })
   $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments -Wait -PassThru
   Get-Content -LiteralPath $hostLog -ErrorAction SilentlyContinue
   exit $process.ExitCode
@@ -130,11 +133,22 @@ try {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'sandbox-inner.ps1'), (Join-Path $PSScriptRoot 'keyboard-check.ps1'), (Join-Path $PSScriptRoot 'high-contrast-capture.ps1') -Destination $inputs
   & robocopy (Join-Path $repoRoot 'tests\corpus') (Join-Path $inputs 'corpus') /E /XD generated node_modules generate /NFL /NDL /NJH /NJS /NP | Out-Null
   if ($LASTEXITCODE -ge 8) { throw 'Copying the test files failed.' }
+  if ($Update) { Copy-Item -LiteralPath $Update -Destination (Join-Path $answers 'Test\update.msu') }
   Set-Content -LiteralPath (Join-Path $answers 'Test\start.ps1') -Encoding utf8 -Value @'
 $source = Split-Path $PSScriptRoot -Parent
 New-Item -ItemType Directory -Force -Path C:\Test\results | Out-Null
 Copy-Item -LiteralPath (Join-Path $source 'Test\input') -Destination C:\Test\input -Recurse -Force
 Get-ChildItem C:\Test -Recurse -File | ForEach-Object { $_.IsReadOnly = $false }
+$update = Join-Path $source 'Test\update.msu'
+if (Test-Path -LiteralPath $update) {
+  # Install the update, then run the checks at the next (automatic) sign-in after the restart.
+  $log = 'C:\Test\results\update.txt'
+  & dism.exe /Online /Add-Package "/PackagePath:$update" /Quiet /NoRestart *> $log
+  Add-Content -LiteralPath $log -Value "DISM exit code: $LASTEXITCODE"
+  Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'PlainViewerChecks' -Value 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Test\input\sandbox-inner.ps1'
+  shutdown.exe /r /t 5
+  return
+}
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Test\input\sandbox-inner.ps1
 '@
   Log 'Writing the answer disc image'
@@ -143,9 +157,10 @@ Get-ChildItem C:\Test -Recurse -File | ForEach-Object { $_.IsReadOnly = $false }
   # 3. The virtual machine: no network adapter at all. It starts from the Windows image; Windows Setup reads the
   #    answer file from the second disc.
   New-VHD -Path $vhd -SizeBytes 40GB -Dynamic | Out-Null
-  New-VM -Name $vmName -Generation 2 -MemoryStartupBytes 4GB -VHDPath $vhd | Out-Null
+  # 2 GB (Windows 10's minimum) to start, growing to 4 GB when the host has it free.
+  New-VM -Name $vmName -Generation 2 -MemoryStartupBytes 2GB -VHDPath $vhd | Out-Null
   Set-VMProcessor -VMName $vmName -Count 2
-  Set-VMMemory -VMName $vmName -DynamicMemoryEnabled $false
+  Set-VMMemory -VMName $vmName -DynamicMemoryEnabled $true -MinimumBytes 2GB -StartupBytes 2GB -MaximumBytes 4GB
   Get-VMNetworkAdapter -VMName $vmName | Remove-VMNetworkAdapter
   Set-VM -Name $vmName -CheckpointType Disabled -AutomaticCheckpointsEnabled $false
   $dvd = Add-VMDvdDrive -VMName $vmName -Path $Iso -Passthru
