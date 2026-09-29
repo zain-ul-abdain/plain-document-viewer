@@ -31,9 +31,11 @@ try {
   $corpus = Join-Path $env:USERPROFILE 'corpus'
   Copy-Item -LiteralPath 'C:\Test\input\corpus' -Destination $corpus -Recurse
   $setup = Get-ChildItem 'C:\Test\input' -Filter 'PlainViewer-Setup-*.exe' | Select-Object -First 1
-  # First without the bundled WebView2 Runtime, to check the app's message; the second install below adds it.
+  # First without the bundled WebView2 Runtime, to check the app's message; the second install below adds it. (A test
+  # PC that already has the runtime, as some Windows 10 images do, skips the message check.)
+  $preinstalled = [bool](WebView2Version)
   $install = Install 'openwith,firewall,!webview2' 'install.log'
-  Expect ($install.ExitCode -eq 0 -and -not (WebView2Version)) "install without the WebView2 option (exit $($install.ExitCode), $($install.Seconds) s)"
+  Expect ($install.ExitCode -eq 0 -and ($preinstalled -or -not (WebView2Version))) "install without the WebView2 option (exit $($install.ExitCode), $($install.Seconds) s; runtime already present: $preinstalled)"
   $dir = Join-Path $env:LOCALAPPDATA 'Programs\Plain Viewer'
   $app = Join-Path $dir 'PlainViewer.exe'
   Expect (Test-Path -LiteralPath $app) 'app installed'
@@ -45,9 +47,11 @@ try {
   Expect (@(@('docx', 'ppsx', 'xlsm', 'png', 'svg', 'json', 'odt', 'xls', 'tif') | Where-Object { -not (Test-Path "HKCU:\Software\Classes\PlainViewer.$_") }).Count -eq 0) '"Open with" registered (checked .docx .ppsx .xlsm .png .svg .json .odt .xls .tif)'
 
   # Without a WebView2 Runtime a PDF must be refused with a clear explanation (text formats are tested below).
-  $code = Run $app @('--smoke-test', ('!' + (Join-Path $corpus 'pdf\simple.pdf'))) (Join-Path $results 'no-webview2.txt')
-  $message = Get-Content (Join-Path $results 'no-webview2.txt') -Raw
-  Expect ($code -eq 0 -and $message -match 'WebView2 Runtime') "without WebView2 a PDF is refused with a clear message"
+  if (-not $preinstalled) {
+    $code = Run $app @('--smoke-test', ('!' + (Join-Path $corpus 'pdf\simple.pdf'))) (Join-Path $results 'no-webview2.txt')
+    $message = Get-Content (Join-Path $results 'no-webview2.txt') -Raw
+    Expect ($code -eq 0 -and $message -match 'WebView2 Runtime') "without WebView2 a PDF is refused with a clear message"
+  }
   # Installing again is an upgrade over the existing installation; this time with the bundled WebView2 Runtime.
   $upgrade = Install 'openwith,firewall,webview2' 'upgrade.log'
   $version = WebView2Version
@@ -61,7 +65,7 @@ try {
     'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\variant.ppsx', 'images\complex.png', 'images\complex-rotated-exif.jpg', 'images\complex.webp',
     'images\complex.avif', 'images\complex.svg', 'images\attack-svg-active.svg', 'images\simple.gif', 'images\simple.ico',
     'odt\complex.odt', 'doc\attack-remote-image.doc', 'xls\complex.xls', 'ods\complex.ods', 'tiff\scan-3-pages.tiff', 'rtf\attack.rtf'
-  $web += 'xlsx\drawings.xlsx'
+  $web += 'xlsx\drawings.xlsx', 'xls\drawings.xls', 'ods\drawings.ods', 'heic\jpeg-named.heic'
   # HEIC photos need Windows' HEIF and HEVC codecs from the Microsoft Store; without them the photo is refused with a
   # message naming them (a clean Windows Sandbox usually has neither).
   $heicCodecs = [bool](Get-AppxPackage -Name Microsoft.HEIFImageExtension -ErrorAction SilentlyContinue) -and [bool](Get-AppxPackage -Name Microsoft.HEVCVideoExtension* -ErrorAction SilentlyContinue)

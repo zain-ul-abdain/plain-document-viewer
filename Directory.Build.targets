@@ -1,0 +1,9 @@
+<Project>
+  <!-- Self-contained publishing (scripts/package.ps1) turns off transitive framework downloads, so restore does not look
+       for runtime packs the app never uses (ASP.NET). That also skips the Windows Desktop (WPF) runtime pack, which the
+       WPF projects do need: download it explicitly, in the version the SDK ships with. On a PC it may already sit in the
+       package cache; on a clean build machine (GitHub Actions) it would otherwise be missing (NETSDK1185). -->
+  <ItemGroup Condition="'$(UseWPF)' == 'true' and '$(RuntimeIdentifier)' != '' and '$(DisableTransitiveFrameworkReferenceDownloads)' == 'true'">
+    <PackageDownload Include="Microsoft.WindowsDesktop.App.Runtime.$(RuntimeIdentifier)" Version="[$(BundledNETCoreAppPackageVersion)]" />
+  </ItemGroup>
+</Project>
