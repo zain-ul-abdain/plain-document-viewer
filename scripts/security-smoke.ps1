@@ -13,14 +13,18 @@ $open = @('pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\complex.xls
   'docx\attack-remote-image.docx', 'docx\attack-unc-image.docx', 'docx\attack-remote-template.docx', 'docx\attack-includepicture.docx',
   'pptx\attack-remote-image.pptx', 'docx\complex-20-pages.docx', 'pptx\complex.pptx',
   'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\macro.pptm', 'images\attack-svg-active.svg', 'data\attack-xxe.xml',
-  'images\damaged-truncated.webp', 'images\damaged-truncated.jpg', 'images\damaged-truncated.png', 'images\attack-svg-xxe.svg')
+  'images\damaged-truncated.webp', 'images\damaged-truncated.jpg', 'images\damaged-truncated.png', 'images\attack-svg-xxe.svg',
+  'odt\attack-external.odt', 'ods\attack-external.ods', 'odp\attack-remote-image.odp', 'rtf\attack.rtf',
+  'doc\attack-remote-image.doc', 'doc\attack-unc-image.doc', 'ppt\attack-remote-image.ppt')
 $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx',
   'xlsx\old-format-renamed.xlsx', 'xlsx\damaged-truncated.xlsx', 'xlsx\zero-byte.xlsx', 'xlsx\not-a-workbook.xlsx',
   'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\old-format-renamed.docx', 'docx\damaged-truncated.docx',
   'docx\zero-byte.docx', 'docx\not-a-document.docx',
   'pptx\attack-xxe.pptx', 'pptx\attack-zip-bomb.pptx', 'pptx\password.pptx',
   'images\zero-byte.png', 'images\damaged-header.png', 'images\not-a-picture.jpg', 'images\tiff-named.png',
-  'images\attack-pixel-bomb.png', 'data\binary-named.json')
+  'images\attack-pixel-bomb.png', 'data\binary-named.json',
+  'odt\password.odt', 'odt\zero-byte.odt', 'odt\not-a-document.odt', 'odt\damaged-truncated.odt', 'odt\docx-named.odt', 'ods\zero-byte.ods',
+  'rtf\zero-byte.rtf', 'tiff\zero-byte.tif', 'doc\zero-byte.doc', 'doc\xls-named.doc')
 # Switch off the converter's extra dead-proxy layer so the listener observes LibreOffice directly.
 $env:PLAINVIEWER_LO_PROXY_OFF = '1'
 $arguments = @($open | ForEach-Object { Join-Path $corpus $_ }) + @($refuse | ForEach-Object { '!' + (Join-Path $corpus $_) })

@@ -74,26 +74,39 @@ internal static class OfficeConverter
         string work = NewWorkFolder();
         try
         {
-            // The worker relabels templates, shows and macro-enabled files as plain documents, so the copy is named to match.
-            string copy = Path.Combine(work, "in", OfficePackages.IsWord(path) ? "document.docx" : "document.pptx");
-            var prepared = await WorkerClient.PrepareOffice(path, copy, cancellation);
+            var (prepared, copy) = await Prepare(path, work, cancellation);
             converting?.Invoke();
             return (prepared, await ToPdf(copy, work, cancellation));
         }
         finally { Delete(work); }
     }
 
-    public static async Task<byte[]> ToPdf(string input, string work, CancellationToken cancellation)
+    // The worker checks the file and writes a cleaned private copy. OOXML variants are relabelled as plain .docx/.pptx;
+    // other formats are named after their content (for example an RTF saved with a .doc name).
+    private static async Task<(DocumentView Prepared, string Copy)> Prepare(string path, string work, CancellationToken cancellation)
     {
-        string soffice = FindLibreOffice() ?? throw new DocumentException("Word and PowerPoint viewing needs the document converter, which is not installed. Reinstall Plain Viewer to add it.");
+        bool converted = ConvertedDocuments.Handles(path);
+        string copy = Path.Combine(work, "in", converted ? "document" + Path.GetExtension(path).ToLowerInvariant() : OfficePackages.IsWord(path) ? "document.docx" : "document.pptx");
+        var prepared = await WorkerClient.PrepareOffice(path, copy, cancellation);
+        if (converted && Path.ChangeExtension(copy, ConvertedDocuments.CopyExtension(prepared)) is var named && named != copy)
+        { File.Move(copy, named); copy = named; }
+        return (prepared, copy);
+    }
+
+    public static async Task<byte[]> ToPdf(string input, string work, CancellationToken cancellation) =>
+        await File.ReadAllBytesAsync(await ToFormat(input, work, "pdf", cancellation), cancellation);
+
+    private static async Task<string> ToFormat(string input, string work, string format, CancellationToken cancellation)
+    {
+        string soffice = FindLibreOffice() ?? throw new DocumentException("Viewing this kind of file needs the document converter, which is not installed. Reinstall Plain Viewer to add it.");
         string output = Path.Combine(work, "out"), temp = Path.Combine(work, "tmp");
         Directory.CreateDirectory(output); Directory.CreateDirectory(temp);
         using var gate = await Acquire(cancellation);
-        string pdf = Path.Combine(output, Path.GetFileNameWithoutExtension(input) + ".pdf");
+        string pdf = Path.Combine(output, Path.GetFileNameWithoutExtension(input) + "." + format);
         for (int attempt = 1; ; attempt++)
         {
             PrepareProfile(soffice);
-            int exit = await Task.Run(() => RunLimited(soffice, $"{CommonArguments} --convert-to pdf --outdir \"{output}\" \"{input}\"", temp, cancellation), cancellation);
+            int exit = await Task.Run(() => RunLimited(soffice, $"{CommonArguments} --convert-to {format} --outdir \"{output}\" \"{input}\"", temp, cancellation), cancellation);
             if (exit == 0 && File.Exists(pdf) && new FileInfo(pdf).Length > 0) break;
             // A profile LibreOffice never finished building (no ready marker) can make it quit without converting:
             // start again from a new profile, once.
@@ -101,7 +114,7 @@ internal static class OfficeConverter
             throw new DocumentException("This document could not be prepared for viewing. It may be damaged or use features this viewer cannot show. Try another copy of the file.");
         }
         MarkReady(soffice);
-        return await File.ReadAllBytesAsync(pdf, cancellation);
+        return pdf;
     }
 
     // Builds the private LibreOffice profile before the first Word or PowerPoint file is opened. A new profile adds

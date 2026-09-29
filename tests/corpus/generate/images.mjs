@@ -161,7 +161,7 @@ export async function generateImages({ large }) {
   rec("damaged-header.png", "damaged", { result: "error", error: "damaged", stage: "renderer" }, `${own}, header overwritten`);
   write("images/not-a-picture.jpg", "Plain text saved with a .jpg name.\r\n"); rec("not-a-picture.jpg", "wrong-extension", { result: "error", error: "mismatch" }, "generator (text)");
   write("images/png-named.jpg", simplePng); rec("png-named.jpg", "wrong-extension", opens("PNG", 320, 200), own, { notes: "Identified by content: a PNG with a .jpg name opens as PNG." });
-  write("images/tiff-named.png", viaGdi(simplePng, "tiff")); rec("tiff-named.png", "unsupported", { result: "error", error: "unsupported" }, gdi, { notes: "TIFF is planned for 0.3.0; until then a clear message." });
+  write("images/tiff-named.png", viaGdi(simplePng, "tiff")); rec("tiff-named.png", "wrong-extension", { result: "error", error: "rename" }, gdi, { notes: "A TIFF picture with a .png name: the message says to rename it to .tif." });
   // A valid PNG signature and header claiming 60,000 × 60,000 pixels: refused before any decoding.
   const bombHeader = Buffer.from(simplePng); bombHeader.writeUInt32BE(60000, 16); bombHeader.writeUInt32BE(60000, 20);
   write("images/attack-pixel-bomb.png", bombHeader); rec("attack-pixel-bomb.png", "attack", { result: "error", error: "too-large" }, `${own}, header dimensions changed`);

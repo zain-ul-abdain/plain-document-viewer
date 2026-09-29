@@ -66,8 +66,9 @@ public partial class MainWindow : Window
     }
     private static string Choice(ComboBox box) => ((ComboBoxItem)box.SelectedItem).Content.ToString()!;
     private static bool IsPdf(string path) => string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
-    private static bool IsWorkbook(string path) => Spreadsheets.IsWorkbook(path) || Path.GetExtension(path).Equals(".xlsb", StringComparison.OrdinalIgnoreCase);
-    private static bool IsOffice(string path) => OfficePackages.IsOfficeDocument(path);
+    private static bool IsWorkbook(string path) => Spreadsheets.IsWorkbook(path) || LegacySpreadsheets.Handles(path) || Path.GetExtension(path).Equals(".xlsb", StringComparison.OrdinalIgnoreCase);
+    // Shown as pages through the converter: Office files, OpenDocument text and presentations, RTF, .doc, .ppt and TIFF.
+    private static bool IsOffice(string path) => OfficePackages.IsOfficeDocument(path) || ConvertedDocuments.KindOf(path) is "word" or "slides" or "pages";
     private static bool IsPicture(string path) => ImageFiles.IsImage(path);
     private static bool UsesWebPane(string path) => IsPdf(path) || IsWorkbook(path) || IsOffice(path) || IsPicture(path);
     private bool InWebPane => document?.Kind is "pdf" or "sheet" or "word" or "slides" or "image";
@@ -106,6 +107,10 @@ public partial class MainWindow : Window
                 try { WebPane.Rotate(1); await turned.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
                 finally { WebPane.StateChanged -= OnState; }
                 WebPane.Rotate(-1);
+            }
+            else if (document.Encoding == "TIFF picture")
+            {
+                if (FindBox.IsEnabled) throw new InvalidOperationException("Search should be switched off for TIFF pictures.");
             }
             else
             {
@@ -229,7 +234,7 @@ public partial class MainWindow : Window
             if (stores) { opened = null; openedSheets = []; work = null; }
             if (loaded.Kind == "sheet") await LoadSheets(loaded, operation.Token);
             if (loading != operation) return;
-            document = loaded; Title = Path.GetFileName(currentPath) + " · Plain Viewer preview";
+            document = loaded; Title = Path.GetFileName(currentPath) + " · Plain Viewer";
             openSeconds = stopwatch.Elapsed.TotalSeconds;
             string size = rowStore is null ? "" : $"{document.RowCount:N0} {(document.Kind == "lines" ? "lines" : "rows")} · ";
             Display(); Status.Text = $"Read only · {document.Encoding} · {size}Opened in {openSeconds:F2}s. {document.Notice}";
@@ -295,11 +300,12 @@ public partial class MainWindow : Window
         foreach (var element in new FrameworkElement[] { PreviousPageButton, PageLabel, PageBox, PageCount, NextPageButton })
             element.Visibility = picture ? Visibility.Collapsed : Visibility.Visible;
         RotateLeftButton.Visibility = RotateRightButton.Visibility = picture ? Visibility.Visible : Visibility.Collapsed;
-        // Pictures have no text: search is switched off and says why.
-        string? noSearch = picture ? "Pictures have no text to search." : null;
+        // Pictures (and TIFF scans shown as pages) have no text: search is switched off and says why.
+        bool noText = picture || document.Encoding == "TIFF picture";
+        string? noSearch = noText ? "Pictures have no text to search." : null;
         foreach (var control in new Control[] { FindBox, PreviousButton, NextButton })
         {
-            control.IsEnabled = !picture; control.ToolTip = noSearch;
+            control.IsEnabled = !noText; control.ToolTip = noSearch;
             ToolTipService.SetShowOnDisabled(control, true);
             System.Windows.Automation.AutomationProperties.SetHelpText(control, noSearch ?? "");
         }
@@ -349,7 +355,7 @@ public partial class MainWindow : Window
     }
     private void Find(bool previous)
     {
-        if (document is null || FindBox.Text.Length == 0 || document.Kind == "image") return;
+        if (document is null || FindBox.Text.Length == 0 || !FindBox.IsEnabled) return;
         if (InWebPane) { Status.Text = "Searching…"; WebPane.Find(FindBox.Text, previous); lastQuery = FindBox.Text; return; }
         if (rowStore is not null) { FindInStore(FindBox.Text, previous); return; }
         string query = FindBox.Text; var hits = new List<int>();
@@ -509,12 +515,12 @@ public partial class MainWindow : Window
         else if (Paginated)
         {
             string unit = document.Kind == "slides" ? "Slide" : "Page";
-            string type = document.Kind switch { "word" => "Word document", "slides" => "PowerPoint presentation", _ => "PDF" };
+            string type = document.Encoding;   // "Word document", "OpenDocument text", "TIFF picture", "PDF"…
             PageCount.Text = $"of {WebPane.Pages}";
             if (!PageBox.IsKeyboardFocused) PageBox.Text = WebPane.Page.ToString();
             Status.Text = $"Read only · {type} · {unit} {WebPane.Page} of {WebPane.Pages} · Opened in {openSeconds:F2}s. {document.Notice}";
         }
-        else Status.Text = $"Read only · Excel workbook · Sheet {WebPane.Page} of {WebPane.Pages}: {WebPane.SheetName} · Opened in {openSeconds:F2}s. {document.Notice}";
+        else Status.Text = $"Read only · {document.Encoding} · Sheet {WebPane.Page} of {WebPane.Pages}: {WebPane.SheetName} · Opened in {openSeconds:F2}s. {document.Notice}";
     }
     private async Task<(int Current, int Total)> PdfFind(string query)
     {
@@ -598,7 +604,7 @@ public partial class MainWindow : Window
     private void NumberRow(object s, DataGridRowEventArgs e) => e.Row.Header = (e.Row.GetIndex() + 1).ToString();
     private void FileDropped(object s, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] files) foreach (var file in files) OpenPath(file); }
     private static string Version => typeof(MainWindow).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
-    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, $"Plain Viewer {Version} — development preview\n\nRead-only PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), text, CSV and Markdown.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Word and PowerPoint files are converted to PDF by LibreOffice (MPL-2.0). Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\n{SafetyNote()}", "About Plain Viewer");
+    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, $"Plain Viewer {Version} (beta)\n\nRead-only viewer for PDF, Word, Excel, PowerPoint, OpenDocument, RTF, pictures, text, CSV, Markdown and data files. Nothing is uploaded and no network is used. MIT licence.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Word, PowerPoint, OpenDocument text and presentations, RTF and TIFF are converted to PDF by LibreOffice (MPL-2.0). Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\n{SafetyNote()}", "About Plain Viewer");
 
     private static string SafetyNote() =>
         "Files are read by separate processes that run at low integrity with memory and time limits: they cannot change your files or other programs. PDF pages are drawn inside WebView2's own sandbox.\n\n" +

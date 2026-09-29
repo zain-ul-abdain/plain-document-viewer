@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Plain Viewer">
+  <title>Plain Viewer</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e0f2fe"/>
+      <stop offset="1" stop-color="#bae6fd"/>
+    </linearGradient>
+  </defs>
+  <!-- App tile -->
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
+  <!-- Document page with a folded corner -->
+  <path d="M68 44 H152 L196 88 V204 a8 8 0 0 1 -8 8 H68 a8 8 0 0 1 -8 -8 V52 a8 8 0 0 1 8 -8 Z" fill="#ffffff"/>
+  <path d="M152 44 V80 a8 8 0 0 0 8 8 H196 Z" fill="#cbd5e1"/>
+  <!-- Lines of text -->
+  <g fill="#94a3b8">
+    <rect x="80" y="100" width="72" height="10" rx="5"/>
+    <rect x="80" y="122" width="96" height="10" rx="5"/>
+    <rect x="80" y="144" width="60" height="10" rx="5"/>
+  </g>
+  <!-- Magnifying lens: viewing -->
+  <line x1="190" y1="196" x2="222" y2="228" stroke="#0f172a" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="160" cy="166" r="42" fill="url(#lens)" stroke="#0f172a" stroke-width="14"/>
+  <path d="M136 156 a26 26 0 0 1 20 -18" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.9"/>
+</svg>

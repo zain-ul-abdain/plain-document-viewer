@@ -7,10 +7,10 @@ public static class Formats
     public static readonly (string Name, string[] Extensions)[] Groups =
     [
         ("PDF documents", [".pdf"]),
-        ("Word documents", OfficePackages.WordExtensions),
-        ("Excel workbooks", Spreadsheets.Extensions),
-        ("PowerPoint presentations", OfficePackages.SlideExtensions),
-        ("Pictures", ImageFiles.Extensions),
+        ("Word and other text documents", [.. OfficePackages.WordExtensions, .. ConvertedDocuments.WordExtensions]),
+        ("Excel and other spreadsheets", [.. Spreadsheets.Extensions, .. LegacySpreadsheets.Extensions]),
+        ("PowerPoint and other presentations", [.. OfficePackages.SlideExtensions, .. ConvertedDocuments.SlideExtensions]),
+        ("Pictures", [.. ImageFiles.Extensions, .. ConvertedDocuments.PictureExtensions]),
         ("Text, CSV, Markdown and data files", TextFiles.Extensions),
     ];
 

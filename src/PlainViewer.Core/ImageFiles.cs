@@ -105,7 +105,7 @@ public static class ImageFiles
         if (Brands(s) is { } brands && brands.Any(x => x is "heic" or "heix" or "hevc" or "heim" or "heis" or "mif1" or "msf1"))
             return new("This is a HEIC/HEIF photo (the format iPhones use). It cannot be opened in this version. Save it as JPEG or PNG in the Photos app to view it here.");
         if (s.StartsWith("II*\0"u8) || s.StartsWith("MM\0*"u8))
-            return new("This is a TIFF picture, which is not supported yet. Save it as PNG or JPEG to view it here.");
+            return new($"This is a TIFF picture, but its name ends in {extension}. Rename it to end in .tif to view it.");
         if (s.StartsWith(new byte[] { 0x1f, 0x8b }))
             return new("This is a compressed file (for example a compressed SVG), which cannot be opened as a picture. Unpack it first.");
         return new($"This file is named {extension}, but its contents are not a picture this viewer can show. Open it with an application for its actual format.");

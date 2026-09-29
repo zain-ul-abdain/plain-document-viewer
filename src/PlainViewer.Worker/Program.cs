@@ -15,9 +15,10 @@ try
     { throw new DocumentException("The document worker could not start in its restricted mode, so the file was not opened."); }
     if (args.Length is < 1 or > 4) throw new DocumentException("Choose a file to open.");
     string extension = Path.GetExtension(args[0]).ToLowerInvariant();
-    // "<file> --prepare-office <output>": validate a Word/PowerPoint package and write a sanitised copy for conversion.
+    // "<file> --prepare-office <output>": validate a document for LibreOffice and write a sanitised copy for conversion.
     // "<file> <encoding> <delimiter> <work folder>": large rows go to a RowStore in the work folder.
-    var document = args.ElementAtOrDefault(1) == "--prepare-office" ? OfficePackages.Prepare(args[0], args[2])
+    var document = args.ElementAtOrDefault(1) == "--prepare-office" ? (ConvertedDocuments.Handles(args[0]) ? ConvertedDocuments.Prepare(args[0], args[2]) : OfficePackages.Prepare(args[0], args[2]))
+        : LegacySpreadsheets.Handles(args[0]) ? LegacySpreadsheets.Load(args[0])
         : Spreadsheets.IsWorkbook(args[0]) || extension is ".xlsb" ? Spreadsheets.Load(args[0], storeFolder: args.ElementAtOrDefault(3))
         : TextFiles.Load(args[0], args.ElementAtOrDefault(1) ?? "Auto", args.ElementAtOrDefault(2) ?? "Auto", args.ElementAtOrDefault(3));
     response = new WorkerResponse(document, null);

@@ -1,5 +1,24 @@
 # Release notes
 
+## 0.3.0 — beta: older Office files, OpenDocument, RTF, TIFF; logo (September 2026)
+
+Install over any earlier beta; nothing needs uninstalling first.
+
+### New file types
+
+- **Word 97–2003 (.doc), PowerPoint 97–2003 (.ppt), OpenDocument text and presentations (.odt, .odp) and Rich Text (.rtf)**, shown as pages or slides like .docx and .pptx. Before conversion, a private copy is cleaned of everything that could fetch content from elsewhere: linked pictures, templates, fetching fields and linked objects, including web addresses and network shares. In testing, the converter did fetch a linked picture from an uncleaned .doc; with the cleaning, no request was made.
+- **Excel 97–2003 (.xls) and OpenDocument spreadsheets (.ods)** in the spreadsheet grid, with sheet tabs, number formats, column widths, merged cells, hidden rows, columns and sheets, and frozen panes. They are read directly and show the values saved in the file; formulas are never recalculated.
+- **TIFF pictures (.tif, .tiff)**, including multi-page scans, shown as pages with thumbnails.
+- A clear message for password-protected files, very old Word 6.0/95 and Excel 5.0/95 files, and files with the wrong ending.
+
+### Also new
+
+- A logo and app icon (window, taskbar, installer and Start menu). The title bar now says "Plain Viewer" and About says "beta".
+
+### Still not shown
+
+Cell formatting in .xls and .ods; Excel charts, pictures, conditional formatting and row heights; HEIC pictures.
+
 ## 0.2.0 — beta: more formats, Excel formatting, thumbnails (September 2026)
 
 Install over any earlier beta; nothing needs uninstalling first.

@@ -169,7 +169,7 @@ function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
   const [values, layout] = data ?? [[], ""];
   const [align, styleText] = layout.split("|");
   const styleIds = styleText ? styleText.split(".").map(Number) : null;
-  const styleOf = c => (styleIds && workbook.styles?.[styleIds[c]]) || null;
+  const styleOf = c => (styleIds && styleIds[c] > 0 && workbook.styles?.[styleIds[c]]) || null;
   const current = big && bigHits?.list[hitIndex] ? bigHits.list[hitIndex].join(",") : null;
   for (let c = 0; c < values.length; c++) {
     const key = `${r},${c}`;
@@ -228,11 +228,13 @@ function spill(sheet, r, c, values, align, style, spans, covered, styleOf) {
   measure.font = `${style?.bold ? "700 " : ""}${style?.italic || text === "Result unavailable" ? "italic " : ""}13px "Segoe UI"`;
   const needed = measure.measureText(text).width + 8;
   let room = pixels(sheet.columnWidths[c]), extra = 0;
-  // Stays within the frozen columns, and stops at the first cell with content, a fill or a border, or a merge.
+  // Stays within the frozen columns, and stops at the first cell with content, a fill or a border, or a merge (other
+  // formatting of an empty cell, such as bold, does not stop it, as in Excel).
   const last = c < sheet.frozenColumns ? sheet.frozenColumns - 1 : sheet.columnWidths.length - 1;
+  const visible = s => s && (s.fill || s.top || s.right || s.bottom || s.left);
   while (room < needed && c + extra + 1 <= last) {
     const next = c + extra + 1, key = `${r},${next}`;
-    if ((values[next] ?? "") !== "" || spans.has(key) || covered.has(key) || styleOf(next)) break;
+    if ((values[next] ?? "") !== "" || spans.has(key) || covered.has(key) || visible(styleOf(next))) break;
     room += pixels(sheet.columnWidths[next]); extra++;
   }
   return room >= needed || extra > 0 ? extra : 0;

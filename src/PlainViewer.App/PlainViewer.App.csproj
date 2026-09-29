@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><AssemblyName>PlainViewer</AssemblyName></PropertyGroup>
+  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><AssemblyName>PlainViewer</AssemblyName><ApplicationIcon>Assets\app.ico</ApplicationIcon></PropertyGroup>
+  <!-- The window icon comes from the app itself (development runs start through dotnet.exe, whose icon would show). -->
+  <ItemGroup><Resource Include="Assets\app.ico" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../PlainViewer.Core/PlainViewer.Core.csproj" /><ProjectReference Include="../PlainViewer.Worker/PlainViewer.Worker.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
   <ItemGroup><Content Include="../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" /><Content Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <!-- PDF view: WebView2 SDK plus PDF.js 6.3.289 (Apache-2.0) served from the app's own folder. -->

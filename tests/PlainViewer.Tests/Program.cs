@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -174,7 +175,7 @@ try
     var errorWords = new Dictionary<string, string[]> {
         ["damaged"] = ["damaged", "too large to open safely"], ["empty"] = ["empty"], ["password"] = ["password"],
         ["mismatch"] = ["not an Excel workbook", "older Excel file", "contents are not", "older Office file", "binary data"],
-        ["unsupported"] = ["not supported", "cannot be opened in this version"], ["too-large"] = ["more than this viewer can"] };
+        ["unsupported"] = ["not supported", "cannot be opened in this version"], ["too-large"] = ["more than this viewer can"], ["rename"] = ["Rename it"] };
 
     // Word and PowerPoint: OfficePackages.Prepare must refuse bad packages with the right message and write a
     // copy of good ones with no outside references (other than hyperlinks) and no content-fetching field codes.
@@ -225,7 +226,7 @@ try
     foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
     {
         string format = fixture.GetProperty("format").GetString()!;
-        if (!Spreadsheets.IsWorkbook("x." + format) || fixture.TryGetProperty("generated", out _)) continue;
+        if (!(Spreadsheets.IsWorkbook("x." + format) || LegacySpreadsheets.Handles("x." + format)) || fixture.TryGetProperty("generated", out _)) continue;
         string file = fixture.GetProperty("file").GetString()!;
         var expect = fixture.GetProperty("expect");
         Test("Spreadsheet fixture " + file, () => {
@@ -234,13 +235,13 @@ try
             if (expect.GetProperty("result").GetString() == "error")
             {
                 string message = "";
-                try { Spreadsheets.Load(path, culture); } catch (DocumentException ex) { message = ex.Message; }
+                try { if (LegacySpreadsheets.Handles(path)) LegacySpreadsheets.Load(path, culture); else Spreadsheets.Load(path, culture); } catch (DocumentException ex) { message = ex.Message; }
                 var words = errorWords[expect.GetProperty("error").GetString()!];
                 if (!words.Any(w => message.Contains(w, StringComparison.OrdinalIgnoreCase))) throw new Exception($"Expected a {string.Join("/", words)} message, got: '{message}'");
             }
             else
             {
-                var view = Spreadsheets.Load(path, culture);
+                var view = LegacySpreadsheets.Handles(path) ? LegacySpreadsheets.Load(path, culture) : Spreadsheets.Load(path, culture);
                 var names = view.Sheets.Select(s => s.Name).ToArray();
                 var expected = expect.GetProperty("sheets").EnumerateArray().Select(e => e.GetString()!).ToArray();
                 if (!names.SequenceEqual(expected)) throw new Exception($"Sheets: got {string.Join(",", names)}");
@@ -339,6 +340,104 @@ try
             Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
         });
     }
+    // Formats shown through LibreOffice: the worker's preparation must refuse what it should, and its private copy
+    // must hold no address of the test listener (remote or network share) in single-byte or UTF-16 text.
+    foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
+    {
+        string file = fixture.GetProperty("file").GetString()!;
+        if (!ConvertedDocuments.Handles(file) || fixture.TryGetProperty("generated", out _)) continue;
+        var expect = fixture.GetProperty("expect");
+        Test("Converted-format preparation " + file, () => {
+            string path = Path.Combine(corpus, file.Replace('/', Path.DirectorySeparatorChar));
+            string output = Path.Combine(root, Guid.NewGuid().ToString("N"), "document" + Path.GetExtension(path));
+            byte[] before = SHA256.HashData(File.ReadAllBytes(path)); var siblings = Directory.GetFiles(Path.GetDirectoryName(path)!);
+            if (expect.GetProperty("result").GetString() == "error")
+            {
+                string message = "";
+                try { ConvertedDocuments.Prepare(path, output); } catch (DocumentException ex) { message = ex.Message; }
+                var words = errorWords[expect.GetProperty("error").GetString()!];
+                if (!words.Any(w => message.Contains(w, StringComparison.OrdinalIgnoreCase))) throw new Exception($"Expected a {string.Join("/", words)} message, got: '{message}'");
+                Check(!File.Exists(output));
+            }
+            else
+            {
+                var view = ConvertedDocuments.Prepare(path, output);
+                string kind = expect.GetProperty("kind").GetString()!;
+                Check(view.Kind == (kind == "pages" ? "word" : kind));
+                var removed = System.Text.RegularExpressions.Regex.Match(view.Notice, @"(\d+) references? to content stored outside");
+                int count = removed.Success ? int.Parse(removed.Groups[1].Value) : 0;
+                if (expect.TryGetProperty("removed", out var exact) && count != exact.GetInt32()) throw new Exception($"Removed {count} references, expected {exact.GetInt32()}: {view.Notice}");
+                if (expect.TryGetProperty("removedAtLeast", out var least) && count < least.GetInt32()) throw new Exception($"Removed {count} references, expected at least {least.GetInt32()}");
+                // Everything the copy holds, part by part: ZIP entries (decompressed) or compound-file streams.
+                byte[] copy = File.ReadAllBytes(output);
+                var parts = new List<(string Name, byte[] Bytes)> { ("file", copy) };
+                if (copy.AsSpan().StartsWith("PK"u8))
+                    using (var zip = ZipFile.OpenRead(output))
+                        foreach (var entry in zip.Entries.Where(e => e.Length > 0)) { using var stream = entry.Open(); using var buffer = new MemoryStream(); stream.CopyTo(buffer); parts.Add((entry.FullName, buffer.ToArray())); }
+                if (CompoundFile.IsCompoundFile(copy))
+                {
+                    var compound = new CompoundFile(copy, "copy");
+                    parts = compound.Entries.Where(e => e.Type == 2).Select(e => (e.Name, compound.Read(e, "copy"))).ToList();
+                }
+                // A HYPERLINK field in the visible text is an ordinary link (the viewer asks before opening it) and stays.
+                foreach (var (name, bytes) in parts.Where(p => p.Bytes.Length > 1))
+                    foreach (string text in new[] { Encoding.Latin1.GetString(bytes), Encoding.Unicode.GetString(bytes), Encoding.Unicode.GetString(bytes, 1, bytes.Length - 1) })
+                        foreach (string address in new[] { "127.0.0.1:47831", "127.0.0.1@47831" })
+                            if (System.Text.RegularExpressions.Regex.Matches(text, System.Text.RegularExpressions.Regex.Escape(address)).FirstOrDefault(m => !text.Substring(Math.Max(0, m.Index - 30), Math.Min(30, m.Index)).Contains("HYPERLINK")) is { } found && found.Index is int at)
+                                throw new Exception($"The prepared copy still refers to the test listener, in {name}: …{System.Text.RegularExpressions.Regex.Replace(text.Substring(Math.Max(0, at - 50), Math.Min(90, text.Length - Math.Max(0, at - 50))), @"[\x00-\x1f]", "·")}…");
+            }
+            Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))));
+            Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
+        });
+    }
+    Test("Older spreadsheets show the saved result, never a recalculated one", () => {
+        // complex.xls B7 is =SUM(...) saved as 20; the saved result is changed to 99, which must be what is shown.
+        byte[] bytes = File.ReadAllBytes(Path.Combine(corpus, "xls", "complex.xls"));
+        var compound = new CompoundFile(bytes, "file"); var entry = compound.Find("Workbook")!; var book = compound.Read(entry, "file");
+        bool changed = false;
+        for (int at = 0; at + 4 <= book.Length;)
+        {
+            int type = BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at)), length = BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 2));
+            if (type == 0x0006 && BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 4)) == 6 && BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 6)) == 1)
+            { BinaryPrimitives.WriteDoubleLittleEndian(book.AsSpan(at + 10), 99); changed = true; }
+            at += 4 + length;
+        }
+        Check(changed); compound.Write(entry, book, "file");
+        string stale = Path.Combine(root, "stale.xls"); File.WriteAllBytes(stale, bytes);
+        Check(LegacySpreadsheets.Load(stale, culture).Sheets[0].Rows[6][1] == "$99.00");
+    });
+    Test("Older Office files: password, Word 95 and damaged files are refused clearly", () => {
+        string Patched(string source, string name, Func<byte[], CompoundFile, bool> patch)
+        {
+            byte[] bytes = File.ReadAllBytes(Path.Combine(corpus, source));
+            var compound = new CompoundFile(bytes, "file");
+            Check(patch(bytes, compound));
+            string path = Path.Combine(root, name); File.WriteAllBytes(path, bytes); return path;
+        }
+        string Message(string path) { try { ConvertedDocuments.Prepare(path, Path.Combine(root, Guid.NewGuid().ToString("N"), "copy")); return ""; } catch (DocumentException ex) { return ex.Message; } }
+        // Word: the FIB's "encrypted" flag; an nFib older than Word 97.
+        bool Fib(CompoundFile compound, Action<byte[]> change, byte[] all)
+        {
+            var entry = compound.Find("WordDocument")!; var word = compound.Read(entry, "file"); change(word); compound.Write(entry, word, "file"); return true;
+        }
+        Check(Message(Patched("doc/simple.doc", "encrypted.doc", (all, c) => Fib(c, w => w[0x0B] |= 0x01, all))).Contains("password"));
+        Check(Message(Patched("doc/simple.doc", "word95.doc", (all, c) => Fib(c, w => BinaryPrimitives.WriteUInt16LittleEndian(w.AsSpan(2), 0x0065), all))).Contains("Word 95"));
+        // Excel: a FILEPASS record in the workbook stream (the second record's type is changed to it).
+        string SheetMessage(string path) { try { LegacySpreadsheets.Load(path); return ""; } catch (DocumentException ex) { return ex.Message; } }
+        Check(SheetMessage(Patched("xls/simple.xls", "encrypted.xls", (all, c) =>
+        {
+            var entry = c.Find("Workbook")!; var book = c.Read(entry, "file");
+            int second = 4 + BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(2));
+            BinaryPrimitives.WriteUInt16LittleEndian(book.AsSpan(second), 0x002F); c.Write(entry, book, "file"); return true;
+        })).Contains("password"));
+        // A compound file cut short, and one whose FAT points outside the file.
+        byte[] doc = File.ReadAllBytes(Path.Combine(corpus, "doc", "simple.doc"));
+        string cut = Path.Combine(root, "cut.doc"); File.WriteAllBytes(cut, doc[..(doc.Length / 3)]);
+        Check(Message(cut).Contains("damaged"));
+        var broken = (byte[])doc.Clone(); BinaryPrimitives.WriteUInt32LittleEndian(broken.AsSpan(0x4c), 0x7FFFFFF0);
+        string bad = Path.Combine(root, "badfat.doc"); File.WriteAllBytes(bad, broken);
+        Check(Message(bad).Contains("damaged"));
+    });
     Test("Picture formats are recognised by content, not by name", () => {
         byte[] ftyp(string brand) => [0, 0, 0, 24, .. "ftyp"u8, .. Encoding.ASCII.GetBytes(brand), 0, 0, 0, 0, .. "mif1"u8, .. Encoding.ASCII.GetBytes(brand)];
         Check(ImageFiles.Identify(ftyp("avif"))?.Format == "AVIF");

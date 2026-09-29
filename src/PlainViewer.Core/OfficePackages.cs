@@ -60,7 +60,7 @@ public static class OfficePackages
         if (head.AsSpan().StartsWith(new byte[] { 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 }))
             throw new DocumentException(head.AsSpan().IndexOf(Encoding.Unicode.GetBytes("EncryptionInfo")) >= 0
                 ? $"This {kind} is protected with a password. Password-protected Office files cannot be opened in this version. Remove the password in Office, or ask the sender for an unprotected copy."
-                : $"This looks like an older Office file ({(word ? ".doc" : ".ppt")}) saved with a {extension} name. Older formats are not supported yet.");
+                : $"This looks like an older Office file ({(word ? ".doc" : ".ppt")}) saved with a {extension} name. Rename it to end in {(word ? ".doc" : ".ppt")} to view it.");
         if (!head.AsSpan().StartsWith("PK\u0003\u0004"u8))
             throw new DocumentException($"This file is named {extension}, but its contents are not a {kind}. Open it with an application for its actual format.");
 

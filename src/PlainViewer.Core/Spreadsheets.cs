@@ -31,6 +31,22 @@ public static class Spreadsheets
     // Excel's own row limit; sheets streamed to a row store may be this long.
     public const int MaxStoredRows = 1_048_576;
 
+    // A saved number as Excel shows it, from its number format (built-in id or custom code). Shared by the .xlsx and
+    // .xls readers. Built-in 14 and 22 follow the viewer's regional short date, as Excel does.
+    internal static string FormatValue(double value, int id, IReadOnlyDictionary<int, string> custom, CultureInfo culture, bool date1904, Dictionary<string, NumberFormat> cache)
+    {
+        if (id is 14 or 22 && !custom.ContainsKey(id))
+        {
+            double serial = date1904 ? value + 1462 : value;
+            var date = serial is >= -657435 and <= 2958465 ? DateTime.FromOADate(serial) : DateTime.MinValue;
+            return id == 14 ? date.ToString(culture.DateTimeFormat.ShortDatePattern, culture) : date.ToString(culture.DateTimeFormat.ShortDatePattern + " H:mm", culture);
+        }
+        string code = custom.TryGetValue(id, out var own) ? own : BuiltInFormats.GetValueOrDefault(id, "General");
+        if (!cache.TryGetValue(code, out var format)) cache[code] = format = new NumberFormat(code);
+        try { return format.IsValid ? format.Format(value, culture, date1904) : value.ToString("G15", culture); }
+        catch (Exception) { return value.ToString("G15", culture); }
+    }
+
     // With storeFolder, sheets longer than MaxRowsPerSheet (or beyond the cell budget) stream to row stores there.
     public static DocumentView Load(string path, CultureInfo? culture = null, string? storeFolder = null)
     {
@@ -52,7 +68,7 @@ public static class Spreadsheets
         if (head.AsSpan().StartsWith(new byte[] { 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 }))
             throw new DocumentException(head.AsSpan().IndexOf(Encoding.Unicode.GetBytes("EncryptionInfo")) >= 0
                 ? "This workbook is protected with a password. Password-protected Excel files cannot be opened in this version. Remove the password in Excel, or ask the sender for an unprotected copy."
-                : $"This looks like an older Excel file (.xls) saved with a {extension} name. Older .xls files are not supported yet.");
+                : $"This looks like an older Excel file (.xls) saved with a {extension} name. Rename it to end in .xls to view it.");
         if (!head.AsSpan().StartsWith("PK\u0003\u0004"u8))
             throw new DocumentException($"This file is named {extension}, but its contents are not an Excel workbook. Open it with an application for its actual format.");
 
@@ -123,7 +139,7 @@ public static class Spreadsheets
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
             if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
             if (formulasWithoutResult > 0)
-                notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");
+                notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show{(formulasWithoutResult == 1 ? "s" : "")} \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");
             if (truncated) notes.Add(storeFolder is null
                 ? $"Preview limit: only the first {MaxRowsPerSheet:N0} rows and {MaxColumns} columns of each sheet, up to {MaxCellsPerWorkbook:N0} cells in total, are shown."
                 : $"Only the first {MaxColumns} columns and {MaxStoredRows:N0} rows of each sheet are shown.");
@@ -415,16 +431,7 @@ public static class Spreadsheets
         private string FormatNumber(double value, int style)
         {
             int id = style >= 0 && style < styles.NumberFormats.Count ? styles.NumberFormats[style] : 0;
-            // Built-in 14 and 22 follow the viewer's regional short date, as Excel does.
-            if (id is 14 or 22 && !styles.CustomFormats.ContainsKey(id))
-            {
-                var date = FromSerial(value);
-                return id == 14 ? date.ToString(culture.DateTimeFormat.ShortDatePattern, culture) : date.ToString(culture.DateTimeFormat.ShortDatePattern + " H:mm", culture);
-            }
-            string code = styles.CustomFormats.TryGetValue(id, out var custom) ? custom : BuiltInFormats.GetValueOrDefault(id, "General");
-            if (!formats.TryGetValue(code, out var format)) formats[code] = format = new NumberFormat(code);
-            try { return format.IsValid ? format.Format(value, culture, date1904) : value.ToString("G15", culture); }
-            catch (Exception) { return value.ToString("G15", culture); }
+            return FormatValue(value, id, styles.CustomFormats, culture, date1904, formats);
         }
 
         private DateTime FromSerial(double value)
