@@ -26,7 +26,9 @@ function Install([string]$tasks, [string]$logName) {
 try {
   $rules = 'Plain Viewer - block network - '
   $build = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue
-  Log "Clean machine: Windows $($build.ProductName) $($build.DisplayVersion), build $($build.CurrentBuild).$($build.UBR); C++ runtime in System32: $(Test-Path "$env:WINDIR\System32\vcruntime140.dll"); WebView2: $(WebView2Version); network adapters up: $(@(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up').Count)"
+  # Get-NetAdapter goes through CIM, which a freshly started sandbox sometimes refuses ("Access denied"); it is information only.
+  $adapters = try { @(Get-NetAdapter -ErrorAction Stop | Where-Object Status -eq 'Up').Count } catch { "unknown ($($_.Exception.Message.Trim()))" }
+  Log "Clean machine: Windows $($build.ProductName) $($build.DisplayVersion), build $($build.CurrentBuild).$($build.UBR); C++ runtime in System32: $(Test-Path "$env:WINDIR\System32\vcruntime140.dll"); WebView2: $(WebView2Version); network adapters up: $adapters"
 
   # Local copies: the app refuses files it cannot treat as local, and mapped folders are read-only.
   $corpus = Join-Path $env:USERPROFILE 'corpus'
@@ -66,7 +68,7 @@ try {
     'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\variant.ppsx', 'images\complex.png', 'images\complex-rotated-exif.jpg', 'images\complex.webp',
     'images\complex.avif', 'images\complex.svg', 'images\attack-svg-active.svg', 'images\simple.gif', 'images\simple.ico',
     'odt\complex.odt', 'doc\attack-remote-image.doc', 'xls\complex.xls', 'ods\complex.ods', 'tiff\scan-3-pages.tiff', 'rtf\attack.rtf'
-  $web += 'xlsx\drawings.xlsx', 'xls\drawings.xls', 'ods\drawings.ods', 'heic\jpeg-named.heic'
+  $web += 'xlsx\drawings.xlsx', 'xls\drawings.xls', 'ods\drawings.ods', 'heic\jpeg-named.heic', 'xlsx\conditional.xlsx', 'xls\conditional.xls', 'ods\conditional.ods'
   # HEIC photos need Windows' HEIF and HEVC codecs from the Microsoft Store; without them the photo is refused with a
   # message naming them (a clean Windows Sandbox usually has neither).
   $heicCodecs = [bool](Get-AppxPackage -Name Microsoft.HEIFImageExtension -ErrorAction SilentlyContinue) -and [bool](Get-AppxPackage -Name Microsoft.HEVCVideoExtension* -ErrorAction SilentlyContinue)

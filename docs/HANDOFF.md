@@ -296,3 +296,9 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - `LegacySpreadsheets.Conditional.cs`: .xls CONDFMT (0x01B0) + CF (0x01B1) with DXFN font/border/pattern blocks and single-token constant formulas; CF12 (0x087A) counted. .ods `calcext:conditional-formats` (read at the end of each table; styles found by display name, `ConditionStyle`). `SheetBuilder.Value` records saved numbers and errors of in-memory rows; `ApplyConditional` runs before `Build`.
 - Fixtures: xls/ods `conditional` made by LibreOffice from the .xlsx one. LibreOffice drops scales/bars/icons from .xls and writes its text rule with type 0 (counted as not shown). Not tested with Excel-made .xls or other ODF producers.
 - **Open:** Narrator and scaling checks, SignPath and Partner Center (Zain). Version not bumped; installer not rebuilt.
+
+## Agent 2, 30 September 2026 (late night): 0.6.0 published
+
+- With Zain's approval ("publish 0.6.0 once tests pass"): https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.6.0 (pre-release, tag at dc0a145) with the GitHub Actions installer (run 36738999923, unsigned), its .sha256, BETA.md and BETA-FEEDBACK.md. Windows Sandbox clean-PC test passed (TEST-RESULTS.md).
+- `scripts/sandbox-inner.ps1`: the network-adapter line is information only and no longer fails the run when CIM is refused; the three conditional formatting workbooks are opened too.
+- **Open for Zain:** SignPath application, Partner Center registration, Narrator and scaling checks.
