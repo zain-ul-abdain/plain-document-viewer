@@ -3,7 +3,7 @@
 ## Next version (not yet released)
 
 - **Excel row heights** (.xlsx, .xls and .ods): rows keep the heights saved in the file, so wrapped text shows in full lines and large text is no longer squeezed; pictures and charts sit on the real rows. Sheets with more than 10,000 rows keep even rows.
-- **Excel conditional formatting** (.xlsx): highlight rules (greater than, between, text contains, blanks, errors, top and bottom, above average, duplicates), colour scales, data bars and icon sets, worked out from the values saved in the file. Rules written as formulas, and rules about today's date, are not shown; a note counts them.
+- **Conditional formatting** in .xlsx and .ods files, and the value rules of .xls files: highlight rules (greater than, between, text contains, blanks, errors, top and bottom, above average, duplicates), colour scales, data bars and icon sets, worked out from the values saved in the file. Rules written as formulas, and rules about today's date, are not shown; a note counts them.
 - A tidier toolbar: the text encoding and CSV delimiter lists appear only for files they apply to (the encoding for text, CSV, Markdown and data files; the delimiter for CSV), instead of greyed out everywhere else.
 
 ## 0.5.0 — beta: pictures and charts in .xls and .ods (September 2026)

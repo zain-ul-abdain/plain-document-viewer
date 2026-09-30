@@ -289,3 +289,10 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - Not shown, counted in the workbook notice: expression rules, value rules comparing with a formula, date rules, and x14-only rules other than data bars (whose min/max lengths are taken from the x14 copy by id). Not applied to sheets over 10,000 rows (notice), nor to .xls/.ods yet.
 - Tests: `xlsx/conditional.xlsx`; the manifest's `styles` now accept `null` (property must be absent) and `workbookNotice`. See TEST-RESULTS.md. Version not bumped; installer not rebuilt.
 - **Open:** conditional formatting for .xls/.ods; Narrator and scaling checks (Zain); SignPath and Partner Center (Zain).
+
+## Agent 2, 30 September 2026 (night): conditional formatting in .xls and .ods (not yet released)
+
+- `ConditionalFormats` is now format-neutral: rules are `ConditionalFormats.Rule` objects (xlsx terms, with a `WorkbookStyles.Dxf` format), `Evaluate` works on a key -> (text, style) map, and `Apply` is the .xlsx wrapper. `ConditionalFormats.Note` and `LargeSheetNote` are shared by all three readers.
+- `LegacySpreadsheets.Conditional.cs`: .xls CONDFMT (0x01B0) + CF (0x01B1) with DXFN font/border/pattern blocks and single-token constant formulas; CF12 (0x087A) counted. .ods `calcext:conditional-formats` (read at the end of each table; styles found by display name, `ConditionStyle`). `SheetBuilder.Value` records saved numbers and errors of in-memory rows; `ApplyConditional` runs before `Build`.
+- Fixtures: xls/ods `conditional` made by LibreOffice from the .xlsx one. LibreOffice drops scales/bars/icons from .xls and writes its text rule with type 0 (counted as not shown). Not tested with Excel-made .xls or other ODF producers.
+- **Open:** Narrator and scaling checks, SignPath and Partner Center (Zain). Version not bumped; installer not rebuilt.

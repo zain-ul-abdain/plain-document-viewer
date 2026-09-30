@@ -115,10 +115,12 @@ export async function generateXlsx({ large }) {
     ws.addConditionalFormatting({ ref: "E2:E7", rules: [{ type: "containsText", operator: "containsText", text: "apple", priority: 5,
       style: { font: { italic: true } } }] });
     ws.addConditionalFormatting({ ref: "F2:F7", rules: [{ type: "expression", formulae: ["F2>2"], priority: 6, style: { fill: fill("FFFFEB9C") } }] });
-    // exceljs leaves out the text attribute that Excel writes on text rules; add it as Excel does.
+    // exceljs leaves out the text attribute that Excel writes on text rules; add it as Excel does. The data bar's id
+    // (random in exceljs) is fixed so the file is the same every time.
     const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
     const sheetXml = await zip.file("xl/worksheets/sheet1.xml").async("string");
-    zip.file("xl/worksheets/sheet1.xml", sheetXml.replace('type="containsText" dxfId="1"', 'type="containsText" dxfId="1" operator="containsText" text="apple"'));
+    zip.file("xl/worksheets/sheet1.xml", sheetXml.replace('type="containsText" dxfId="1"', 'type="containsText" dxfId="1" operator="containsText" text="apple"')
+      .replace(/\{[0-9A-Fa-f-]{36}\}/g, "{00000000-0000-4000-8000-000000000001}"));
     write("xlsx/conditional.xlsx", await stable(await zip.generateAsync({ type: "nodebuffer" })));
     record({ id: "xlsx-conditional", file: "xlsx/conditional.xlsx", format: "xlsx", category: "complex", producer, licence,
       expect: { result: "open", sheets: ["Rules"], cells: [{ sheet: "Rules", ref: "A5", text: "40" }, { sheet: "Rules", ref: "E2", text: "apple pie" }],

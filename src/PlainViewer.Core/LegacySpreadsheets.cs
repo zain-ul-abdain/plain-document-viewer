@@ -80,6 +80,9 @@ public static partial class LegacySpreadsheets
             if (!known.TryGetValue(key, out int index)) { index = known[key] = Table.Count; Table.Add(style); }
             return index;
         }
+
+        // For styles made by conditional formatting, which can differ in every cell: -1 once the table is full.
+        public int TryAdd(CellStyle style) => Table.Count < WorkbookStyles.MaxStyles || known.ContainsKey(JsonSerializer.Serialize(style)) ? Add(style) : -1;
     }
 
     // One sheet's cells. The first rows are kept in memory for the first screen; with a store folder, a sheet longer
@@ -94,6 +97,39 @@ public static partial class LegacySpreadsheets
         private SortedDictionary<int, (string Text, char Align, int Style)> pending = [];
         private RowStoreWriter? store;
         private int stored, pendingRow = -1, columns;
+        // Saved numbers and error cells of the rows held in memory, for conditional formatting.
+        private readonly Dictionary<long, double> numbers = [];
+        private readonly HashSet<long> errors = [];
+
+        public void Value(int row, int column, double? number, bool error)
+        {
+            if (store is not null || row >= Spreadsheets.MaxRowsPerSheet || column >= Spreadsheets.MaxColumns || numbers.Count + errors.Count >= Spreadsheets.MaxCellsPerWorkbook) return;
+            if (number is double v && double.IsFinite(v)) numbers[ConditionalFormats.Key(row, column)] = v;
+            if (error) errors.Add(ConditionalFormats.Key(row, column));
+        }
+
+        // Applies conditional formatting to the rows held in memory; false when the sheet streams to a row store (not
+        // applied there).
+        public bool ApplyConditional(ConditionalFormats formats)
+        {
+            if (!formats.Any) return true;
+            if (store is not null) return false;
+            var cells = new Dictionary<long, (string Text, CellStyle Style)>();
+            int maxRow = -1;
+            foreach (var (r, line) in memory)
+            {
+                foreach (var (c, cell) in line) cells[ConditionalFormats.Key(r, c)] = (cell.Text, styles.Table[cell.Style]);
+                maxRow = Math.Max(maxRow, r);
+            }
+            foreach (var (row, column, style, hideText) in formats.Evaluate(cells, numbers, errors, maxRow, columns))
+            {
+                int index = styles.TryAdd(style);
+                if (index < 0) continue;
+                if (!memory.TryGetValue(row, out var line)) memory[row] = line = [];
+                line[column] = line.TryGetValue(column, out var cell) ? (hideText ? "" : cell.Text, cell.Align, index) : ("", 'l', index);
+            }
+            return true;
+        }
 
         public void Add(int row, int column, string text, char align, int style, ref int budget)
         {
@@ -214,8 +250,8 @@ public static partial class LegacySpreadsheets
         private readonly List<(int Offset, int Length)> xfRecords = [];
         private readonly StyleTable styles = new();
         private readonly Dictionary<string, NumberFormat> cache = [];
-        private bool date1904, truncated, stored;
-        private int budget = Spreadsheets.MaxCellsPerWorkbook;
+        private bool date1904, truncated, stored, conditionalOnLargeSheet;
+        private int budget = Spreadsheets.MaxCellsPerWorkbook, conditionalNotShown;
 
         private readonly record struct Record(int Type, int Offset, int Length);
 
@@ -313,6 +349,8 @@ public static partial class LegacySpreadsheets
             ResolveCharts();
             if (file.Has("_VBA_PROJECT_CUR")) extra.Insert(0, "This workbook contains macros. They were ignored and never ran.");
             extra.AddRange(SheetDrawings.Notes(pictureBudget));
+            if (ConditionalFormats.Note(conditionalNotShown) is { } conditionalNote) extra.Add(conditionalNote);
+            if (conditionalOnLargeSheet) extra.Add(ConditionalFormats.LargeSheetNote);
             view.Notice = Notes(hidden, truncated, stored, extra);
             return view;
         }
@@ -437,9 +475,13 @@ public static partial class LegacySpreadsheets
             if (records.Count == 0 || records[0].Type != 0x0809) throw Damaged();
             using var sheet = new SheetBuilder(name, index, storeFolder, styles);
             var wanted = chartRanges.GetValueOrDefault(tab);
-            void Cell(int row, int column, string text, int xf, char natural, double? value = null)
+            var conditional = new ConditionalFormats();
+            var conditionRanges = new List<int[]>();
+            int conditionPriority = 0;
+            void Cell(int row, int column, string text, int xf, char natural, double? value = null, bool error = false)
             {
                 sheet.Add(row, column, text, Align(xf, natural), StyleOf(xf), ref budget);
+                sheet.Value(row, column, value, error);
                 // Cells a chart refers to keep their saved value for the chart.
                 if (wanted is not null && chartCells.Count < 200_000 && wanted.Any(r => row >= r.Row1 && row <= r.Row2 && column >= r.Column1 && column <= r.Column2))
                     chartCells[(tab, row, column)] = (value, text);
@@ -492,7 +534,7 @@ public static partial class LegacySpreadsheets
                         Cell(Row(), Column(), string_ >= 0 && string_ < strings.Count ? strings[string_] : "", Xf(), 'l');
                         break;
                     case 0x0204 when length >= 9: Cell(Row(), Column(), XlString(at + 6, at + length, twoByteCount: true, out _), Xf(), 'l'); break;
-                    case 0x0205 when length >= 8: Cell(Row(), Column(), data[at + 7] == 0 ? (data[at + 6] != 0 ? "TRUE" : "FALSE") : Error(data[at + 6]), Xf(), 'c'); break;
+                    case 0x0205 when length >= 8: Cell(Row(), Column(), data[at + 7] == 0 ? (data[at + 6] != 0 ? "TRUE" : "FALSE") : Error(data[at + 6]), Xf(), 'c', error: data[at + 7] != 0); break;
                     case 0x0006 when length >= 20:
                         // The saved result: a number, or (when the last two bytes are 0xFFFF) a string in the next STRING
                         // record, a boolean, an error or an empty string.
@@ -506,7 +548,7 @@ public static partial class LegacySpreadsheets
                                         Cell(Row(), Column(), XlString(records[i + 1].Offset, records[i + 1].Offset + records[i + 1].Length, twoByteCount: true, out _), Xf(), 'l');
                                     break;
                                 case 1: Cell(Row(), Column(), data[at + 8] != 0 ? "TRUE" : "FALSE", Xf(), 'c'); break;
-                                case 2: Cell(Row(), Column(), Error(data[at + 8]), Xf(), 'c'); break;
+                                case 2: Cell(Row(), Column(), Error(data[at + 8]), Xf(), 'c', error: true); break;
                             }
                         break;
                     case 0x0208 when length >= 16:
@@ -534,6 +576,9 @@ public static partial class LegacySpreadsheets
                                 BinaryPrimitives.ReadUInt16LittleEndian(span[2..]), BinaryPrimitives.ReadUInt16LittleEndian(span[6..])]);
                         }
                         break;
+                    case 0x01B0: conditionRanges = ConditionRanges(at, length); break;                // CONDFMT
+                    case 0x01B1: ReadCondition(at, length, conditionRanges, ++conditionPriority, conditional); break;   // CF
+                    case 0x087A: conditional.NotShown++; break;                                  // CF12 (Excel 2007 rules): not read
                     case 0x023E when length >= 2: sheet.Sheet.RightToLeft = (BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)) & 0x0040) != 0; break;
                     case 0x0041 when length >= 4:
                         sheet.Sheet.FrozenColumns = Math.Min(Spreadsheets.MaxColumns, (int)BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)));
@@ -541,6 +586,8 @@ public static partial class LegacySpreadsheets
                         break;
                 }
             }
+            if (!sheet.ApplyConditional(conditional)) conditionalOnLargeSheet = true;
+            conditionalNotShown += conditional.NotShown;
             var built = sheet.Build();
             truncated |= sheet.Truncated; stored |= built.Store.Length > 0;
             built.Pictures = Drawings(built, index, drawing.ToArray(), objects, storeFolder);
@@ -574,6 +621,10 @@ public static partial class LegacySpreadsheets
         private readonly Dictionary<string, double> rowStyleHeights = [];            // row style -> height in points
         private readonly List<(int Row, int Count, double Points)> rowHeights = [];  // the current sheet's styled rows
         private readonly Dictionary<double, int> heightCounts = [];                   // height -> number of rows
+        private readonly Dictionary<string, string> displayNames = [];                // cell style display name -> name
+        private ConditionalFormats conditional = new();                               // the current sheet's
+        private int conditionalNotShown;
+        private bool conditionalOnLargeSheet;
 
         // Properties a cell style sets itself (null: inherited from its parent).
         private sealed class Props
@@ -619,7 +670,7 @@ public static partial class LegacySpreadsheets
                                 string name = r.GetAttribute("name", TableNs) ?? $"Sheet{view.Sheets.Count + hidden + 1}";
                                 if (hiddenTables.Contains(r.GetAttribute("style-name", TableNs) ?? "")) { hidden++; r.Skip(); continue; }
                                 sheet = new SheetBuilder(name, view.Sheets.Count, storeFolder, styles); row = -1; columnDefaults.Clear();
-                                sheetIndex = view.Sheets.Count; pictures = []; pageAnchored = []; rowHeights.Clear(); heightCounts.Clear();
+                                sheetIndex = view.Sheets.Count; pictures = []; pageAnchored = []; rowHeights.Clear(); heightCounts.Clear(); conditional = new();
                                 if (frozen.TryGetValue(name, out var split)) { sheet.Sheet.FrozenColumns = split.Columns; sheet.Sheet.FrozenRows = split.Rows; }
                                 if (r.IsEmptyElement) { view.Sheets.Add(sheet.Build()); sheet.Dispose(); sheet = null; }
                                 break;
@@ -628,6 +679,9 @@ public static partial class LegacySpreadsheets
                                 using (var subtree = r.ReadSubtree())
                                     foreach (var frame in XElement.Load(subtree).Elements(XName.Get("frame", DrawNs)))
                                         if (OpenDocumentDrawings.Frame(frame, zip, storeFolder, sheetIndex, pictureBudget, pictures, 0, 0) is { } placed) pageAnchored.Add(placed);
+                                break;
+                            case "conditional-formats" when sheet is not null && r.NamespaceURI == CalcExtNs:
+                                using (var subtree = r.ReadSubtree()) ReadConditions(XElement.Load(subtree), conditional, ConditionStyle);
                                 break;
                             case "table-column" when sheet is not null:
                                 {
@@ -662,6 +716,8 @@ public static partial class LegacySpreadsheets
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This spreadsheet has no visible sheets to show.");
             extra.AddRange(SheetDrawings.Notes(pictureBudget));
+            if (ConditionalFormats.Note(conditionalNotShown) is { } conditionalNote) extra.Add(conditionalNote);
+            if (conditionalOnLargeSheet) extra.Add(ConditionalFormats.LargeSheetNote);
             view.Notice = Notes(hidden, truncated, stored, extra);
             return view;
         }
@@ -669,6 +725,8 @@ public static partial class LegacySpreadsheets
         // The built sheet with its pictures and charts; those anchored to the sheet get their cell from the column widths.
         private SheetData Finish(SheetBuilder sheet)
         {
+            if (!sheet.ApplyConditional(conditional)) conditionalOnLargeSheet = true;
+            conditionalNotShown += conditional.NotShown;
             var built = sheet.Build();
             truncated |= sheet.Truncated; stored |= built.Store.Length > 0;
             // Every row has a row style: the most common height is the sheet's default, the others are recorded.
@@ -697,6 +755,7 @@ public static partial class LegacySpreadsheets
             string name = r.GetAttribute("name", StyleNs) ?? "";
             bool cell = r.GetAttribute("family", StyleNs) == "table-cell";
             var props = new Props { Parent = r.GetAttribute("parent-style-name", StyleNs) };
+            if (cell && name.Length > 0 && r.GetAttribute("display-name", StyleNs) is { Length: > 0 } display && displayNames.Count < 10_000) displayNames[display] = name;
             if (!r.IsEmptyElement)
             {
                 int depth = r.Depth;
@@ -777,6 +836,24 @@ public static partial class LegacySpreadsheets
             return result;
         }
 
+        // A conditional format's cell style (named by its display name) as the properties it sets itself or inherits from
+        // parents other than "Default"; null when there is no such style.
+        private WorkbookStyles.Dxf? ConditionStyle(string displayName)
+        {
+            string name = displayNames.GetValueOrDefault(displayName) ?? displayName;
+            var chain = new List<Props>();
+            for (string? n = name; n is not null && n != "Default" && chain.Count < 16 && cellStyles.TryGetValue(n, out var p); n = p.Parent) chain.Add(p);
+            if (chain.Count == 0) return null;
+            string? Pick(Func<Props, string?> get) => chain.Select(get).FirstOrDefault(v => v is not null) is { Length: > 0 } v ? v : null;
+            bool? PickValue(Func<Props, bool?> get) => chain.Select(get).FirstOrDefault(v => v.HasValue);
+            return new WorkbookStyles.Dxf
+            {
+                Bold = PickValue(p => p.Bold), Italic = PickValue(p => p.Italic), Underline = PickValue(p => p.Underline), Strike = PickValue(p => p.Strike),
+                Color = Pick(p => p.Color), Fill = Pick(p => p.Fill),
+                Top = Pick(p => p.Top), Right = Pick(p => p.Right), Bottom = Pick(p => p.Bottom), Left = Pick(p => p.Left)
+            };
+        }
+
         // A length such as "2.258cm" in pixels at 96 dpi (font sizes in points use the same unit).
         private static double? Length(string? value)
         {
@@ -789,7 +866,7 @@ public static partial class LegacySpreadsheets
         private void ReadRow(XmlReader r, SheetBuilder sheet, int row, int rowRepeat, List<string?> columnDefaults)
         {
             int depth = r.Depth, column = 0;
-            var cells = new List<(int Column, string Text, char Align, int Style)>();
+            var cells = new List<(int Column, string Text, char Align, int Style, double? Number, bool Error)>();
             while (r.Read() && r.Depth > depth)
             {
                 if (r.NodeType != XmlNodeType.Element || r.Depth != depth + 1) continue;
@@ -800,19 +877,42 @@ public static partial class LegacySpreadsheets
                 int spanColumns = Repeat(r, "number-columns-spanned"), spanRows = Repeat(r, "number-rows-spanned");
                 if (r.LocalName == "table-cell" && (spanColumns > 1 || spanRows > 1) && column < Spreadsheets.MaxColumns && row < Spreadsheets.MaxStoredRows)
                     sheet.Sheet.Merges.Add([row, column, row + spanRows - 1, Math.Min(Spreadsheets.MaxColumns - 1, column + spanColumns - 1)]);
+                double? number = SavedNumber(r, type);
+                bool formula = r.GetAttribute("formula", TableNs) is not null;
                 string text = CellText(r, row, column);
+                bool error = formula && number is null && IsError(text);
                 char natural = type switch { "float" or "percentage" or "currency" or "date" or "time" => 'r', "boolean" => 'c', _ => 'l' };
                 if (text.Length > 0 || styles.Table[style].Visible)
-                    for (int k = 0; k < repeat && column + k < Spreadsheets.MaxColumns && k < 1024; k++) cells.Add((column + k, text, align == '\0' ? natural : align, style));
+                    for (int k = 0; k < repeat && column + k < Spreadsheets.MaxColumns && k < 1024; k++) cells.Add((column + k, text, align == '\0' ? natural : align, style, number, error));
                 column += repeat;
             }
             // Rows repeated with the same content (rare apart from empty rows) are laid out, within the row limit.
             for (int k = 0; k < rowRepeat && (k == 0 || cells.Count > 0); k++)
             {
                 if (row + k >= Spreadsheets.MaxStoredRows) { if (cells.Count > 0) sheet.Truncated = true; break; }
-                foreach (var (c, t, a, s) in cells) sheet.Add(row + k, c, t, a, s, ref budget);
+                foreach (var (c, t, a, s, number, error) in cells) { sheet.Add(row + k, c, t, a, s, ref budget); sheet.Value(row + k, c, number, error); }
             }
         }
+
+        // The saved number of a number, percentage, currency, date or time cell (dates as Excel serial numbers, times as
+        // fractions of a day), for conditional formatting.
+        private static double? SavedNumber(XmlReader r, string type)
+        {
+            try
+            {
+                return type switch
+                {
+                    "float" or "percentage" or "currency" when double.TryParse(r.GetAttribute("value", OfficeNs), NumberStyles.Float, CultureInfo.InvariantCulture, out double v) => v,
+                    "date" when DateTime.TryParse(r.GetAttribute("date-value", OfficeNs), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) => d.ToOADate(),
+                    "time" when r.GetAttribute("time-value", OfficeNs) is { } time => XmlConvert.ToTimeSpan(time).TotalDays,
+                    _ => null
+                };
+            }
+            catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException) { return null; }
+        }
+
+        private static bool IsError(string text) =>
+            text is "#NULL!" or "#DIV/0!" or "#VALUE!" or "#REF!" or "#NAME?" or "#NUM!" or "#N/A" || text.StartsWith("Err:", StringComparison.Ordinal);
 
         // The cell's paragraphs (text:p) joined by line breaks, with <text:s/>, <text:tab/> and <text:line-break/>. Pictures,
         // charts and shapes anchored to the cell are not cell text: frames are read as drawings, other shapes are skipped.

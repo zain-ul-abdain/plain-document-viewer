@@ -141,9 +141,8 @@ public static class Spreadsheets
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
             notes.AddRange(SheetDrawings.Notes(pictureBudget));
-            if (conditionalNotShown > 0)
-                notes.Add($"{conditionalNotShown} conditional formatting rule{(conditionalNotShown == 1 ? " is" : "s are")} not shown: {(conditionalNotShown == 1 ? "it is" : "they are")} written as formulas or depend on today's date, and this viewer never recalculates.");
-            if (conditionalOnLargeSheet) notes.Add($"Conditional formatting is not shown on sheets with more than {MaxRowsPerSheet:N0} rows.");
+            if (ConditionalFormats.Note(conditionalNotShown) is { } conditionalNote) notes.Add(conditionalNote);
+            if (conditionalOnLargeSheet) notes.Add(ConditionalFormats.LargeSheetNote);
             if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
             if (formulasWithoutResult > 0)
                 notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show{(formulasWithoutResult == 1 ? "s" : "")} \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");

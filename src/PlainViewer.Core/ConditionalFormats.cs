@@ -8,15 +8,19 @@ namespace PlainViewer.Core;
 // constants, text contains/begins/ends, blanks and errors, top and bottom (count or percent), above and below average,
 // duplicate and unique values, colour scales, data bars and icon sets. Rules apply in priority order; a property set by
 // a rule with higher priority is kept, and "stop if true" ends the rules for that cell. The results become ordinary
-// cell styles (WorkbookStyles.Intern), so the grid page only draws checked styles.
-internal sealed class ConditionalFormats(WorkbookStyles styles)
+// cell styles (WorkbookStyles.Intern), so the grid page only draws checked styles. The .xls and .ods readers add the
+// same kinds of rules (Add) from their own records, so every format is evaluated here.
+internal sealed class ConditionalFormats(WorkbookStyles? workbook = null)
 {
-    private const int MaxCellsPerRule = 250_000;
+    private const int MaxCellsPerRule = 250_000, MaxRules = 2_000;
 
-    private sealed class Rule
+    // One rule, in .xlsx terms: Type and Operator as in a cfRule, Formulas as constants ("35", "\"text\""), scale points
+    // as cfvo types and values.
+    public sealed class Rule
     {
         public string Type = "", Operator = "", Text = "";
-        public int Dxf = -1, Priority, Rank = 10, StdDev, MinLength = 10, MaxLength = 90;
+        public WorkbookStyles.Dxf? Format;
+        public int Priority, Rank = 10, StdDev, MinLength = 10, MaxLength = 90;
         public bool Stop, Percent, Bottom, Above = true, EqualAverage, Reverse, ShowValue = true;
         public readonly List<string> Formulas = [];
         public readonly List<(string Type, string Value, bool Gte)> Points = [];
@@ -35,8 +39,16 @@ internal sealed class ConditionalFormats(WorkbookStyles styles)
 
     private readonly List<Rule> rules = [];
     private readonly Dictionary<string, (int Min, int Max)> barLengths = [];   // Excel 2010 data bars by id
-    public int NotShown { get; private set; }             // rules that need formulas or today's date
+    public int NotShown { get; set; }                     // rules that need formulas or today's date, or are not drawn
     public bool Any => rules.Count > 0;
+
+    public const string LargeSheetNote = "Conditional formatting is not shown on sheets with more than 10,000 rows.";
+
+    public void Add(Rule rule) { if (rules.Count < MaxRules) rules.Add(rule); }
+
+    // The workbook notice for rules not shown.
+    public static string? Note(int notShown) => notShown <= 0 ? null :
+        $"{notShown} conditional formatting rule{(notShown == 1 ? " is" : "s are")} not shown: {(notShown == 1 ? "it is" : "they are")} written as formulas, depend on today's date or are of a kind this viewer does not draw, and this viewer never recalculates.";
 
     private static string? Attr(XElement e, string name) => e.Attribute(name)?.Value;
     private static int Int(XElement e, string name, int missing) => int.TryParse(Attr(e, name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : missing;
@@ -69,10 +81,11 @@ internal sealed class ConditionalFormats(WorkbookStyles styles)
         if (ranges.Count == 0) return;
         foreach (var e in Children(element, "cfRule").Take(200))
         {
+            int dxf = Int(e, "dxfId", -1);
             var rule = new Rule
             {
                 Type = Attr(e, "type") ?? "", Operator = Attr(e, "operator") ?? "", Text = Attr(e, "text") ?? "",
-                Dxf = Int(e, "dxfId", -1), Priority = Int(e, "priority", int.MaxValue), Stop = Flag(e, "stopIfTrue", false),
+                Format = dxf >= 0 && dxf < workbook!.Dxfs.Count ? workbook.Dxfs[dxf] : null, Priority = Int(e, "priority", int.MaxValue), Stop = Flag(e, "stopIfTrue", false),
                 Rank = Math.Clamp(Int(e, "rank", 10), 1, 1000), Percent = Flag(e, "percent", false), Bottom = Flag(e, "bottom", false),
                 Above = Flag(e, "aboveAverage", true), EqualAverage = Flag(e, "equalAverage", false), StdDev = Math.Clamp(Int(e, "stdDev", 0), 0, 3)
             };
@@ -83,40 +96,69 @@ internal sealed class ConditionalFormats(WorkbookStyles styles)
             if (scale is not null)
             {
                 foreach (var point in Children(scale, "cfvo").Take(5)) rule.Points.Add((Attr(point, "type") ?? "", Attr(point, "val") ?? "", Flag(point, "gte", true)));
-                foreach (var colour in Children(scale, "color").Take(3)) rule.Colours.Add(styles.Color(colour));
+                foreach (var colour in Children(scale, "color").Take(3)) rule.Colours.Add(workbook!.Color(colour));
                 rule.IconSet = Attr(scale, "iconSet") ?? rule.IconSet;
                 rule.Reverse = Flag(scale, "reverse", false);
                 rule.ShowValue = Flag(scale, "showValue", true);
                 rule.MinLength = Math.Clamp(Int(scale, "minLength", 10), 0, 100);
                 rule.MaxLength = Math.Clamp(Int(scale, "maxLength", 90), rule.MinLength, 100);
             }
-            rules.Add(rule);
+            Add(rule);
         }
     }
 
-    // Applies the rules to the sheet's cells (rows held in memory): numbers and errors are the cells' saved values.
+    // Applies the rules to an .xlsx sheet's cells (rows held in memory): numbers and errors are the cells' saved values.
     public void Apply(SortedDictionary<int, List<(int Column, string Text, char Align, int Style)>> rows,
         IReadOnlyDictionary<long, double> numbers, IReadOnlySet<long> errors, int maxColumn)
     {
-        if (rows.Count == 0 || maxColumn == 0) return;
-        int maxRow = rows.Keys.Max() - 1;                          // zero-based
+        if (rows.Count == 0) return;
         var positions = new Dictionary<long, (int Row, int Index)>();
-        foreach (var (row, cells) in rows)
-            for (int i = 0; i < cells.Count; i++) positions[Key(row - 1, cells[i].Column)] = (row, i);
-        string Text(long key) => positions.TryGetValue(key, out var at) ? rows[at.Row][at.Index].Text : "";
-        double? Number(long key) => numbers.TryGetValue(key, out double v) ? v : null;
+        var cells = new Dictionary<long, (string Text, CellStyle Style)>();
+        foreach (var (row, list) in rows)
+            for (int i = 0; i < list.Count; i++)
+            {
+                long key = Key(row - 1, list[i].Column);
+                positions[key] = (row, i); cells[key] = (list[i].Text, workbook!.Table[list[i].Style]);
+            }
+        foreach (var (row, column, style, hideText) in Evaluate(cells, numbers, errors, rows.Keys.Max() - 1, maxColumn))
+        {
+            int index = workbook!.Intern(style);
+            if (index < 0) continue;
+            if (positions.TryGetValue(Key(row, column), out var at))
+            {
+                var cell = rows[at.Row][at.Index];
+                rows[at.Row][at.Index] = (cell.Column, hideText ? "" : cell.Text, cell.Align, index);
+            }
+            else
+            {
+                if (!rows.TryGetValue(row + 1, out var list)) rows[row + 1] = list = [];
+                list.Add((column, "", 'l', index));
+            }
+        }
+    }
 
+    // The rules' results for a sheet's cells (Key -> text and style; maxRow zero-based, maxColumn a count): each changed
+    // cell with its new style, and whether its value is hidden (bars or icons shown without the value). Empty cells are
+    // listed only when the result is visible.
+    public List<(int Row, int Column, CellStyle Style, bool HideText)> Evaluate(IReadOnlyDictionary<long, (string Text, CellStyle Style)> cells,
+        IReadOnlyDictionary<long, double> numbers, IReadOnlySet<long> errors, int maxRow, int maxColumn)
+    {
+        var result = new List<(int, int, CellStyle, bool)>();
+        if (rules.Count == 0 || maxRow < 0 || maxColumn == 0) return result;
+        string Text(long key) => cells.TryGetValue(key, out var cell) ? cell.Text : "";
+        double? Number(long key) => numbers.TryGetValue(key, out double v) ? v : null;
         foreach (var rule in rules)
             if (rule.Type == "dataBar" && rule.Extension is { } id && barLengths.TryGetValue(id, out var lengths)) (rule.MinLength, rule.MaxLength) = lengths;
+
         var overlays = new Dictionary<long, Overlay>();
         foreach (var rule in rules.OrderBy(r => r.Priority))
         {
-            var cells = Cells(rule, maxRow, maxColumn).ToList();
-            if (cells.Count == 0) continue;
-            var values = cells.Select(Number).Where(v => v.HasValue).Select(v => v!.Value).ToList();
-            Func<long, Overlay, bool>? effect = Effect(rule, cells, values, Text, Number, errors);
+            var targets = Cells(rule, maxRow, maxColumn).ToList();
+            if (targets.Count == 0) continue;
+            var values = targets.Select(Number).Where(v => v.HasValue).Select(v => v!.Value).ToList();
+            Func<long, Overlay, bool>? effect = Effect(rule, targets, values, Text, Number, errors);
             if (effect is null) { NotShown++; continue; }
-            foreach (long key in cells)
+            foreach (long key in targets)
             {
                 if (overlays.TryGetValue(key, out var overlay) && overlay.Stopped) continue;
                 overlay ??= new Overlay();
@@ -128,23 +170,13 @@ internal sealed class ConditionalFormats(WorkbookStyles styles)
 
         foreach (var (key, overlay) in overlays)
         {
-            int row = (int)(key >> 16) + 1, column = (int)(key & 0xFFFF);
-            if (positions.TryGetValue(key, out var at))
-            {
-                var cell = rows[at.Row][at.Index];
-                int style = styles.Intern(Merge(styles.Table[cell.Style], overlay));
-                if (style >= 0) rows[at.Row][at.Index] = (cell.Column, overlay.HideText ? "" : cell.Text, cell.Align, style);
-            }
-            else
-            {
-                var merged = Merge(styles.Table[0], overlay);
-                if (!merged.Visible || styles.Intern(merged) is var style && style < 0) continue;
-                if (!rows.TryGetValue(row, out var list)) rows[row] = list = [];
-                list.Add((column, "", 'l', style));
-            }
+            int row = (int)(key >> 16), column = (int)(key & 0xFFFF);
+            bool present = cells.TryGetValue(key, out var cell);
+            var merged = Merge(present ? cell.Style : new CellStyle(), overlay);
+            if (present || merged.Visible) result.Add((row, column, merged, overlay.HideText));
         }
+        return result;
     }
-
     public static long Key(int row, int column) => ((long)row << 16) | (uint)column;
 
     // The rule's cells, clipped to the sheet's data.
@@ -165,7 +197,7 @@ internal sealed class ConditionalFormats(WorkbookStyles styles)
     private Func<long, Overlay, bool>? Effect(Rule rule, List<long> cells, List<double> values, Func<long, string> text,
         Func<long, double?> number, IReadOnlySet<long> errors)
     {
-        var dxf = rule.Dxf >= 0 && rule.Dxf < styles.Dxfs.Count ? styles.Dxfs[rule.Dxf] : null;
+        var dxf = rule.Format;
         Func<long, Overlay, bool> When(Func<long, bool> test) => (key, overlay) => { if (!test(key)) return false; ApplyDxf(dxf, overlay); return true; };
         bool Blank(long key) => text(key).Trim().Length == 0;
         if (rule.Type is "containsText" or "notContainsText" or "beginsWith" or "endsWith" && rule.Text.Length == 0) return null;
