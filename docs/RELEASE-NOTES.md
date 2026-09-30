@@ -1,6 +1,8 @@
 # Release notes
 
-## Next version (not yet released)
+## 0.6.0 — beta: row heights and conditional formatting in spreadsheets (September 2026)
+
+Install over any earlier beta; nothing needs uninstalling first.
 
 - **Excel row heights** (.xlsx, .xls and .ods): rows keep the heights saved in the file, so wrapped text shows in full lines and large text is no longer squeezed; pictures and charts sit on the real rows. Sheets with more than 10,000 rows keep even rows.
 - **Conditional formatting** in .xlsx and .ods files, and the value rules of .xls files: highlight rules (greater than, between, text contains, blanks, errors, top and bottom, above average, duplicates), colour scales, data bars and icon sets, worked out from the values saved in the file. Rules written as formulas, and rules about today's date, are not shown; a note counts them.
