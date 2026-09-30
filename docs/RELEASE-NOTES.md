@@ -2,6 +2,7 @@
 
 ## Next version (not yet released)
 
+- **Excel row heights** (.xlsx, .xls and .ods): rows keep the heights saved in the file, so wrapped text shows in full lines and large text is no longer squeezed; pictures and charts sit on the real rows. Sheets with more than 10,000 rows keep even rows.
 - A tidier toolbar: the text encoding and CSV delimiter lists appear only for files they apply to (the encoding for text, CSV, Markdown and data files; the delimiter for CSV), instead of greyed out everywhere else.
 
 ## 0.5.0 — beta: pictures and charts in .xls and .ods (September 2026)

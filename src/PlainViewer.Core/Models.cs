@@ -80,6 +80,10 @@ public sealed class SheetData
     public List<string> Align { get; set; } = [];
     public List<double> ColumnWidths { get; set; } = [];    // Excel character units; 0 means hidden
     public List<int> HiddenRows { get; set; } = [];         // Excel row numbers
+    // Row heights in points (Excel's default row is 15 points): the sheet's default, and the rows that differ from it
+    // (Excel row number -> height). The grid applies them to sheets held in memory; large sheets keep uniform rows.
+    public double DefaultRowHeight { get; set; } = 15;
+    public Dictionary<int, double> RowHeights { get; set; } = [];
     public List<int[]> Merges { get; set; } = [];           // [firstRow, firstColumn, lastRow, lastColumn], zero-based
     public string Notice { get; set; } = "";
     // Large sheets: every row is in a RowStore named Store (each stored row is [alignment, cell, cell, ...]);

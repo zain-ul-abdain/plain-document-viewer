@@ -20,6 +20,22 @@ let bigHits = null;                                  // search results for the a
 const columnName = index => { let name = ""; for (let v = index + 1; v > 0; v = Math.floor((v - 1) / 26)) name = String.fromCharCode(65 + (v - 1) % 26) + name; return name; };
 const pixels = width => width <= 0 ? 0 : Math.round(width * 7 + 5);   // Excel character width to pixels (Calibri 11, 96 DPI)
 
+// Row heights: an Excel row is its height in points × 4/3 pixels; this grid's default row is 22 pixels where Excel's is
+// 20, so heights and offsets within rows are scaled by 22/20. Large sheets (paged from the app) keep uniform rows.
+const SCALE = 22 / 20;
+function rowPixels(sheet, r) {
+  if (sheet.store) return 22;
+  const points = sheet.rowHeights?.[r + 1] ?? sheet.defaultRowHeight ?? 15;
+  return Math.max(0, Math.round(points * 4 / 3 * SCALE));
+}
+// The top of row r (zero-based) below the column letters, counting only rows that are shown.
+function rowTop(sheet, r) {
+  const hidden = sheet._hidden ??= new Set(sheet.hiddenRows);
+  const tops = sheet._tops ??= [22];
+  while (tops.length <= r) { const i = tops.length - 1; tops.push(tops[i] + (hidden.has(i + 1) ? 0 : rowPixels(sheet, i))); }
+  return tops[r];
+}
+
 function state() {
   const sheet = workbook.sheets[active];
   post({ type: "state", sheet: active + 1, sheets: workbook.sheets.length, name: sheet.name, scale: zoom });
@@ -160,11 +176,14 @@ function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
   const tr = document.createElement("tr");
   tr.dataset.r = r;
   if (hiddenRows.has(r + 1)) tr.hidden = true;
-  if (isFrozen) { tr.className = "frozen"; tr.style.setProperty("--top", `calc(var(--row) * ${r + 1})`); }
+  const height = rowPixels(sheet, r);
+  if (height === 0) tr.hidden = true; else if (height !== 22) tr.style.setProperty("--row-height", height + "px");
+  const frozenTop = big ? `calc(var(--row) * ${r + 1})` : `${rowTop(sheet, r)}px`;
+  if (isFrozen) { tr.className = "frozen"; tr.style.setProperty("--top", frozenTop); }
   const header = document.createElement("th");
   header.scope = "row";
   header.textContent = String(r + 1);
-  if (isFrozen) header.style.top = `calc(var(--row) * ${r + 1})`;
+  if (isFrozen) header.style.top = frozenTop;
   tr.append(header);
   const data = cellsOf(sheet, r);
   if (!data) { tr.classList.add("loading"); tr.setAttribute("aria-busy", "true"); }
@@ -185,6 +204,13 @@ function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
     const style = styleOf(c);
     if (style) applyStyle(td, style);
     const span = spans.get(key);
+    // Wrapped text shows as many lines as the row's height allows, as in Excel.
+    if (style?.wrap && !big) {
+      const box = document.createElement("div");
+      box.className = "lines"; box.textContent = values[c];
+      if (!span) box.style.maxHeight = Math.max(0, height - 2) + "px";
+      td.classList.add("wrap"); td.replaceChildren(box);
+    }
     if (span) { td.rowSpan = span[0]; td.colSpan = span[1]; td.classList.add("merged"); }
     else {
       // Like Excel, left-aligned text too long for its cell runs on over empty cells beside it.
@@ -192,7 +218,7 @@ function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
       if (extra > 0) { td.colSpan = extra + 1; td.classList.add("spill"); c += extra; }
     }
     if (+td.dataset.c < sheet.frozenColumns) { td.classList.add("frozen-col"); td.style.insetInlineStart = offsets[td.dataset.c] + "px"; }
-    if (isFrozen) td.style.top = `calc(var(--row) * ${r + 1})`;
+    if (isFrozen) td.style.top = frozenTop;
     if (big && bigHits?.set.has(key)) td.classList.add(key === current ? "current" : "hit");
     tr.append(td);
   }
@@ -213,7 +239,7 @@ function applyStyle(td, style) {
     s.backgroundColor = style.fill;
     if (!style.color) s.color = "#000000";                        // automatic text on a fill is black, as in Excel
   }
-  if (typeof style.size === "number" && style.size > 0) s.fontSize = `${Math.min(1.5, Math.max(0.6, style.size)) * 13}px`;
+  if (typeof style.size === "number" && style.size > 0) s.fontSize = `${Math.min(big ? 1.5 : 4, Math.max(0.6, style.size)) * 13}px`;
   if (FONT_NAME.test(style.font ?? "")) s.fontFamily = `"${style.font}", "Segoe UI", system-ui, sans-serif`;
   if (style.vAlign === "top" || style.vAlign === "middle") s.verticalAlign = style.vAlign;
   if (Number.isInteger(style.indent) && style.indent > 0) s.paddingInlineStart = `${4 + Math.min(15, style.indent) * 9}px`;
@@ -276,7 +302,6 @@ function renderLarge(sheet) {
 // ---- Pictures and charts, drawn over the cells where the workbook places them. ----
 
 const MEDIA = /^media-\d+-\d+\.(png|jpeg|gif|bmp|webp|avif|ico)$/;
-const EXCEL_ROW = 20;                                 // Excel's default row height in pixels; this grid's rows are 22
 
 // The table inside a positioned wrapper with a layer of pictures and charts. Rows are all var(--row) high, so a
 // cell's position follows from the column widths and the number of hidden rows above it.
@@ -287,17 +312,17 @@ function withDrawings(sheet, table, offsets) {
   if (sheet.rightToLeft) wrap.dir = "rtl";
   const layer = document.createElement("div");
   layer.className = "layer";
-  const rowHeight = 22, hidden = [...new Set(sheet.hiddenRows)].map(r => r - 1).sort((a, b) => a - b);
+  const hidden = new Set(sheet.hiddenRows);
   const columnCount = sheet.columnWidths.length;
   const x = (c, offset) => {
     let left = c < columnCount ? offsets[c] : (offsets[columnCount - 1] ?? 52) + pixels(sheet.columnWidths[columnCount - 1] ?? 8.43) + (c - columnCount) * pixels(8.43);
     return left + Math.min(offset, pixels(sheet.columnWidths[c] ?? 8.43));
   };
-  const y = (r, offset) => rowHeight + (r - lowerBound(hidden, r)) * rowHeight + (hidden.includes(r) ? 0 : Math.min(rowHeight, offset * rowHeight / EXCEL_ROW));
+  const y = (r, offset) => rowTop(sheet, r) + (hidden.has(r + 1) ? 0 : Math.min(rowPixels(sheet, r), offset * SCALE));
   for (const p of sheet.pictures) {
     const left = x(p.column, p.columnOffset), top = y(p.row, p.rowOffset);
     const width = p.toColumn >= 0 ? x(p.toColumn, p.toColumnOffset) - left : p.width;
-    const height = p.toRow >= 0 ? y(p.toRow, p.toRowOffset) - top : p.height * rowHeight / EXCEL_ROW;
+    const height = p.toRow >= 0 ? y(p.toRow, p.toRowOffset) - top : p.height * SCALE;
     if (!(width > 1 && height > 1)) continue;
     let item;
     if (p.chart) item = chartElement(p.chart, width, height);

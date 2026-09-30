@@ -86,21 +86,26 @@ internal static class SheetDrawings
         if (budget.Linked > 0) yield return $"{budget.Linked} linked picture{(budget.Linked == 1 ? " is" : "s are")} stored outside this file and {(budget.Linked == 1 ? "is" : "are")} not loaded.";
     }
 
-    // Grid geometry shared with the page (sheet.js): a column is width × 7 + 5 pixels, a row 20 Excel pixels.
-    public const double RowPixels = 20;
+    // Grid geometry shared with the page (sheet.js), in Excel pixels: a column is width × 7 + 5 pixels, a row its height
+    // in points × 4/3 (the page scales both to its own row size).
     public static double ColumnPixels(SheetData sheet, int column)
     {
         double width = column < sheet.ColumnWidths.Count ? sheet.ColumnWidths[column] : 8.43;
         return width <= 0 ? 0 : Math.Round(width * 7 + 5);
     }
 
+    public static double RowPixels(SheetData sheet, int row) =>
+        (sheet.RowHeights.TryGetValue(row + 1, out double points) ? points : sheet.DefaultRowHeight) * 4 / 3;
+
     // A position in pixels from the sheet's top-left corner as a cell and an offset within it.
     public static (int Column, double ColumnOffset, int Row, double RowOffset) CellAt(SheetData sheet, double x, double y)
     {
         int column = 0;
         while (column < Spreadsheets.MaxColumns - 1 && x >= ColumnPixels(sheet, column)) { x -= ColumnPixels(sheet, column); column++; }
-        int row = (int)Math.Min(Spreadsheets.MaxStoredRows - 1, Math.Floor(Math.Max(0, y) / RowPixels));
-        return (column, Math.Max(0, x), row, Math.Max(0, y) - row * RowPixels);
+        int row = 0;
+        y = Math.Max(0, y);
+        while (row < Spreadsheets.MaxStoredRows - 1 && y >= RowPixels(sheet, row)) { y -= RowPixels(sheet, row); row++; }
+        return (column, Math.Max(0, x), row, y);
     }
 
     private static string? Attribute(XElement? element, string name) => element?.Attributes().FirstOrDefault(a => a.Name.LocalName == name)?.Value;

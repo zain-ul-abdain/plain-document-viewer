@@ -377,6 +377,13 @@
         ],
         "hiddenColumns": [
           "E"
+        ],
+        "defaultRowHeight": 15,
+        "rowHeights": [
+          {
+            "row": 4,
+            "points": 45
+          }
         ]
       },
       "rules": {
@@ -2329,6 +2336,13 @@
             "ref": "A1",
             "align": "c"
           }
+        ],
+        "defaultRowHeight": 12.82,
+        "rowHeights": [
+          {
+            "row": 2,
+            "points": 45
+          }
         ]
       },
       "rules": {
@@ -2336,7 +2350,7 @@
         "sourceUnchanged": true,
         "filesBesideSource": "none"
       },
-      "notes": "Named style with a parent, automatic styles and a column default style."
+      "notes": "Named style with a parent, automatic styles and a column default style. Row styles as LibreOffice writes them: the usual 0.178in rows (the default) and a 0.625in (45 pt) row 2."
     },
     {
       "id": "converted-ods-large-12000-rows-ods",
@@ -2794,6 +2808,12 @@
         ],
         "hiddenColumns": [
           "E"
+        ],
+        "rowHeights": [
+          {
+            "row": 4,
+            "points": 45
+          }
         ]
       },
       "rules": {
@@ -2801,7 +2821,7 @@
         "sourceUnchanged": true,
         "filesBesideSource": "none"
       },
-      "notes": "The styles workbook as .xls: fonts, fills, borders, alignment."
+      "notes": "The styles workbook as .xls: fonts, fills, borders, alignment, row heights."
     },
     {
       "id": "converted-xls-large-12000-rows-xls",

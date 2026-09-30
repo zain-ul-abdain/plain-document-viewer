@@ -511,6 +511,11 @@ public static partial class LegacySpreadsheets
                         break;
                     case 0x0208 when length >= 16:
                         if ((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 12)) & 0x0020) != 0) sheet.Sheet.HiddenRows.Add(Row() + 1);
+                        // ROW: the height in twips (1/20 point) in the low 15 bits.
+                        Spreadsheets.RowHeight(sheet.Sheet, Row() + 1, (BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 6)) & 0x7FFF) / 20.0);
+                        break;
+                    case 0x0225 when length >= 4:                                               // DEFAULTROWHEIGHT, in twips
+                        if (BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2)) is > 0 and < 8200 and var twips) sheet.Sheet.DefaultRowHeight = twips / 20.0;
                         break;
                     case 0x007D when length >= 10:
                         {
@@ -566,6 +571,9 @@ public static partial class LegacySpreadsheets
         private readonly SheetDrawings.Budget pictureBudget = new();
         private List<SheetPicture> pictures = [], pageAnchored = [];
         private int sheetIndex;
+        private readonly Dictionary<string, double> rowStyleHeights = [];            // row style -> height in points
+        private readonly List<(int Row, int Count, double Points)> rowHeights = [];  // the current sheet's styled rows
+        private readonly Dictionary<double, int> heightCounts = [];                   // height -> number of rows
 
         // Properties a cell style sets itself (null: inherited from its parent).
         private sealed class Props
@@ -611,7 +619,7 @@ public static partial class LegacySpreadsheets
                                 string name = r.GetAttribute("name", TableNs) ?? $"Sheet{view.Sheets.Count + hidden + 1}";
                                 if (hiddenTables.Contains(r.GetAttribute("style-name", TableNs) ?? "")) { hidden++; r.Skip(); continue; }
                                 sheet = new SheetBuilder(name, view.Sheets.Count, storeFolder, styles); row = -1; columnDefaults.Clear();
-                                sheetIndex = view.Sheets.Count; pictures = []; pageAnchored = [];
+                                sheetIndex = view.Sheets.Count; pictures = []; pageAnchored = []; rowHeights.Clear(); heightCounts.Clear();
                                 if (frozen.TryGetValue(name, out var split)) { sheet.Sheet.FrozenColumns = split.Columns; sheet.Sheet.FrozenRows = split.Rows; }
                                 if (r.IsEmptyElement) { view.Sheets.Add(sheet.Build()); sheet.Dispose(); sheet = null; }
                                 break;
@@ -638,6 +646,11 @@ public static partial class LegacySpreadsheets
                                     if (r.IsEmptyElement) { row += repeat; break; }
                                     row++;
                                     if (hiddenRow) sheet.Sheet.HiddenRows.Add(row + 1);
+                                    if (rowStyleHeights.TryGetValue(r.GetAttribute("style-name", TableNs) ?? "", out double points))
+                                    {
+                                        heightCounts[points] = heightCounts.GetValueOrDefault(points) + repeat;
+                                        if (repeat <= 1000) rowHeights.Add((row + 1, repeat, points));
+                                    }
                                     ReadRow(r, sheet, row, repeat, columnDefaults);
                                     if (repeat > 1) row += repeat - 1;
                                 }
@@ -658,6 +671,13 @@ public static partial class LegacySpreadsheets
         {
             var built = sheet.Build();
             truncated |= sheet.Truncated; stored |= built.Store.Length > 0;
+            // Every row has a row style: the most common height is the sheet's default, the others are recorded.
+            if (heightCounts.Count > 0)
+            {
+                built.DefaultRowHeight = heightCounts.MaxBy(pair => pair.Value).Key;
+                foreach (var (first, count, points) in rowHeights)
+                    for (int k = 0; k < count; k++) Spreadsheets.RowHeight(built, first + k, points);
+            }
             foreach (var picture in pageAnchored)
                 (picture.Column, picture.ColumnOffset, picture.Row, picture.RowOffset) = SheetDrawings.CellAt(built, picture.ColumnOffset, picture.RowOffset);
             built.Pictures = pictures;
@@ -687,6 +707,8 @@ public static partial class LegacySpreadsheets
                     {
                         case "table-column-properties" when Length(r.GetAttribute("column-width", StyleNs)) is double px:
                             columnWidths[name] = Math.Max(0, Math.Round((px - 5) / 7, 2)); break;
+                        case "table-row-properties" when Length(r.GetAttribute("row-height", StyleNs)) is double rowPx:
+                            rowStyleHeights[name] = Math.Round(rowPx * 72 / 96, 2); break;
                         case "table-properties" when r.GetAttribute("display", TableNs) == "false": hiddenTables.Add(name); break;
                         case "text-properties" when cell:
                             if (r.GetAttribute("font-weight", FoNs) is { } weight) props.Bold = weight == "bold" || (int.TryParse(weight, out int w) && w >= 600);

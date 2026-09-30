@@ -51,6 +51,7 @@ function stylesWorkbook() {
   set("A5", "Hello spill: this text is longer than its column and runs over the empty cells beside it", {});
   set("A6", "No room to spill here", {}); set("B6", "Neighbour", {});
   set("F1", "After hidden E", {});
+  ws.getRow(4).height = 45;                                  // tall enough for D4's wrapped text
   return wb;
 }
 
@@ -92,7 +93,7 @@ export async function generateXlsx({ large }) {
           { ref: "A3", top: "1 solid #0000ff", bottom: "3 double #0000ff", left: "2 solid #000000", right: "1 dashed #ff0000" },
           { ref: "A4", indent: 2 }, { ref: "B4", size: 1.455 }, { ref: "C4", font: "Consolas" }, { ref: "D4", wrap: true, vAlign: "top" }],
         align: [{ ref: "B3", align: "c" }, { ref: "C3", align: "r" }, { ref: "D3", align: "l" }],
-        hiddenColumns: ["E"] },
+        hiddenColumns: ["E"], defaultRowHeight: 15, rowHeights: [{ row: 4, points: 45 }] },
       rules: SAFE_RULES, notes: "Theme fill: accent1 of the Office 2007 theme exceljs writes (#4f81bd) lightened by 40% is #95b3d7, as Excel shows it. Wrapped text shows its first line (row heights are not applied). A5 must spill over B5:D5; A6 must not." });
   }
   // Simple

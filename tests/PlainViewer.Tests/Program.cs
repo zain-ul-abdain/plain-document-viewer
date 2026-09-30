@@ -306,6 +306,16 @@ try
                 if (expect.TryGetProperty("hiddenColumns", out var hiddenColumns))
                     foreach (var letter in hiddenColumns.EnumerateArray())
                     { Check(Spreadsheets.TryCell(letter.GetString() + "1", out _, out int column)); Check(view.Sheets[0].ColumnWidths[column] == 0); }
+                // Row heights of the first sheet, in points: its default and the rows that differ.
+                if (expect.TryGetProperty("defaultRowHeight", out var defaultHeight) && Math.Abs(view.Sheets[0].DefaultRowHeight - defaultHeight.GetDouble()) > 0.1)
+                    throw new Exception($"Default row height: got {view.Sheets[0].DefaultRowHeight}");
+                if (expect.TryGetProperty("rowHeights", out var heights))
+                    foreach (var item in heights.EnumerateArray())
+                    {
+                        int number = item.GetProperty("row").GetInt32();
+                        if (!view.Sheets[0].RowHeights.TryGetValue(number, out double points) || Math.Abs(points - item.GetProperty("points").GetDouble()) > 0.5)
+                            throw new Exception($"Row {number} height: got {(view.Sheets[0].RowHeights.TryGetValue(number, out double got) ? got : view.Sheets[0].DefaultRowHeight)}");
+                    }
                 if (expect.TryGetProperty("rightToLeft", out var rtl))
                     Check(rtl.EnumerateArray().All(n => view.Sheets.Single(s => s.Name == n.GetString()).RightToLeft));
                 // Pictures (written to the work folder under checked names) and charts ("type:title:series").

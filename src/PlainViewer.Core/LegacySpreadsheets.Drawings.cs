@@ -287,9 +287,9 @@ public static partial class LegacySpreadsheets
                 var placed = new SheetPicture
                 {
                     Column = a[0], ColumnOffset = Math.Min(a[1], 1024) / 1024.0 * SheetDrawings.ColumnPixels(sheet, a[0]),
-                    Row = a[2], RowOffset = Math.Min(a[3], 256) / 256.0 * SheetDrawings.RowPixels,
+                    Row = a[2], RowOffset = Math.Min(a[3], 256) / 256.0 * SheetDrawings.RowPixels(sheet, a[2]),
                     ToColumn = a[4], ToColumnOffset = Math.Min(a[5], 1024) / 1024.0 * SheetDrawings.ColumnPixels(sheet, a[4]),
-                    ToRow = a[6], ToRowOffset = Math.Min(a[7], 256) / 256.0 * SheetDrawings.RowPixels
+                    ToRow = a[6], ToRowOffset = Math.Min(a[7], 256) / 256.0 * SheetDrawings.RowPixels(sheet, a[6])
                 };
                 if (kind == 5 && chartAt >= 0 && charts.TryGetValue(chartAt, out var spec)) { result.Add(placed); pendingCharts.Add((placed, spec)); }
                 else if (kind == 8)

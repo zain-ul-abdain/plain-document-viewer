@@ -292,6 +292,7 @@ public static class Spreadsheets
                     case "sheetFormatPr":
                         if (r.GetAttribute("defaultColWidth") is { } dw) defaultWidth = ParseDouble(dw);
                         else if (r.GetAttribute("baseColWidth") is { } bw) defaultWidth = ParseDouble(bw) + 0.71;
+                        if (r.GetAttribute("defaultRowHeight") is { } dh && ParseDouble(dh) is > 0 and < 410 and var height) sheet.DefaultRowHeight = height;
                         break;
                     case "col":
                         if (int.TryParse(r.GetAttribute("min"), out int min) && int.TryParse(r.GetAttribute("max"), out int max))
@@ -309,6 +310,8 @@ public static class Spreadsheets
                         if (store is not null && rowNumber <= stored)
                             throw new DocumentException("This workbook lists the rows of a large sheet out of order, which this viewer cannot show.");
                         if (r.GetAttribute("hidden") is "1" or "true") sheet.HiddenRows.Add(rowNumber);
+                        // The saved height (Excel also saves the height it fitted to wrapped text or larger fonts).
+                        if (r.GetAttribute("ht") is { } ht) RowHeight(sheet, rowNumber, ParseDouble(ht));
                         if (r.IsEmptyElement) break;
                         var cells = ReadRow(r, rowNumber, ref maxColumn, limited: store is null);
                         if (store is not null) Store(store, ref stored, rowNumber, cells);
@@ -473,6 +476,13 @@ public static class Spreadsheets
     }
 
     private static double ParseDouble(string? text) => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : 0;
+
+    // Records a row's height in points when it differs from the sheet's default (Excel allows up to 409 points).
+    internal static void RowHeight(SheetData sheet, int row, double points)
+    {
+        if (!double.IsFinite(points) || points < 0 || points > 409 || Math.Abs(points - sheet.DefaultRowHeight) < 0.1) return;
+        if (sheet.RowHeights.Count < 100_000) sheet.RowHeights[row] = Math.Round(points, 2);
+    }
 
     public static bool TryCell(string reference, out int row, out int column)
     {

@@ -103,10 +103,14 @@ export async function generateConverted() {
   const SNS = NS.replace(' office:version="1.3"', "");
   write("ods/styles.ods", await odf("ods",
     `<office:spreadsheet><table:table table:name="Styles"><table:table-column/><table:table-column table:default-cell-style-name="ce1"/>` +
-    `<table:table-row><table:table-cell table:style-name="ce2" office:value-type="string"><text:p>Hello header</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Plain</text:p></table:table-cell></table:table-row>` +
-    `<table:table-row><table:table-cell table:style-name="ce1" office:value-type="string"><text:p>Boxed</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Column default</text:p></table:table-cell></table:table-row>` +
+    `<table:table-row table:style-name="ro1"><table:table-cell table:style-name="ce2" office:value-type="string"><text:p>Hello header</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Plain</text:p></table:table-cell></table:table-row>` +
+    `<table:table-row table:style-name="ro2"><table:table-cell table:style-name="ce1" office:value-type="string"><text:p>Boxed</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Column default</text:p></table:table-cell></table:table-row>` +
+    `<table:table-row table:style-name="ro1"><table:table-cell office:value-type="string"><text:p>Third</text:p></table:table-cell></table:table-row>` +
+    `<table:table-row table:style-name="ro1" table:number-rows-repeated="1000"><table:table-cell table:number-columns-repeated="2"/></table:table-row>` +
     `</table:table></office:spreadsheet>`,
-    { styles: `<style:style style:name="ce1" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties fo:border="0.74pt solid #ff0000"/><style:text-properties fo:font-style="italic"/></style:style>` +
+    { styles: `<style:style style:name="ro1" style:family="table-row"><style:table-row-properties style:row-height="0.178in" style:use-optimal-row-height="true"/></style:style>` +
+        `<style:style style:name="ro2" style:family="table-row"><style:table-row-properties style:row-height="0.625in" style:use-optimal-row-height="false"/></style:style>` +
+        `<style:style style:name="ce1" style:family="table-cell" style:parent-style-name="Default"><style:table-cell-properties fo:border="0.74pt solid #ff0000"/><style:text-properties fo:font-style="italic"/></style:style>` +
         `<style:style style:name="ce2" style:family="table-cell" style:parent-style-name="Heading"><style:paragraph-properties fo:text-align="center"/></style:style>`,
       extra: { "styles.xml": `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${SNS} office:version="1.3"><office:styles>` +
         `<style:style style:name="Default" style:family="table-cell"><style:text-properties fo:font-size="10pt" fo:color="#000000"/></style:style>` +
@@ -114,7 +118,7 @@ export async function generateConverted() {
         `</office:styles></office:document-styles>` } }));
   rec("ods/styles.ods", "ods", "complex", { result: "open", kind: "sheet", sheets: ["Styles"],
     styles: [{ ref: "A1", bold: true, fill: "#1d4ed8", color: "#ffffff" }, { ref: "A2", italic: true, top: "1 solid #ff0000", left: "1 solid #ff0000" }, { ref: "B2", italic: true }, { ref: "B1", italic: true }],
-    align: [{ ref: "A1", align: "c" }] }, own, { notes: "Named style with a parent, automatic styles and a column default style." });
+    align: [{ ref: "A1", align: "c" }], defaultRowHeight: 12.82, rowHeights: [{ row: 2, points: 45 }] }, own, { notes: "Named style with a parent, automatic styles and a column default style. Row styles as LibreOffice writes them: the usual 0.178in rows (the default) and a 0.625in (45 pt) row 2." });
   // 12,000 rows: past the 10,000 kept in memory, so later rows come from the disk-backed row store.
   const bigRows = Array.from({ length: 12000 }, (_, i) => `<table:table-row>${cell(i === 0 ? "Hello big sheet" : `Row ${i + 1}`)}${cell(i + 1)}</table:table-row>`).join("");
   write("ods/large-12000-rows.ods", await odf("ods", `<office:spreadsheet><table:table table:name="Big">${bigRows}</table:table></office:spreadsheet>`));
@@ -167,7 +171,7 @@ export async function generateConverted() {
     ["xls/styles.xls", "xls", "complex", { result: "open", kind: "sheet", sheets: ["Styles"],
       styles: [{ ref: "A1", bold: true, color: "#c00000" }, { ref: "B1", italic: true }, { ref: "C1", underline: true }, { ref: "D1", strike: true },
         { ref: "A2", fill: "#ffff00" }, { ref: "C2", fill: "#00b050" }, { ref: "A3", bottom: "3 double #0000ff", left: "2 solid #000000" }, { ref: "B4", size: 1.455 }, { ref: "D4", wrap: true, vAlign: "top" }],
-      align: [{ ref: "B3", align: "c" }, { ref: "C3", align: "r" }], hiddenColumns: ["E"] }, "The styles workbook as .xls: fonts, fills, borders, alignment."],
+      align: [{ ref: "B3", align: "c" }, { ref: "C3", align: "r" }], hiddenColumns: ["E"], rowHeights: [{ row: 4, points: 45 }] }, "The styles workbook as .xls: fonts, fills, borders, alignment, row heights."],
     ["xls/large-12000-rows.xls", "xls", "large", { result: "open", kind: "sheet", sheets: ["Big"], cells: [{ sheet: "Big", ref: "A1", text: "Hello big sheet" }], storedRows: 12000, lastRow: "Row 12000" }, "12,000 rows: rows past 10,000 stream to the row store."],
     ["xls/drawings.xls", "xls", "complex", { result: "open", kind: "sheet", sheets: ["Sales", "Trend"], cells: [{ sheet: "Sales", ref: "A7", text: "Hello pictures" }],
       drawings: [{ sheet: "Sales", pictures: 1, charts: ["column:Sales by month:2", "pie:January share:1"], values: ["120,150,90,170", "80,95,130,110"], categories: "Jan,Feb,Mar,Apr", values2: ["120,80"], categories2: "North,South" }, { sheet: "Trend", pictures: 0, charts: ["line:Trend:2"] }] },
