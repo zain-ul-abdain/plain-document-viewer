@@ -96,6 +96,42 @@ export async function generateXlsx({ large }) {
         hiddenColumns: ["E"], defaultRowHeight: 15, rowHeights: [{ row: 4, points: 45 }] },
       rules: SAFE_RULES, notes: "Theme fill: accent1 of the Office 2007 theme exceljs writes (#4f81bd) lightened by 40% is #95b3d7, as Excel shows it. Wrapped text shows its first line (row heights are not applied). A5 must spill over B5:D5; A6 must not." });
   }
+  // Conditional formatting, worked out from saved values; the expression rule needs a formula and is not shown.
+  {
+    const wb = workbook();
+    const ws = wb.addWorksheet("Rules");
+    ws.getRow(1).values = ["Hello: over 35", "Colour scale", "Data bar", "Icons", "Text", "Formula rule"];
+    const words = ["apple pie", "banana", "pineapple", "cherry", "grape", "melon"];
+    for (let i = 0; i < 6; i++) ws.getRow(i + 2).values = [10 * (i + 1), 10 * (i + 1), 10 * (i + 1), 10 * (i + 1), words[i], i];
+    const fill = argb => ({ type: "pattern", pattern: "solid", bgColor: { argb } });
+    ws.addConditionalFormatting({ ref: "A2:A7", rules: [{ type: "cellIs", operator: "greaterThan", formulae: [35], priority: 1,
+      style: { fill: fill("FFFFC7CE"), font: { color: { argb: "FF9C0006" } } } }] });
+    ws.addConditionalFormatting({ ref: "B2:B7", rules: [{ type: "colorScale", priority: 2, cfvo: [{ type: "min" }, { type: "max" }],
+      color: [{ argb: "FFF8696B" }, { argb: "FF63BE7B" }] }] });
+    ws.addConditionalFormatting({ ref: "C2:C7", rules: [{ type: "dataBar", priority: 3, minLength: 0, maxLength: 100,
+      cfvo: [{ type: "min" }, { type: "max" }], color: { argb: "FF638EC6" } }] });
+    ws.addConditionalFormatting({ ref: "D2:D7", rules: [{ type: "iconSet", iconSet: "3Arrows", priority: 4,
+      cfvo: [{ type: "percent", value: 0 }, { type: "percent", value: 33 }, { type: "percent", value: 67 }] }] });
+    ws.addConditionalFormatting({ ref: "E2:E7", rules: [{ type: "containsText", operator: "containsText", text: "apple", priority: 5,
+      style: { font: { italic: true } } }] });
+    ws.addConditionalFormatting({ ref: "F2:F7", rules: [{ type: "expression", formulae: ["F2>2"], priority: 6, style: { fill: fill("FFFFEB9C") } }] });
+    // exceljs leaves out the text attribute that Excel writes on text rules; add it as Excel does.
+    const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+    const sheetXml = await zip.file("xl/worksheets/sheet1.xml").async("string");
+    zip.file("xl/worksheets/sheet1.xml", sheetXml.replace('type="containsText" dxfId="1"', 'type="containsText" dxfId="1" operator="containsText" text="apple"'));
+    write("xlsx/conditional.xlsx", await stable(await zip.generateAsync({ type: "nodebuffer" })));
+    record({ id: "xlsx-conditional", file: "xlsx/conditional.xlsx", format: "xlsx", category: "complex", producer, licence,
+      expect: { result: "open", sheets: ["Rules"], cells: [{ sheet: "Rules", ref: "A5", text: "40" }, { sheet: "Rules", ref: "E2", text: "apple pie" }],
+        styles: [
+          { ref: "A2", fill: null }, { ref: "A5", fill: "#ffc7ce", color: "#9c0006" },
+          { ref: "B2", fill: "#f8696b" }, { ref: "B3", fill: "#da7a6e" }, { ref: "B7", fill: "#63be7b" },
+          { ref: "C2", bar: "0 #638ec6" }, { ref: "C7", bar: "100 #638ec6" },
+          { ref: "D2", icon: "arrow-down red" }, { ref: "D4", icon: "arrow-right yellow" }, { ref: "D7", icon: "arrow-up green" },
+          { ref: "E2", italic: true }, { ref: "E3", italic: null }, { ref: "E4", italic: true },
+          { ref: "F7", fill: null }],
+        workbookNotice: "1 conditional formatting rule is not shown" },
+      rules: SAFE_RULES, notes: "Rules applied to saved values: cell value, colour scale, data bar, icon set, text contains. The formula (expression) rule is counted in the notice and not shown." });
+  }
   // Simple
   {
     const wb = workbook();

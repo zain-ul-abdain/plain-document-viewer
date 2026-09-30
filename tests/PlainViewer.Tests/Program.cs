@@ -254,6 +254,7 @@ try
                         if (actual != cell.GetProperty("text").GetString()) throw new Exception($"{sheet.Name}!{cell.GetProperty("ref").GetString()}: got '{actual}', expected '{cell.GetProperty("text").GetString()}'");
                     }
                 if (expect.TryGetProperty("notice", out var notice)) Check(view.Sheets[0].Notice == notice.GetString());
+                if (expect.TryGetProperty("workbookNotice", out var workbookNotice)) Check(view.Notice.Contains(workbookNotice.GetString()!, StringComparison.Ordinal));
                 Check(expect.TryGetProperty("macrosRemoved", out _) == view.Notice.Contains("macros"));
                 // Long sheets: with a store folder every row streams to the row store; the last row is read back from it.
                 if (expect.TryGetProperty("storedRows", out var storedRows))
@@ -293,7 +294,13 @@ try
                         var actual = System.Text.Json.JsonSerializer.SerializeToElement(view.CellStyles[Layout(reference).Style], camel);
                         foreach (var property in item.EnumerateObject().Where(p => p.Name != "ref"))
                         {
-                            var got = actual.GetProperty(property.Name);
+                            // null: the cell must not have that property.
+                            if (property.Value.ValueKind == System.Text.Json.JsonValueKind.Null)
+                            {
+                                if (actual.TryGetProperty(property.Name, out var present)) throw new Exception($"{reference} {property.Name}: got {present}, expected none");
+                                continue;
+                            }
+                            if (!actual.TryGetProperty(property.Name, out var got)) throw new Exception($"{reference} {property.Name}: missing, expected {property.Value}");
                             bool same = property.Value.ValueKind == System.Text.Json.JsonValueKind.Number
                                 ? got.ValueKind == System.Text.Json.JsonValueKind.Number && Math.Abs(got.GetDouble() - property.Value.GetDouble()) < 0.01
                                 : got.ToString() == property.Value.ToString();

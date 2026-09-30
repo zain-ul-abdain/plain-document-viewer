@@ -282,3 +282,10 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **0.5.0** is built by GitHub Actions (unsigned until SignPath is set up) and tested in Windows Sandbox before publishing.
 - **0.5.0 published** with Zain's approval: https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.5.0 (tag at 3f713b7). The installer is the one GitHub Actions built (run 36636606446, SHA-256 a76d7bf4...0b0f); it passed the Windows Sandbox clean-PC test before publishing.
 - **Store preparation:** docs/STORE-LISTING.md (text), docs/images/store (logo and four screenshots). New sample files (a presentation, Markdown notes) and charts in the budget workbook come from showcase.mjs; README shows the four new screenshots. Zain has not finished the developer registration in Partner Center.
+
+## Agent 2, 30 September 2026 (evening): Excel conditional formatting (not yet released)
+
+- `Core/ConditionalFormats.cs` applies an .xlsx sheet's conditional formatting to the saved values after the sheet is read (`Spreadsheets.ReadSheet` records saved numbers and error cells). Results become ordinary interned cell styles (`WorkbookStyles.Intern`; differential formats from `dxfs`), plus two new checked style fields: `Bar` ("<percent> #rrggbb") and `Icon` ("<shape> <colour>"), drawn by `Assets/sheet/sheet.js` (`applyStyle`, `icon`).
+- Not shown, counted in the workbook notice: expression rules, value rules comparing with a formula, date rules, and x14-only rules other than data bars (whose min/max lengths are taken from the x14 copy by id). Not applied to sheets over 10,000 rows (notice), nor to .xls/.ods yet.
+- Tests: `xlsx/conditional.xlsx`; the manifest's `styles` now accept `null` (property must be absent) and `workbookNotice`. See TEST-RESULTS.md. Version not bumped; installer not rebuilt.
+- **Open:** conditional formatting for .xls/.ods; Narrator and scaling checks (Zain); SignPath and Partner Center (Zain).

@@ -63,8 +63,12 @@ public sealed class CellStyle
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Right { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Bottom { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Left { get; set; }
-    // A fill or border shows even in an empty cell.
-    public bool Visible => Fill is not null || Top is not null || Right is not null || Bottom is not null || Left is not null;
+    // From conditional formatting: a data bar ("<percent 0-100> #rrggbb") and an icon ("<shape> <colour>", for example
+    // "arrow-up green"), both drawn by the grid page from these checked forms only.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Bar { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Icon { get; set; }
+    // A fill, border, bar or icon shows even in an empty cell.
+    public bool Visible => Fill is not null || Top is not null || Right is not null || Bottom is not null || Left is not null || Bar is not null || Icon is not null;
 }
 
 // Spreadsheet sheet as display text. Cells hold what Excel would show; formulas are never recalculated.

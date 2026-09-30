@@ -99,6 +99,8 @@ public static class Spreadsheets
         private bool date1904;
         private int cellBudget = MaxCellsPerWorkbook;
         private int formulasWithoutResult;
+        private int conditionalNotShown;                      // conditional formatting rules that need formulas or today's date
+        private bool conditionalOnLargeSheet;
         private bool truncated;
 
         public DocumentView Read()
@@ -139,6 +141,9 @@ public static class Spreadsheets
             }
             if (view.Sheets.Count == 0) throw new DocumentException("This workbook has no visible worksheets to show.");
             notes.AddRange(SheetDrawings.Notes(pictureBudget));
+            if (conditionalNotShown > 0)
+                notes.Add($"{conditionalNotShown} conditional formatting rule{(conditionalNotShown == 1 ? " is" : "s are")} not shown: {(conditionalNotShown == 1 ? "it is" : "they are")} written as formulas or depend on today's date, and this viewer never recalculates.");
+            if (conditionalOnLargeSheet) notes.Add($"Conditional formatting is not shown on sheets with more than {MaxRowsPerSheet:N0} rows.");
             if (hidden > 0) notes.Add(hidden == 1 ? "1 hidden sheet stays hidden." : $"{hidden} hidden sheets stay hidden.");
             if (formulasWithoutResult > 0)
                 notes.Add($"{formulasWithoutResult} formula cell{(formulasWithoutResult == 1 ? " has" : "s have")} no saved result and show{(formulasWithoutResult == 1 ? "s" : "")} \"{ResultUnavailable}\". Open the file in a spreadsheet application, recalculate and save it to see those values.");
@@ -268,6 +273,9 @@ public static class Spreadsheets
             int maxRow = 0, maxColumn = 0, rowNumber = 0, stored = 0;
             bool firstView = true, stopped = false;
             string? drawingId = null;
+            // Saved numbers and errors of cells held in memory, for conditional formatting (applied after the sheet).
+            var numbers = new Dictionary<long, double>(); var errors = new HashSet<long>();
+            var conditional = new ConditionalFormats(styles);
             // A long sheet switches to streaming its rows (in order) into a row store; rows read so far go first.
             RowStoreWriter? store = null;
             try
@@ -313,7 +321,7 @@ public static class Spreadsheets
                         // The saved height (Excel also saves the height it fitted to wrapped text or larger fonts).
                         if (r.GetAttribute("ht") is { } ht) RowHeight(sheet, rowNumber, ParseDouble(ht));
                         if (r.IsEmptyElement) break;
-                        var cells = ReadRow(r, rowNumber, ref maxColumn, limited: store is null);
+                        var cells = ReadRow(r, rowNumber, ref maxColumn, limited: store is null, store is null ? numbers : null, errors);
                         if (store is not null) Store(store, ref stored, rowNumber, cells);
                         else if (cells.Count > 0) { rows[rowNumber] = cells; maxRow = Math.Max(maxRow, rowNumber); }
                         continue;                                    // ReadRow leaves the reader after </row>
@@ -322,6 +330,11 @@ public static class Spreadsheets
                         break;
                     case "drawing":
                         drawingId = r.GetAttribute("id", RelationshipNs) ?? r.GetAttribute("id", StrictRelationshipNs);
+                        break;
+                    case "conditionalFormatting" when store is not null: conditionalOnLargeSheet = true; break;
+                    case "conditionalFormatting":
+                        // A subtree reader leaves the reader on the element's end; the loop's Read moves past it.
+                        using (var subtree = r.ReadSubtree()) conditional.Read(System.Xml.Linq.XElement.Load(subtree));
                         break;
                 }
                 r.Read();
@@ -335,6 +348,8 @@ public static class Spreadsheets
             }
             finally { store?.Dispose(); }
             if (drawingId is not null) sheet.Pictures = Drawing(part, drawingId, index);
+            if (conditional.Any && sheet.Store.Length == 0) conditional.Apply(rows, numbers, errors, maxColumn);
+            conditionalNotShown += conditional.NotShown;
 
             int totalRows = sheet.Store.Length > 0 ? stored : 0;
             maxRow = Math.Max(maxRow, sheet.FrozenRows);
@@ -397,7 +412,8 @@ public static class Spreadsheets
 
         // Reads one <row>; returns its cells and leaves the reader positioned after </row>. `limited`: count cells
         // against the workbook's in-memory budget (rows streamed to a row store are not limited by it).
-        private List<(int, string, char, int)> ReadRow(XmlReader r, int rowNumber, ref int maxColumn, bool limited)
+        private List<(int, string, char, int)> ReadRow(XmlReader r, int rowNumber, ref int maxColumn, bool limited,
+            Dictionary<long, double>? numbers = null, HashSet<long>? errors = null)
         {
             var cells = new List<(int, string, char, int)>();
             int column = -1;
@@ -424,6 +440,14 @@ public static class Spreadsheets
                     if (column < MaxColumns && (!limited || cellBudget > 0))
                     {
                         string text = Display(type, value, inline, formula, style, out char align);
+                        // The saved value itself, for conditional formatting.
+                        if (numbers is not null && numbers.Count < MaxCellsPerWorkbook)
+                        {
+                            long key = ConditionalFormats.Key(rowNumber - 1, column);
+                            if (type == "e") errors?.Add(key);
+                            else if (type is null or "n" && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double saved) && double.IsFinite(saved)) numbers[key] = saved;
+                            else if (type == "d" && DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var date)) numbers[key] = date.ToOADate() - (date1904 ? 1462 : 0);
+                        }
                         bool known = style >= 0 && style < styles.StyleIds.Count;
                         int look = known ? styles.StyleIds[style] : 0;
                         if (known && styles.Horizontal[style] != '\0') align = styles.Horizontal[style];

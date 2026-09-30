@@ -211,6 +211,7 @@ function row(sheet, r, spans, covered, hiddenRows, offsets, isFrozen) {
       if (!span) box.style.maxHeight = Math.max(0, height - 2) + "px";
       td.classList.add("wrap"); td.replaceChildren(box);
     }
+    if (style?.icon) { const mark = icon(style.icon); if (mark) td.prepend(mark); }
     if (span) { td.rowSpan = span[0]; td.colSpan = span[1]; td.classList.add("merged"); }
     else {
       // Like Excel, left-aligned text too long for its cell runs on over empty cells beside it.
@@ -247,6 +248,31 @@ function applyStyle(td, style) {
     const m = /^([123]) (solid|dashed|dotted|double) (#[0-9a-f]{6})$/.exec(value ?? "");
     if (m) s[`border${side}`] = `${m[1]}px ${m[2]} ${m[3]}`;
   }
+  // Data bar (conditional formatting): a bar of the given share of the cell, fading like Excel's gradient bars.
+  const bar = /^(\d{1,3}) (#[0-9a-f]{6})$/.exec(style.bar ?? "");
+  if (bar) {
+    const share = Math.min(100, Number(bar[1]));
+    s.backgroundImage = `linear-gradient(to right, ${bar[2]} 0%, ${bar[2]}40 ${share}%, transparent ${share}%)`;
+    s.backgroundSize = "100% 70%"; s.backgroundRepeat = "no-repeat"; s.backgroundPosition = "left center";
+  }
+}
+
+// Icon (conditional formatting icon sets): a coloured symbol before the value. Only known shapes and colours are drawn.
+const ICONS = {
+  "arrow-up": "↑", "arrow-down": "↓", "arrow-right": "→", "arrow-up-right": "↗", "arrow-down-right": "↘", circle: "●", flag: "⚑",
+  check: "✔", cross: "✖", exclamation: "!", "star-full": "★", "star-half": "★", "star-empty": "☆", "triangle-up": "▲", "triangle-down": "▼", dash: "▬",
+  "bar-0": "▁", "bar-1": "▂", "bar-2": "▄", "bar-3": "▆", "bar-4": "█", "quarter-0": "○", "quarter-1": "◔", "quarter-2": "◑", "quarter-3": "◕", "quarter-4": "●"
+};
+const ICON_COLOURS = { green: "#1e9e4a", yellow: "#e6a700", red: "#d9302c", gray: "#7f7f7f", black: "#262626", pink: "#f28b8b", blue: "#3b73c4" };
+function icon(value) {
+  const [shape, colour] = value.split(" ");
+  if (!(shape in ICONS) || !(colour in ICON_COLOURS)) return null;
+  const mark = document.createElement("span");
+  mark.className = "icon"; mark.textContent = ICONS[shape];
+  mark.style.color = ICON_COLOURS[colour];
+  if (shape === "star-half") mark.style.opacity = "0.55";
+  mark.setAttribute("aria-hidden", "true");
+  return mark;
 }
 
 const measure = document.createElement("canvas").getContext("2d");

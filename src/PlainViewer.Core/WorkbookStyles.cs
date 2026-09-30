@@ -59,13 +59,25 @@ internal sealed partial class WorkbookStyles
     {
         using (r)
         {
-            string section = "";                 // fonts, fills, borders, cellXfs (others, such as dxfs, are ignored)
+            string section = "";                 // fonts, fills, borders, cellXfs, dxfs (others are ignored)
             Font? font = null; string? fill = null; string?[]? border = null; string? edge = null;
+            Dxf? dxf = null; string part = "";   // dxfs: the format being read and its font, fill or border part
             (int NumberFormat, int Font, int Fill, int Border, char Horizontal, string? Vertical, bool Wrap, int Indent)? xf = null;
             while (r.Read())
             {
                 if (r.NodeType == XmlNodeType.EndElement)
                 {
+                    if (section == "dxfs")
+                    {
+                        switch (r.LocalName)
+                        {
+                            case "dxfs": section = ""; break;
+                            case "dxf" when dxf is not null: if (Dxfs.Count < 10_000) Dxfs.Add(dxf); dxf = null; break;
+                            case "font" or "fill" or "border": part = ""; break;
+                            case "left" or "right" or "top" or "bottom" or "start" or "end": edge = null; break;
+                        }
+                        continue;
+                    }
                     switch (r.LocalName)
                     {
                         case "fonts" or "fills" or "borders" or "cellXfs" when r.LocalName == section: section = ""; break;
@@ -81,9 +93,34 @@ internal sealed partial class WorkbookStyles
                 string name = r.LocalName;
                 bool empty = r.IsEmptyElement;
                 if (name == "numFmt" && int.TryParse(r.GetAttribute("numFmtId"), out int id) && r.GetAttribute("formatCode") is { } code) { CustomFormats[id] = code; continue; }
-                if (name is "fonts" or "fills" or "borders" or "cellXfs") { if (!empty) section = name; continue; }
+                if (name is "fonts" or "fills" or "borders" or "cellXfs" or "dxfs" && section == "") { if (!empty) section = name; continue; }
                 switch (section)
                 {
+                    // Formats used by conditional formatting rules: only what they set (a solid fill's colour is bgColor).
+                    case "dxfs":
+                        if (name == "dxf") { dxf = new Dxf(); if (empty) { Dxfs.Add(dxf); dxf = null; } }
+                        else if (dxf is null) break;
+                        else if (name is "font" or "fill" or "border") part = empty ? "" : name;
+                        else if (part == "font")
+                            switch (name)
+                            {
+                                case "b": dxf.Bold = On(r); break;
+                                case "i": dxf.Italic = On(r); break;
+                                case "u": dxf.Underline = r.GetAttribute("val") is not "none"; break;
+                                case "strike": dxf.Strike = On(r); break;
+                                case "color": dxf.Color = Color(r); break;
+                            }
+                        else if (part == "fill" && name == "bgColor") dxf.Fill = Color(r) ?? dxf.Fill;
+                        else if (part == "fill" && name == "fgColor") dxf.Fill ??= Color(r);
+                        else if (part == "border" && name is "left" or "right" or "top" or "bottom" or "start" or "end")
+                        {
+                            string? line = Line(r.GetAttribute("style"), "#000000");
+                            dxf.SetBorder(name, line);
+                            edge = line is null || empty ? null : name;
+                        }
+                        else if (part == "border" && edge is not null && name == "color" && Color(r) is { } lineColour && dxf.Border(edge) is { } current)
+                            dxf.SetBorder(edge, current[..current.LastIndexOf(' ')] + " " + lineColour);
+                        break;
                     case "fonts":
                         if (name == "font") { font = new Font(false, false, false, false, 0, null, null); if (empty) { fonts.Add(font); font = null; } }
                         else if (font is not null)
@@ -158,11 +195,33 @@ internal sealed partial class WorkbookStyles
             Wrap = xf.Wrap, VAlign = xf.Vertical, Indent = xf.Indent,
             Left = b?[0], Right = b?[1], Top = b?[2], Bottom = b?[3]
         };
+        StyleIds.Add(Intern(style));
+    }
+
+    // The style's number in Table, adding it if it is new (-1 when the table is full).
+    public const int MaxStyles = 30_000;
+    public int Intern(CellStyle style)
+    {
         string key = JsonSerializer.Serialize(style);
         if (known.Count == 0) known[JsonSerializer.Serialize(Table[0])] = 0;
-        if (!known.TryGetValue(key, out int index)) { index = known[key] = Table.Count; Table.Add(style); }
-        StyleIds.Add(index);
+        if (known.TryGetValue(key, out int index)) return index;
+        if (Table.Count >= MaxStyles) return -1;
+        index = known[key] = Table.Count; Table.Add(style);
+        return index;
     }
+
+    // A conditional format (dxf): only the properties it sets; null leaves the cell's own.
+    public sealed class Dxf
+    {
+        public bool? Bold, Italic, Underline, Strike;
+        public string? Color, Fill, Left, Right, Top, Bottom;
+        public string? Border(string side) => side switch { "left" or "start" => Left, "right" or "end" => Right, "top" => Top, _ => Bottom };
+        public void SetBorder(string side, string? line)
+        {
+            switch (side) { case "left" or "start": Left = line; break; case "right" or "end": Right = line; break; case "top": Top = line; break; default: Bottom = line; break; }
+        }
+    }
+    public readonly List<Dxf> Dxfs = [];
 
     private static bool On(XmlReader r, string attribute = "val", bool missing = true) =>
         r.GetAttribute(attribute) is not { } v ? missing : v is "1" or "true";
@@ -193,15 +252,18 @@ internal sealed partial class WorkbookStyles
     }
 
     // rgb, theme (with tint) or indexed colour; null for automatic or unknown.
-    private string? Color(XmlReader r)
+    private string? Color(XmlReader r) => Color(r.GetAttribute);
+    public string? Color(System.Xml.Linq.XElement e) => Color(name => e.Attribute(name)?.Value);
+
+    private string? Color(Func<string, string?> attribute)
     {
-        if (On(r, "auto", false)) return null;
-        string? colour = Hex(r.GetAttribute("rgb"));
-        if (colour is null && int.TryParse(r.GetAttribute("theme"), out int t) && t >= 0 && t < theme.Count)
+        if (attribute("auto") is "1" or "true") return null;
+        string? colour = Hex(attribute("rgb"));
+        if (colour is null && int.TryParse(attribute("theme"), out int t) && t >= 0 && t < theme.Count)
             colour = theme[t < 4 ? t ^ 1 : t];                      // Excel numbers lt1, dk1, lt2, dk2 first
-        if (colour is null && int.TryParse(r.GetAttribute("indexed"), out int i) && i >= 0 && i < Palette.Length) colour = Palette[i];
+        if (colour is null && int.TryParse(attribute("indexed"), out int i) && i >= 0 && i < Palette.Length) colour = Palette[i];
         if (colour is null) return null;
-        double tint = Number(r.GetAttribute("tint")?.TrimStart('-')) * (r.GetAttribute("tint")?.StartsWith('-') == true ? -1 : 1);
+        double tint = Number(attribute("tint")?.TrimStart('-')) * (attribute("tint")?.StartsWith('-') == true ? -1 : 1);
         return tint == 0 ? colour : Tint(colour, Math.Clamp(tint, -1, 1));
     }
 
