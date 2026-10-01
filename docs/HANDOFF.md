@@ -302,3 +302,9 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - With Zain's approval ("publish 0.6.0 once tests pass"): https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.6.0 (pre-release, tag at dc0a145) with the GitHub Actions installer (run 36738999923, unsigned), its .sha256, BETA.md and BETA-FEEDBACK.md. Windows Sandbox clean-PC test passed (TEST-RESULTS.md).
 - `scripts/sandbox-inner.ps1`: the network-adapter line is information only and no longer fails the run when CIM is refused; the three conditional formatting workbooks are opened too.
 - **Open for Zain:** SignPath application, Partner Center registration, Narrator and scaling checks.
+
+## Agent 2, 1 October 2026: worker failure tests
+
+- `tests/PlainViewer.Worker.Tests` (run by `scripts/test-worker.ps1`, now part of `package.ps1`'s gate) links `src/PlainViewer.App/WorkerClient.cs` and starts itself as a fake worker (`--fake-worker <mode>`) through `WorkerClient.CommandForTests`; `WorkerClient.Timeout` lets the hang test use 2 seconds. Modes: ok, job, crash, garbage, flood, child, memory, hang. The last two tests use the real worker build.
+- Fix: an empty or partial worker answer (crash, memory limit) now raises `WorkerClient.Stopped` instead of a JsonException that became the generic unexpected-problem message.
+- **Open:** source-handle race hardening (SUPPORT.md safety scope); Narrator and scaling checks, SignPath, Partner Center (Zain).

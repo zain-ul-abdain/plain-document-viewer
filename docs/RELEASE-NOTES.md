@@ -1,5 +1,9 @@
 # Release notes
 
+## Next version (not yet released)
+
+- Clearer message when the document worker stops unexpectedly (for example at its memory limit), instead of "an unexpected problem".
+
 ## 0.6.0 — beta: row heights and conditional formatting in spreadsheets (September 2026)
 
 Install over any earlier beta; nothing needs uninstalling first.

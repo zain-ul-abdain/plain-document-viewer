@@ -8,6 +8,13 @@ namespace PlainViewer.App;
 
 internal static class WorkerClient
 {
+    // How long one worker may take, and (tests only, tests/PlainViewer.Worker.Tests) a different program to start as the
+    // worker: its file name and first arguments.
+    internal static TimeSpan Timeout = TimeSpan.FromSeconds(20);
+    internal static string[]? CommandForTests { get; set; }
+
+    public const string Stopped = "The document worker stopped unexpectedly, possibly because the file needs more memory than the viewer allows for one document. Try again, or try a smaller file.";
+
     // Rows of CSV and large text files are written to a RowStore in `work`, which the caller deletes when done.
     public static Task<DocumentView> Load(string path, string encoding, string delimiter, string work, CancellationToken cancellation) =>
         Run([path, encoding, delimiter, work], cancellation);
@@ -18,12 +25,13 @@ internal static class WorkerClient
 
     private static async Task<DocumentView> Run(string[] arguments, CancellationToken cancellation)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(Timeout);
         var start = new ProcessStartInfo { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
         // Installed builds carry .NET with them and ship the worker as an .exe beside the app. Development builds run
         // the worker DLL with the local .NET host that scripts/env.ps1 sets.
         string published = Path.Combine(AppContext.BaseDirectory, "PlainViewer.Worker.exe");
-        if (File.Exists(published) && File.Exists(Path.ChangeExtension(published, ".dll"))) start.FileName = published;
+        if (CommandForTests is { Length: > 0 } command) { start.FileName = command[0]; foreach (var part in command.Skip(1)) start.ArgumentList.Add(part); }
+        else if (File.Exists(published) && File.Exists(Path.ChangeExtension(published, ".dll"))) start.FileName = published;
         else
         {
             start.FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet";
@@ -40,12 +48,15 @@ internal static class WorkerClient
             while ((count = await process.StandardOutput.ReadAsync(buffer, timeout.Token)) != 0)
             { if (text.Length + count > 32 * 1024 * 1024) throw new DocumentException("This document exceeds the preview display limit."); text.Append(buffer, 0, count); }
             await process.WaitForExitAsync(timeout.Token); await errorDrain;
-            var response = JsonSerializer.Deserialize<WorkerResponse>(text.ToString());
+            // A worker that crashed, or was stopped at the memory limit, leaves no answer or half of one.
+            WorkerResponse? response;
+            try { response = JsonSerializer.Deserialize<WorkerResponse>(text.ToString()); }
+            catch (JsonException) { throw new DocumentException(Stopped); }
             if (response?.Error is { } error) throw new DocumentException(error);
-            return response?.Document ?? throw new DocumentException("The document worker stopped before finishing. Try a smaller file.");
+            return response?.Document ?? throw new DocumentException(Stopped);
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
-        { throw new DocumentException("Opening took longer than 20 seconds. Try a smaller file."); }
+        { throw new DocumentException($"Opening took longer than {Timeout.TotalSeconds:0} seconds. Try a smaller file."); }
         finally { if (!process.HasExited) process.Kill(true); }
     }
 }

@@ -5,4 +5,5 @@
   <Project Path="tests/PlainViewer.Tests/PlainViewer.Tests.csproj" />
   <Project Path="tests/PlainViewer.Markdown.Tests/PlainViewer.Markdown.Tests.csproj" />
   <Project Path="tests/PlainViewer.OfficeSafety.Tests/PlainViewer.OfficeSafety.Tests.csproj" />
+  <Project Path="tests/PlainViewer.Worker.Tests/PlainViewer.Worker.Tests.csproj" />
 </Solution>
