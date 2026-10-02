@@ -318,3 +318,8 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 ## Agent 2, 2 October 2026: repository renamed
 
 - With Zain's approval the GitHub repository is now https://github.com/zain-ul-abdain/plain-viewer (was plain-document-viewer; GitHub redirects the old address). Links in tracked files were updated and `origin` points at the new address. Local folder names are unchanged. Use the new name in the SignPath application.
+
+## Agent 2, 2 October 2026 (later): whole-column and whole-row formatting; SignPath submitted
+
+- Zain submitted the SignPath Foundation application (repository plain-viewer, GitHub 2FA on); SignPath acknowledged it and will reply within a few business days.
+- `Spreadsheets.DefaultStyles` (.xlsx) and `SheetBuilder.ColumnStyle/RowStyle/ApplyDefaultStyles` (.xls, .ods) fill the empty cells of formatted columns and rows within the data before conditional formatting. .ods: empty cells without their own style are no longer added per run (the column's default applies through ColumnStyle), and an empty formatted run reaching column 1,024 or beyond becomes a row style.

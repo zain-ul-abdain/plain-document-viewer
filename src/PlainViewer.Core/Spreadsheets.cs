@@ -267,6 +267,9 @@ public static class Spreadsheets
             var sheet = new SheetData { Name = name };
             var rows = new SortedDictionary<int, List<(int Column, string Text, char Align, int Style)>>();
             var widths = new List<(int Min, int Max, double Width, bool Hidden)>();
+            // Formatting of whole columns and rows whose fill or borders show (style numbers into the style table).
+            var columnStyles = new List<(int Min, int Max, int Look)>();
+            var rowStyles = new SortedDictionary<int, int>();
             double defaultWidth = 8.43;
             int maxRow = 0, maxColumn = 0, rowNumber = 0, stored = 0;
             bool firstView = true, stopped = false;
@@ -302,7 +305,10 @@ public static class Spreadsheets
                         break;
                     case "col":
                         if (int.TryParse(r.GetAttribute("min"), out int min) && int.TryParse(r.GetAttribute("max"), out int max))
+                        {
                             widths.Add((min, Math.Min(max, MaxColumns), r.GetAttribute("width") is { } w ? ParseDouble(w) : -1, r.GetAttribute("hidden") is "1" or "true"));
+                            if (VisibleStyle(r.GetAttribute("style")) is int columnLook && columnStyles.Count < 1000) columnStyles.Add((min, max, columnLook));
+                        }
                         break;
                     case "row":
                         rowNumber = int.TryParse(r.GetAttribute("r"), out int rn) ? rn : rowNumber + 1;
@@ -318,6 +324,7 @@ public static class Spreadsheets
                         if (r.GetAttribute("hidden") is "1" or "true") sheet.HiddenRows.Add(rowNumber);
                         // The saved height (Excel also saves the height it fitted to wrapped text or larger fonts).
                         if (r.GetAttribute("ht") is { } ht) RowHeight(sheet, rowNumber, ParseDouble(ht));
+                        if (store is null && r.GetAttribute("customFormat") is "1" or "true" && VisibleStyle(r.GetAttribute("s")) is int rowLook) rowStyles[rowNumber] = rowLook;
                         if (r.IsEmptyElement) break;
                         var cells = ReadRow(r, rowNumber, ref maxColumn, limited: store is null, store is null ? numbers : null, errors);
                         if (store is not null) Store(store, ref stored, rowNumber, cells);
@@ -346,6 +353,7 @@ public static class Spreadsheets
             }
             finally { store?.Dispose(); }
             if (drawingId is not null) sheet.Pictures = Drawing(part, drawingId, index);
+            if (sheet.Store.Length == 0 && (columnStyles.Count > 0 || rowStyles.Count > 0)) DefaultStyles(rows, columnStyles, rowStyles, ref maxRow, ref maxColumn);
             if (conditional.Any && sheet.Store.Length == 0) conditional.Apply(rows, numbers, errors, maxColumn);
             conditionalNotShown += conditional.NotShown;
 
@@ -376,6 +384,37 @@ public static class Spreadsheets
         }
 
         private static string[] Empty(int count) { var row = new string[count]; Array.Fill(row, ""); return row; }
+
+        // A column's or row's style number in the style table when its fill or borders show; otherwise null.
+        private int? VisibleStyle(string? attribute) =>
+            int.TryParse(attribute, out int s) && s >= 0 && s < styles.StyleIds.Count && styles.Table[styles.StyleIds[s]].Visible ? styles.StyleIds[s] : null;
+
+        // Whole formatted columns and rows: Excel saves no cells for their empty part, so the empty cells are added with
+        // the row's style (it wins, as in Excel) or the column's, within the sheet's data. A column formatted on its own
+        // widens the grid to reach it; formatting that runs to Excel's last column (the whole sheet) stays within the data.
+        private void DefaultStyles(SortedDictionary<int, List<(int Column, string Text, char Align, int Style)>> rows,
+            List<(int Min, int Max, int Look)> columnStyles, SortedDictionary<int, int> rowStyles, ref int maxRow, ref int maxColumn)
+        {
+            foreach (var (_, max, _) in columnStyles) if (max <= MaxColumns) maxColumn = Math.Max(maxColumn, max);
+            if (rowStyles.Count > 0) maxRow = Math.Max(maxRow, Math.Min(MaxRowsPerSheet, rowStyles.Keys.Max()));
+            var byColumn = new int[maxColumn];
+            foreach (var (min, max, look) in columnStyles)
+                for (int c = Math.Max(1, min); c <= Math.Min(max, maxColumn); c++) byColumn[c - 1] = look;
+            for (int row = 1; row <= maxRow; row++)
+            {
+                int rowLook = rowStyles.GetValueOrDefault(row);
+                rows.TryGetValue(row, out var list);
+                var present = list?.Select(cell => cell.Column).ToHashSet();
+                for (int c = 0; c < maxColumn; c++)
+                {
+                    int look = rowLook != 0 ? rowLook : byColumn[c];
+                    if (look == 0 || present?.Contains(c) == true) continue;
+                    if (cellBudget-- <= 0) return;
+                    if (list is null) rows[row] = list = [];
+                    list.Add((c, "", 'l', look));
+                }
+            }
+        }
 
         // A row's alignment characters, then "|" and its cells' style numbers if any cell has a style (see SheetData.Align).
         private static string Layout(List<(int Column, string Text, char Align, int Style)> cells, int width)

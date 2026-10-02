@@ -283,6 +283,7 @@ try
                         if (actual != cell.GetProperty("text").GetString()) throw new Exception($"{sheet.Name}!{cell.GetProperty("ref").GetString()}: got '{actual}', expected '{cell.GetProperty("text").GetString()}'");
                     }
                 if (expect.TryGetProperty("notice", out var notice)) Check(view.Sheets[0].Notice == notice.GetString());
+                if (expect.TryGetProperty("columnCount", out var columnCount) && view.Sheets[0].ColumnWidths.Count != columnCount.GetInt32()) throw new Exception($"{view.Sheets[0].ColumnWidths.Count} columns, expected {columnCount}");
                 if (expect.TryGetProperty("workbookNotice", out var workbookNotice)) Check(view.Notice.Contains(workbookNotice.GetString()!, StringComparison.Ordinal));
                 Check(expect.TryGetProperty("macrosRemoved", out _) == view.Notice.Contains("macros"));
                 // Long sheets: with a store folder every row streams to the row store; the last row is read back from it.

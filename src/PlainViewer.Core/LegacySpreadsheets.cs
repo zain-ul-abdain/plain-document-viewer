@@ -96,6 +96,38 @@ public static partial class LegacySpreadsheets
         private SortedDictionary<int, (string Text, char Align, int Style)> pending = [];
         private RowStoreWriter? store;
         private int stored, pendingRow = -1, columns;
+        // Formatting of whole columns and rows whose fill or borders show (zero-based; style numbers into the table).
+        private readonly List<(int First, int Last, int Style)> columnStyles = [];
+        private readonly SortedDictionary<int, int> rowStyles = [];
+        public void ColumnStyle(int first, int last, int style) { if (style > 0 && styles.Table[style].Visible && columnStyles.Count < 1000) columnStyles.Add((first, last, style)); }
+        public void RowStyle(int row, int style) { if (style > 0 && styles.Table[style].Visible && row < Spreadsheets.MaxRowsPerSheet && rowStyles.Count < 100_000) rowStyles[row] = style; }
+
+        // The empty cells of formatted columns and rows, which the file does not list: the row's style wins, as in
+        // Excel. A column formatted on its own widens the sheet to reach it; formatting that runs to the format's last
+        // column (the whole sheet) stays within the data. Rows held in memory only.
+        public void ApplyDefaultStyles(int lastColumnOfFormat, ref int budget)
+        {
+            if (store is not null || columnStyles.Count == 0 && rowStyles.Count == 0) return;
+            foreach (var (_, last, _) in columnStyles) if (last < lastColumnOfFormat) columns = Math.Max(columns, Math.Min(last + 1, Spreadsheets.MaxColumns));
+            int lastRow = Math.Max(memory.Count == 0 ? -1 : memory.Keys.Max(), rowStyles.Count == 0 ? -1 : rowStyles.Keys.Max());
+            var byColumn = new int[columns];
+            foreach (var (first, last, style) in columnStyles)
+                for (int c = Math.Max(0, first); c <= Math.Min(last, columns - 1); c++) byColumn[c] = style;
+            for (int r = 0; r <= lastRow; r++)
+            {
+                int rowStyle = rowStyles.GetValueOrDefault(r);
+                memory.TryGetValue(r, out var line);
+                for (int c = 0; c < columns; c++)
+                {
+                    int style = rowStyle != 0 ? rowStyle : byColumn[c];
+                    if (style == 0 || line?.ContainsKey(c) == true) continue;
+                    if (budget-- <= 0) return;
+                    if (line is null) memory[r] = line = [];
+                    line[c] = ("", 'l', style);
+                }
+            }
+        }
+
         // Saved numbers and error cells of the rows held in memory, for conditional formatting.
         private readonly Dictionary<long, double> numbers = [];
         private readonly HashSet<long> errors = [];
@@ -552,6 +584,9 @@ public static partial class LegacySpreadsheets
                         break;
                     case 0x0208 when length >= 16:
                         if ((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 12)) & 0x0020) != 0) sheet.Sheet.HiddenRows.Add(Row() + 1);
+                        // fGhostDirty: the row has its own format (XF in the low 12 bits after the flags).
+                        if ((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 12)) & 0x0080) != 0)
+                            sheet.RowStyle(Row(), StyleOf(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 14)) & 0x0FFF));
                         // ROW: the height in twips (1/20 point) in the low 15 bits.
                         Spreadsheets.RowHeight(sheet.Sheet, Row() + 1, (BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 6)) & 0x7FFF) / 20.0);
                         break;
@@ -564,6 +599,7 @@ public static partial class LegacySpreadsheets
                             double width = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4)) / 256.0;
                             bool isHidden = (BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 8)) & 0x0001) != 0;
                             for (int c = first; c <= last; c++) sheet.Widths[c] = isHidden ? 0 : width;
+                            sheet.ColumnStyle(first, Column(), StyleOf(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 6))));
                         }
                         break;
                     case 0x0055 when length >= 2: sheet.DefaultWidth = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)) + 0.71; break;
@@ -585,6 +621,7 @@ public static partial class LegacySpreadsheets
                         break;
                 }
             }
+            sheet.ApplyDefaultStyles(255, ref budget);                              // Excel 97-2003's last column is IV (255)
             if (!sheet.ApplyConditional(conditional)) conditionalOnLargeSheet = true;
             conditionalNotShown += conditional.NotShown;
             var built = sheet.Build();
@@ -688,6 +725,10 @@ public static partial class LegacySpreadsheets
                                     double width = columnWidths.GetValueOrDefault(r.GetAttribute("style-name", TableNs) ?? "", sheet.DefaultWidth);
                                     if (r.GetAttribute("visibility", TableNs) is "collapse" or "filter") width = 0;
                                     string? defaultStyle = r.GetAttribute("default-cell-style-name", TableNs);
+                                    // A formatted column (not a run reaching the sheet's last column): its empty cells are filled
+                                    // within the data after the sheet is read (SheetBuilder.ApplyDefaultStyles).
+                                    if (defaultStyle is not null && columnDefaults.Count < Spreadsheets.MaxColumns)
+                                        sheet.ColumnStyle(columnDefaults.Count, columnDefaults.Count + repeat - 1, Resolve(defaultStyle).Style);
                                     for (int k = 0; k < repeat && columnDefaults.Count < Spreadsheets.MaxColumns; k++)
                                     { sheet.Widths[columnDefaults.Count] = width; columnDefaults.Add(defaultStyle); }
                                 }
@@ -724,6 +765,7 @@ public static partial class LegacySpreadsheets
         // The built sheet with its pictures and charts; those anchored to the sheet get their cell from the column widths.
         private SheetData Finish(SheetBuilder sheet)
         {
+            sheet.ApplyDefaultStyles(WholeSheetColumns - 1, ref budget);
             if (!sheet.ApplyConditional(conditional)) conditionalOnLargeSheet = true;
             conditionalNotShown += conditional.NotShown;
             var built = sheet.Build();
@@ -744,6 +786,9 @@ public static partial class LegacySpreadsheets
 
         private static XmlReader Open(ZipArchiveEntry entry) => XmlReader.Create(entry.Open(), new XmlReaderSettings
         { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersFromEntities = 1024, IgnoreComments = true, IgnoreProcessingInstructions = true, CloseInput = true });
+
+        // OpenDocument sheets have 1,024 columns (older files) or 16,384; a run reaching column 1,024 counts as the whole row.
+        private const int WholeSheetColumns = 1024;
 
         private static int Repeat(XmlReader r, string attribute) =>
             int.TryParse(r.GetAttribute(attribute, TableNs), NumberStyles.None, CultureInfo.InvariantCulture, out int n) && n > 0 ? n : 1;
@@ -872,7 +917,8 @@ public static partial class LegacySpreadsheets
                 if (r.LocalName is not ("table-cell" or "covered-table-cell")) { r.Skip(); continue; }
                 int repeat = Repeat(r, "number-columns-repeated");
                 string type = r.GetAttribute("value-type", OfficeNs) ?? "";
-                var (style, align) = Resolve(r.GetAttribute("style-name", TableNs) ?? (column < columnDefaults.Count ? columnDefaults[column] : null));
+                string? own = r.GetAttribute("style-name", TableNs);
+                var (style, align) = Resolve(own ?? (column < columnDefaults.Count ? columnDefaults[column] : null));
                 int spanColumns = Repeat(r, "number-columns-spanned"), spanRows = Repeat(r, "number-rows-spanned");
                 if (r.LocalName == "table-cell" && (spanColumns > 1 || spanRows > 1) && column < Spreadsheets.MaxColumns && row < Spreadsheets.MaxStoredRows)
                     sheet.Sheet.Merges.Add([row, column, row + spanRows - 1, Math.Min(Spreadsheets.MaxColumns - 1, column + spanColumns - 1)]);
@@ -881,6 +927,14 @@ public static partial class LegacySpreadsheets
                 string text = CellText(r, row, column);
                 bool error = formula && number is null && IsError(text);
                 char natural = type switch { "float" or "percentage" or "currency" or "date" or "time" => 'r', "boolean" => 'c', _ => 'l' };
+                // Empty cells: a column's own format is filled in later within the data (so repeated empty rows add nothing),
+                // and a formatted run reaching the sheet's last column formats the whole row.
+                if (text.Length == 0 && own is null) { column += repeat; continue; }
+                if (text.Length == 0 && column + repeat >= WholeSheetColumns)
+                {
+                    if (styles.Table[style].Visible) for (int k = 0; k < rowRepeat && k < 1000; k++) sheet.RowStyle(row + k, style);
+                    column += repeat; continue;
+                }
                 if (text.Length > 0 || styles.Table[style].Visible)
                     for (int k = 0; k < repeat && column + k < Spreadsheets.MaxColumns && k < 1024; k++) cells.Add((column + k, text, align == '\0' ? natural : align, style, number, error));
                 column += repeat;
