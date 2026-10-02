@@ -142,7 +142,7 @@ internal static class SheetDrawings
         var data = new ChartData();
         var chart = document.Descendants().FirstOrDefault(e => e.Name.LocalName == "chart" && e.Parent?.Name.LocalName == "chartSpace");
         if (chart is null) { data.Notice = "This chart could not be read."; return data; }
-        if (Child(chart, "title") is { } title) data.Title = string.Concat(title.Descendants().Where(e => e.Name.LocalName == "t").Select(e => e.Value)).Trim();
+        if (Child(chart, "title") is { } title) data.Title = TitleText(title);
         var plot = Child(chart, "plotArea");
         string[] known = ["barChart", "bar3DChart", "lineChart", "line3DChart", "areaChart", "area3DChart", "pieChart", "pie3DChart", "ofPieChart", "doughnutChart", "scatterChart"];
         var kinds = plot?.Elements().Where(e => e.Name.LocalName.EndsWith("Chart", StringComparison.Ordinal)).ToList() ?? [];
@@ -160,8 +160,16 @@ internal static class SheetDrawings
         data.Stacked = grouping is "stacked" or "percentStacked";
         data.Percent = grouping == "percentStacked";
         int seriesIndex = 0;
+        var labelParts = new List<(bool Value, bool Percent, bool Category, string? Format)>();
         foreach (var series in kind.Elements().Where(e => e.Name.LocalName == "ser").Take(MaxSeries))
         {
+            // Data labels: the series' own settings, else the chart's; a label's number format is its own or the values'.
+            var own = Child(series, "dLbls"); var shared = Child(kind, "dLbls");
+            bool Shows(string part) => !Deleted(own) && (Child(own, part) ?? (own is null && !Deleted(shared) ? Child(shared, part) : null)) is { } flag && Attribute(flag, "val") is "1" or "true";
+            var labelFormat = Child(own ?? shared, "numFmt");
+            labelParts.Add((Shows("showVal"), Shows("showPercent"), Shows("showCatName"),
+                labelFormat is not null && Attribute(labelFormat, "sourceLinked") is not ("1" or "true") ? Attribute(labelFormat, "formatCode")
+                    : Child(series, data.Type == "scatter" ? "yVal" : "val")?.Descendants().FirstOrDefault(e => e.Name.LocalName == "formatCode")?.Value));
             var item = new ChartSeries { Name = Text(Child(series, "tx")) ?? $"Series {seriesIndex + 1}", Color = Colour(Child(series, "spPr"), theme) };
             if (data.Type == "scatter")
             {
@@ -178,7 +186,55 @@ internal static class SheetDrawings
         }
         int points = data.Series.Count == 0 ? 0 : data.Series.Max(s => s.Values.Count);
         while (data.Categories.Count < points) data.Categories.Add((data.Categories.Count + 1).ToString(CultureInfo.InvariantCulture));
+        for (int s = 0; s < data.Series.Count; s++)
+            data.Series[s].PointLabels = PointLabels(data, data.Series[s], labelParts[s].Value, labelParts[s].Percent, labelParts[s].Category, labelParts[s].Format);
+        // Axis titles; on a scatter chart the axis along the bottom (or top) is the X axis.
+        foreach (var axis in plot!.Elements().Where(e => e.Name.LocalName is "catAx" or "dateAx" or "valAx").Take(4))
+        {
+            if (Child(axis, "title") is not { } axisTitle || Attribute(Child(axis, "delete"), "val") is "1" or "true") continue;
+            string text = TitleText(axisTitle);
+            bool category = data.Type == "scatter" ? Attribute(Child(axis, "axPos"), "val") is "b" or "t" : axis.Name.LocalName != "valAx";
+            if (category && data.CategoryTitle.Length == 0) data.CategoryTitle = text;
+            else if (!category && data.ValueTitle.Length == 0) data.ValueTitle = text;
+        }
         return data;
+    }
+
+    private static bool Deleted(XElement? labels) => Attribute(Child(labels, "delete"), "val") is "1" or "true";
+
+    // A title's text: its rich text runs, or the cached text of a reference.
+    private static string TitleText(XElement title)
+    {
+        string rich = string.Concat(title.Descendants().Where(e => e.Name.LocalName == "t").Select(e => e.Value)).Trim();
+        return rich.Length > 0 ? rich : title.Descendants().FirstOrDefault(e => e.Name.LocalName == "v")?.Value.Trim() ?? "";
+    }
+
+    // Data labels as shown: the category name, the value in its number format and (pie and doughnut charts) the share of
+    // the total, joined by ", "; "" for a point without a value. Empty when the series shows no labels.
+    internal static List<string> PointLabels(ChartData chart, ChartSeries series, bool value, bool percent, bool category, string? format)
+    {
+        bool round = chart.Type is "pie" or "doughnut";
+        if (!value && !category && !(percent && round)) return [];
+        double total = series.Values.Where(v => v > 0).Sum(v => v!.Value);
+        var labels = new List<string>();
+        for (int i = 0; i < series.Values.Count; i++)
+        {
+            if (series.Values[i] is not double number) { labels.Add(""); continue; }
+            var parts = new List<string>();
+            if (category && i < chart.Categories.Count) parts.Add(chart.Categories[i]);
+            if (value) parts.Add(FormatNumber(number, format));
+            if (percent && round && total > 0) parts.Add((Math.Max(0, number) / total).ToString("0%", CultureInfo.CurrentCulture));
+            labels.Add(string.Join(", ", parts));
+        }
+        return labels;
+    }
+
+    private static string FormatNumber(double value, string? format)
+    {
+        if (format is { Length: > 0 } && format != "General")
+            try { var f = new ExcelNumberFormat.NumberFormat(format); if (f.IsValid) return f.Format(value, CultureInfo.CurrentCulture); }
+            catch (Exception) { }
+        return value.ToString("G15", CultureInfo.CurrentCulture);
     }
 
     // A series name: literal text (c:v) or the cached text of a reference (c:strRef/c:strCache).

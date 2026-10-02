@@ -910,17 +910,23 @@
               "80,95,130,110"
             ],
             "categories": "Jan,Feb,Mar,Apr",
+            "titles": "Month|Units sold",
+            "labels": "120|150|90|170",
             "values2": [
               "120,80"
             ],
-            "categories2": "North,South"
+            "categories2": "North,South",
+            "titles2": "|",
+            "labels2": "North, 60%|South, 40%"
           },
           {
             "sheet": "Trend",
             "chartSheet": true,
             "charts": [
               "line:Trend:2"
-            ]
+            ],
+            "titles": "|",
+            "labels": ""
           }
         ]
       },
@@ -3030,10 +3036,13 @@
               "80,95,130,110"
             ],
             "categories": "Jan,Feb,Mar,Apr",
+            "titles": "Month|Units sold",
+            "labels": "120|150|90|170",
             "values2": [
               "120,80"
             ],
-            "categories2": "North,South"
+            "categories2": "North,South",
+            "labels2": "North, 60%|South, 40%"
           },
           {
             "sheet": "Trend",
@@ -3085,10 +3094,13 @@
               "80,95,130,110"
             ],
             "categories": "Jan,Feb,Mar,Apr",
+            "titles": "Month|Units sold",
+            "labels": "120|150|90|170",
             "values2": [
               "120,80"
             ],
-            "categories2": "North,South"
+            "categories2": "North,South",
+            "labels2": "North, 60%|South, 40%"
           },
           {
             "sheet": "Trend",

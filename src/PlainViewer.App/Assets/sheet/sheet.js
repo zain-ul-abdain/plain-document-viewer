@@ -448,6 +448,19 @@ function chartElement(chart, width, height) {
     root.append(legend);
   }
   const area = { left: 8, top, right: width - 10, bottom: height - 10 - legendHeight };
+  // Axis titles: the value axis along the left (the category axis for horizontal bars), the other along the bottom.
+  if (!round && series.length) {
+    const horizontal = chart.type === "bar";
+    const left = horizontal ? chart.categoryTitle : chart.valueTitle, bottom = horizontal ? chart.valueTitle : chart.categoryTitle;
+    if (left) {
+      root.append(svg("text", { transform: `translate(${area.left + 9} ${(area.top + area.bottom) / 2}) rotate(-90)`, "text-anchor": "middle", class: "chart-axis-title" }, left));
+      area.left += 18;
+    }
+    if (bottom) {
+      root.append(svg("text", { x: (area.left + area.right) / 2, y: area.bottom - 2, "text-anchor": "middle", class: "chart-axis-title" }, bottom));
+      area.bottom -= 18;
+    }
+  }
   if (!series.length || area.right - area.left < 40 || area.bottom - area.top < 40) {
     root.append(svg("text", { x: width / 2, y: height / 2, "text-anchor": "middle", class: "chart-note" }, chart.notice || "This chart has no data to show."));
     return root;
@@ -511,6 +524,9 @@ function drawAxes(root, chart, series, area) {
   root.append(labels);
   const zero = scale(Math.min(Math.max(0, low), high));
   const point = (i, v) => horizontal ? [plot.left + scale(v), plot.top + band * (i + 0.5)] : [plot.left + band * (i + 0.5), plot.bottom - scale(v)];
+  // Data labels, drawn last so that they lie over the bars and lines.
+  const dataLabels = svg("g", { class: "chart-label" });
+  const label = (text, x, y, anchor = "middle") => { if (text) dataLabels.append(svg("text", { x, y, "text-anchor": anchor }, text)); };
   if (chart.type === "column" || chart.type === "bar") {
     const gap = band * 0.25, inner = band - gap * 2, width = stacked ? inner : inner / series.length;
     const base = Array(n).fill(0), baseDown = Array(n).fill(0);
@@ -527,6 +543,17 @@ function drawAxes(root, chart, series, area) {
         group.append(horizontal
           ? svg("rect", { x: plot.left + start, y: plot.top + offset, width: length, height: width })
           : svg("rect", { x: plot.left + offset, y: plot.bottom - start - length, width, height: length }));
+        // Outside the end of a bar, or in the middle of a stacked segment.
+        const text = s.pointLabels?.[i], outward = b >= a;
+        if (horizontal) {
+          const y = plot.top + offset + width / 2 + 4;
+          if (stacked) label(text, plot.left + start + length / 2, y);
+          else label(text, plot.left + (outward ? start + length + 4 : start - 4), y, outward ? "start" : "end");
+        } else {
+          const x = plot.left + offset + width / 2;
+          if (stacked) label(text, x, plot.bottom - start - length / 2 + 4);
+          else label(text, x, outward ? plot.bottom - start - length - 4 : plot.bottom - start + 12);
+        }
       }
       root.append(group);
     });
@@ -555,8 +582,10 @@ function drawAxes(root, chart, series, area) {
         root.append(svg("path", { d: path, fill: "none", stroke: colour, "stroke-width": 2.25, "stroke-linejoin": "round" }));
         if (n <= 60) for (const p of valid) { const [px, py] = point(p.i, p.v); root.append(svg("circle", { cx: px, cy: py, r: 3, fill: colour })); }
       }
+      for (const p of valid) { const [px, py] = point(p.i, p.v); label(series[k].pointLabels?.[p.i], px, py - 8); }
     });
   }
+  root.append(dataLabels);
   root.append(horizontal
     ? svg("line", { x1: plot.left + zero, x2: plot.left + zero, y1: plot.top, y2: plot.bottom, class: "chart-axis" })
     : svg("line", { x1: plot.left, x2: plot.right, y1: plot.bottom - zero, y2: plot.bottom - zero, class: "chart-axis" }));
@@ -583,6 +612,12 @@ function drawScatter(root, series, area) {
     });
     root.append(group);
   });
+  const dataLabels = svg("g", { class: "chart-label" });
+  series.forEach(s => s.values.forEach((v, i) => {
+    const xv = s.x?.length ? s.x[i] : i + 1, text = s.pointLabels?.[i];
+    if (text && finite(v) && finite(xv)) dataLabels.append(svg("text", { x: sx(xv) + 6, y: sy(v) - 6 }, text));
+  }));
+  root.append(dataLabels);
 }
 
 // Pie and doughnut charts show their first series, one slice per category.
@@ -591,6 +626,7 @@ function drawRound(root, chart, series, area) {
   if (!total) return;
   const cx = (area.left + area.right) / 2, cy = (area.top + area.bottom) / 2, r = Math.max(10, Math.min(area.right - area.left, area.bottom - area.top) / 2 - 4);
   const hole = chart.type === "doughnut" ? r * 0.5 : 0;
+  const labels = svg("g", { class: "chart-label" });
   let angle = -Math.PI / 2;
   values.forEach((v, i) => {
     if (!v) return;
@@ -605,8 +641,15 @@ function drawRound(root, chart, series, area) {
         : `M${cx},${cy} L${at(angle, r)} A${r},${r} 0 ${large} 1 ${at(end, r)} Z`;
       root.append(svg("path", { d, fill: colour, stroke: "#ffffff", "stroke-width": 1 }));
     }
+    // A slice's label in the middle of the slice (or of the ring).
+    const text = series.pointLabels?.[i];
+    if (text) {
+      const middle = angle + sweep / 2, radius = hole ? (r + hole) / 2 : r * 0.62;
+      labels.append(svg("text", { x: cx + radius * Math.cos(middle), y: cy + radius * Math.sin(middle) + 4, "text-anchor": "middle" }, text));
+    }
     angle = end;
   });
+  root.append(labels);
 }
 
 // First row index (into big.rows) under the sticky header, from the rendered geometry (works at any zoom).

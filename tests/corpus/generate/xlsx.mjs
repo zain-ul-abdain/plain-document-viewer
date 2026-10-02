@@ -67,8 +67,9 @@ function stylesWorkbook() {
 
 // A chart part: one chart of the given kind with cached categories and values, and references to the cells they came
 // from (series in columns B, C, ... of rows 2-5 by default; a pie chart of one row passes `across`; other workbooks
-// pass `refs` with their own name(i), cat and val(i) references, and `stacked` for a stacked column chart).
-export function chartXml({ kind, title, categories, series, across, refs, stacked }) {
+// pass `refs` with their own name(i), cat and val(i) references, and `stacked` for a stacked column chart). `labels`
+// lists the data label parts to show ("value", "category", "percent"); `axisTitles` is { cat, val }.
+export function chartXml({ kind, title, categories, series, across, refs, stacked, labels, axisTitles }) {
   const strCache = values => `<c:strCache><c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:strCache>`;
   const numCache = values => `<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${values.length}"/>${values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join("")}</c:numCache>`;
   const nameRef = i => refs ? refs.name(i) : `Sales!$${"BC"[i] ?? "B"}$1`;
@@ -80,12 +81,16 @@ export function chartXml({ kind, title, categories, series, across, refs, stacke
     `<c:val><c:numRef><c:f>${valRef(i)}</c:f>${numCache(values)}</c:numRef></c:val></c:ser>`).join("");
   const round = kind === "pieChart" || kind === "doughnutChart";
   const axes = round ? "" : '<c:axId val="1"/><c:axId val="2"/>';
-  const body = kind === "barChart" ? `<c:barChart><c:barDir val="col"/><c:grouping val="${stacked ? "stacked" : "clustered"}"/><c:varyColors val="0"/>${ser}${stacked ? '<c:overlap val="100"/>' : ""}${axes}</c:barChart>`
-    : kind === "lineChart" ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${ser}<c:marker val="1"/>${axes}</c:lineChart>`
-    : kind === "doughnutChart" ? `<c:doughnutChart><c:varyColors val="1"/>${ser}<c:firstSliceAng val="0"/><c:holeSize val="50"/></c:doughnutChart>`
-    : `<c:pieChart><c:varyColors val="1"/>${ser}<c:firstSliceAng val="0"/></c:pieChart>`;
-  const axisParts = round ? "" : '<c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>' +
-    '<c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:crossAx val="1"/></c:valAx>';
+  // Data labels and axis titles, in the element order the chart schema requires.
+  const show = (element, part) => `<c:${element} val="${labels?.includes(part) ? 1 : 0}"/>`;
+  const dLbls = labels ? `<c:dLbls><c:showLegendKey val="0"/>${show("showVal", "value")}${show("showCatName", "category")}<c:showSerName val="0"/>${show("showPercent", "percent")}<c:showBubbleSize val="0"/></c:dLbls>` : "";
+  const axisTitle = text => text ? `<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${text}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>` : "";
+  const body = kind === "barChart" ? `<c:barChart><c:barDir val="col"/><c:grouping val="${stacked ? "stacked" : "clustered"}"/><c:varyColors val="0"/>${ser}${dLbls}${stacked ? '<c:overlap val="100"/>' : ""}${axes}</c:barChart>`
+    : kind === "lineChart" ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${ser}${dLbls}<c:marker val="1"/>${axes}</c:lineChart>`
+    : kind === "doughnutChart" ? `<c:doughnutChart><c:varyColors val="1"/>${ser}${dLbls}<c:firstSliceAng val="0"/><c:holeSize val="50"/></c:doughnutChart>`
+    : `<c:pieChart><c:varyColors val="1"/>${ser}${dLbls}<c:firstSliceAng val="0"/></c:pieChart>`;
+  const axisParts = round ? "" : `<c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>${axisTitle(axisTitles?.cat)}<c:crossAx val="2"/></c:catAx>` +
+    `<c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/>${axisTitle(axisTitles?.val)}<c:crossAx val="1"/></c:valAx>`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     `<c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${title}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/>${body}${axisParts}</c:plotArea>` +
     `<c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend><c:plotVisOnly val="1"/></c:chart></c:chartSpace>`;
@@ -323,8 +328,10 @@ export async function generateXlsx({ large }) {
     const chartRel = (id, n) => `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${n}.xml"/>`;
     zip.file(relsPath, (await zip.file(relsPath).async("string")).replace("</Relationships>", chartRel("rIdChart1", 1) + chartRel("rIdChart2", 2) + "</Relationships>"));
     const months = ["Jan", "Feb", "Mar", "Apr"];
-    zip.file("xl/charts/chart1.xml", chartXml({ kind: "barChart", title: "Sales by month", categories: months, series: [["North", [120, 150, 90, 170], "4472C4"], ["South", [80, 95, 130, 110], "ED7D31"]] }));
-    zip.file("xl/charts/chart2.xml", chartXml({ kind: "pieChart", title: "January share", categories: ["North", "South"], series: [["January", [120, 80]]], across: { cat: "Sales!$B$1:$C$1", val: "Sales!$B$2:$C$2" } }));
+    zip.file("xl/charts/chart1.xml", chartXml({ kind: "barChart", title: "Sales by month", categories: months, series: [["North", [120, 150, 90, 170], "4472C4"], ["South", [80, 95, 130, 110], "ED7D31"]],
+      labels: ["value"], axisTitles: { cat: "Month", val: "Units sold" } }));
+    zip.file("xl/charts/chart2.xml", chartXml({ kind: "pieChart", title: "January share", categories: ["North", "South"], series: [["January", [120, 80]]], across: { cat: "Sales!$B$1:$C$1", val: "Sales!$B$2:$C$2" },
+      labels: ["category", "percent"] }));
     zip.file("xl/charts/chart3.xml", chartXml({ kind: "lineChart", title: "Trend", categories: months, series: [["North", [120, 150, 90, 170], "70AD47"], ["South", [80, 95, 130, 110]]] }));
     // The chart sheet "Trend".
     zip.file("xl/chartsheets/sheet2.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><chartsheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr/><sheetViews><sheetView workbookViewId="0"/></sheetViews><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/><drawing r:id="rId1"/></chartsheet>`);
@@ -345,7 +352,9 @@ export async function generateXlsx({ large }) {
     write("xlsx/drawings.xlsx", await stable(await zip.generateAsync({ type: "nodebuffer" })));
     record({ id: "xlsx-drawings", file: "xlsx/drawings.xlsx", format: "xlsx", category: "complex", producer: `${producer}, charts added as hand-written DrawingML with JSZip`, licence,
       expect: { result: "open", sheets: ["Sales", "Trend"], text: ["Hello pictures"],
-        drawings: [{ sheet: "Sales", pictures: 1, charts: ["column:Sales by month:2", "pie:January share:1"], values: ["120,150,90,170", "80,95,130,110"], categories: "Jan,Feb,Mar,Apr", values2: ["120,80"], categories2: "North,South" }, { sheet: "Trend", chartSheet: true, charts: ["line:Trend:2"] }] },
+        drawings: [{ sheet: "Sales", pictures: 1, charts: ["column:Sales by month:2", "pie:January share:1"], values: ["120,150,90,170", "80,95,130,110"], categories: "Jan,Feb,Mar,Apr",
+          titles: "Month|Units sold", labels: "120|150|90|170", values2: ["120,80"], categories2: "North,South", titles2: "|", labels2: "North, 60%|South, 40%" },
+          { sheet: "Trend", chartSheet: true, charts: ["line:Trend:2"], titles: "|", labels: "" }] },
       rules: SAFE_RULES, notes: "The picture is the corpus's own PNG. Charts are drawn from their cached values; the chart sheet shows its chart filling the view." });
   }
 

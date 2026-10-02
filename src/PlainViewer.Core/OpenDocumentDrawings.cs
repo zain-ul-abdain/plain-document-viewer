@@ -156,7 +156,20 @@ internal static class OpenDocumentDrawings
             };
             if (data.Type == "scatter") item.X = byRow ? headerCells.Skip(1).Select(c => double.TryParse(Text(c), NumberStyles.Float, CultureInfo.InvariantCulture, out double x) ? x : (double?)null).ToList()
                 : rows.Select(r => r.Count > 0 ? Value(r[0]) : null).ToList();
+            // Data labels: the series style's number part (value, percentage or both) and text part (the category).
+            string? number = Property(style, "chart-properties", ChartNs, "data-label-number");
+            item.PointLabels = SheetDrawings.PointLabels(data, item, number is "value" or "value-and-percentage", number is "percentage" or "value-and-percentage",
+                Property(style, "chart-properties", ChartNs, "data-label-text") == "true", null);
             data.Series.Add(item);
+        }
+        // Axis titles: x is the category (scatter: X) axis, y the value axis.
+        foreach (var axis in plot.Elements(XName.Get("axis", ChartNs)).Take(4))
+        {
+            string text = string.Join(" ", axis.Element(XName.Get("title", ChartNs))?.Elements().Select(p => p.Value.Trim()) ?? []).Trim();
+            if (text.Length == 0) continue;
+            string? dimension = Attr(axis, ChartNs, "dimension");
+            if (dimension == "x" && data.CategoryTitle.Length == 0) data.CategoryTitle = text;
+            else if (dimension == "y" && data.ValueTitle.Length == 0) data.ValueTitle = text;
         }
         if (data.Series.Count == 0) data.Notice = "This chart has no data to show.";
         return data;

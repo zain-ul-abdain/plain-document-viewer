@@ -27,14 +27,14 @@ public static partial class LegacySpreadsheets
         {
             public string? Name, Colour, LineColour;
             public Range? NameCell, Values, Categories;
-            public int Group;
+            public int Group, Labels;                                              // Labels: AttachedLabel flags
             public bool Child;                                                     // a trendline or error bars, not a series
             public readonly SortedDictionary<int, double> Cached = [];
         }
 
         private sealed class ChartSpec
         {
-            public string Type = "", Title = "";
+            public string Type = "", Title = "", CategoryTitle = "", ValueTitle = "";
             public bool Stacked, Percent, Unsupported;
             public int Groups;
             public readonly List<SeriesSpec> Series = [];
@@ -106,7 +106,10 @@ public static partial class LegacySpreadsheets
                         string value = XlString(at + 2, at + length, twoByteCount: false, out _);
                         if (inText) text = value; else if (inSeries && blocks[^1] == 0x1003) series!.Name = value;
                         break;
-                    case 0x1027 when length >= 2 && inText && U16(data, at) == 1 && text is not null: spec.Title = text; break;   // ObjectLink: chart title
+                    case 0x1027 when length >= 2 && inText && text is not null:                     // ObjectLink: what the text belongs to
+                        switch (U16(data, at)) { case 1: spec.Title = text; break; case 2: spec.ValueTitle = text; break; case 3: spec.CategoryTitle = text; break; }
+                        break;
+                    case 0x100C when formatting && length >= 2: series!.Labels = U16(data, at); break;   // AttachedLabel: the series' data labels
                     case 0x1006 when length >= 2: seriesFormat = U16(data, at) == 0xFFFF; break;   // DataFormat for the whole series
                     case 0x100A when formatting && length >= 12 && (U16(data, at + 10) & 1) == 0 && U16(data, at + 8) != 0: series!.Colour = Hex(data, at); break;
                     case 0x1007 when formatting && length >= 10 && (U16(data, at + 8) & 1) == 0 && U16(data, at + 4) != 5: series!.LineColour = Hex(data, at); break;
@@ -175,7 +178,9 @@ public static partial class LegacySpreadsheets
         {
             foreach (var (placed, spec) in pendingCharts)
             {
-                var chart = placed.Chart = new ChartData { Title = spec.Title, Stacked = spec.Stacked, Percent = spec.Percent, Type = spec.Type.Length > 0 ? spec.Type : "column" };
+                var chart = placed.Chart = new ChartData { Title = spec.Title, CategoryTitle = spec.CategoryTitle, ValueTitle = spec.ValueTitle,
+                    Stacked = spec.Stacked, Percent = spec.Percent, Type = spec.Type.Length > 0 ? spec.Type : "column" };
+                var labelled = new List<(ChartSeries Item, int Flags)>();
                 if (spec.Unsupported || spec.Type.Length == 0) { chart.Notice = "This kind of chart is not shown in this version."; continue; }
                 if (spec.Groups > 1) chart.Notice = "Only the first part of this combined chart is shown.";
                 int index = 0;
@@ -200,10 +205,14 @@ public static partial class LegacySpreadsheets
                         else if (s.Categories is { } categories) chart.Categories = Cells(categories).Select(c => c.Text).ToList();
                     }
                     chart.Series.Add(item);
+                    if (s.Labels != 0) labelled.Add((item, s.Labels));
                 }
                 int points = chart.Series.Count == 0 ? 0 : chart.Series.Max(x => x.Values.Count);
                 if (points == 0) { chart.Notice = "This chart has no data to show."; continue; }
                 while (chart.Categories.Count < points) chart.Categories.Add((chart.Categories.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                // AttachedLabel flags: 1 value, 2 percentage, 4 category and percentage, 16 category.
+                foreach (var (item, flags) in labelled)
+                    item.PointLabels = SheetDrawings.PointLabels(chart, item, (flags & 1) != 0, (flags & 6) != 0, (flags & 0x14) != 0, null);
                 if (placed.Description.Length == 0) placed.Description = chart.Title;
             }
         }

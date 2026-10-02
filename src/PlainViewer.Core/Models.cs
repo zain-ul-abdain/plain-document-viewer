@@ -127,6 +127,8 @@ public sealed class ChartData
     public bool Stacked { get; set; }
     public bool Percent { get; set; }
     public string Title { get; set; } = "";
+    public string CategoryTitle { get; set; } = "";       // axis titles: the category (scatter: X) and value axes
+    public string ValueTitle { get; set; } = "";
     public List<string> Categories { get; set; } = [];
     public List<ChartSeries> Series { get; set; } = [];
     public string Notice { get; set; } = "";
@@ -137,5 +139,6 @@ public sealed class ChartSeries
     public string Name { get; set; } = "";
     public List<double?> Values { get; set; } = [];
     public List<double?> X { get; set; } = [];                 // scatter charts
+    public List<string> PointLabels { get; set; } = [];        // data labels, one per point ("" for none), ready to show
     public string? Color { get; set; }
 }

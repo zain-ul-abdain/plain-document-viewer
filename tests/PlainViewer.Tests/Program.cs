@@ -384,6 +384,11 @@ try
                                 var got = chart.Series.Select(s => string.Join(",", s.Values.Select(v => v?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"))).ToArray();
                                 var wanted = values.EnumerateArray().Select(v => v.GetString()!).ToArray();
                                 if (!got.SequenceEqual(wanted)) throw new Exception($"{sheet.Name} chart {n + 1} values: got {string.Join(" | ", got)}");
+                                // Axis titles ("category|value") and the first series' data labels ("|" between points).
+                                if (item.TryGetProperty("titles" + suffix, out var titles) && $"{chart.CategoryTitle}|{chart.ValueTitle}" != titles.GetString())
+                                    throw new Exception($"{sheet.Name} chart {n + 1} axis titles: got {chart.CategoryTitle}|{chart.ValueTitle}");
+                                if (item.TryGetProperty("labels" + suffix, out var pointLabels) && string.Join("|", chart.Series[0].PointLabels) != pointLabels.GetString())
+                                    throw new Exception($"{sheet.Name} chart {n + 1} labels: got {string.Join("|", chart.Series[0].PointLabels)}");
                                 if (item.TryGetProperty("categories" + suffix, out var categories) && string.Join(",", chart.Categories) != categories.GetString())
                                     throw new Exception($"{sheet.Name} chart {n + 1} categories: got {string.Join(",", chart.Categories)}");
                             }

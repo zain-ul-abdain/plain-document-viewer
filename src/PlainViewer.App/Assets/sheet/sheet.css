@@ -64,6 +64,8 @@ svg.chart { display: block; font: 11px "Segoe UI", system-ui, sans-serif; forced
 svg.chart text { fill: #595959; }
 svg.chart .chart-title { font-size: 14px; fill: #404040; }
 svg.chart .chart-note { font-style: italic; }
+svg.chart .chart-axis-title { font-size: 12px; fill: #404040; }
+svg.chart .chart-label text { font-size: 10.5px; fill: #262626; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
 svg.chart .chart-grid line { stroke: #e3e3e3; }
 svg.chart .chart-axis { stroke: #a6a6a6; }
 svg.chart-sheet { margin: 16px; }
