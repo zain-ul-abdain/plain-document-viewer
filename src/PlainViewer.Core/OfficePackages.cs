@@ -50,9 +50,9 @@ public static class OfficePackages
         bool word = IsWord(path);
         string kind = word ? "Word document" : "PowerPoint presentation";
 
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = LocalFiles.OpenRead(path);
         long length = stream.Length;
-        var modified = File.GetLastWriteTimeUtc(path);
+        var stamp = LocalFiles.Stamp(stream);
         if (length == 0) throw new DocumentException($"This {kind} is empty (0 bytes). It may not have finished downloading or copying. Get a complete copy and try again.");
         if (length > SizeLimit) throw new DocumentException($"This {kind} is larger than 256 MB, which is more than this viewer can open safely.");
         byte[] head = new byte[Math.Min(length, 65536)];
@@ -96,8 +96,8 @@ public static class OfficePackages
         catch (InvalidDataException) { if (ownsOutput) Discard(output); throw Damaged(kind); }
         catch (XmlException) { if (ownsOutput) Discard(output); throw Damaged(kind); }
         catch { if (ownsOutput) Discard(output); throw; }
-        if (File.GetLastWriteTimeUtc(path) != modified || new FileInfo(path).Length != length)
-        { Discard(output); throw new DocumentException("The file changed while it was being opened. Wait until it has finished saving, then open it again."); }
+        if (LocalFiles.Stamp(stream) != stamp)
+        { Discard(output); throw new DocumentException(LocalFiles.ChangedMessage); }
         return new DocumentView
         {
             Kind = word ? "word" : "slides",

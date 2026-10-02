@@ -51,6 +51,35 @@ try
         byte[] before = SHA256.HashData(File.ReadAllBytes(path)); var names = Directory.GetFiles(root);
         var loaded = TextFiles.Load(path); Check(loaded.Text.Contains("中文")); Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path)))); Check(names.SequenceEqual(Directory.GetFiles(root))); });
     Test("Source can remain open for writes", () => { string path = Path.Combine(root, "shared.txt"); File.WriteAllText(path, "readable"); using var handle = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete); Check(TextFiles.Load(path).Text == "readable"); });
+    // The opened file itself is checked (LocalFiles), not only its path, and change checks follow the opened file.
+    Test("Opening checks the opened file: an offline file is refused even without the path check", () => {
+        string path = Path.Combine(root, "offline.txt"); File.WriteAllText(path, "not here");
+        File.SetAttributes(path, FileAttributes.Offline);
+        try { Throws<DocumentException>(() => LocalFiles.OpenChecked(path).Dispose()); }
+        finally { File.SetAttributes(path, FileAttributes.Normal); }
+    });
+    Test("A link as the file itself is opened as a link and refused (skipped when this PC cannot make links)", () => {
+        string target = Path.Combine(root, "link-target.txt"), link = Path.Combine(root, "link.txt"); File.WriteAllText(target, "target");
+        try { File.CreateSymbolicLink(link, target); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Console.WriteLine("  (symbolic links need Developer Mode or administrator rights here: skipped)"); return; }
+        Throws<DocumentException>(() => LocalFiles.OpenChecked(link).Dispose());
+        Throws<DocumentException>(() => TextFiles.Load(link));
+    });
+    Test("A change made through another handle while open is detected", () => {
+        string path = Path.Combine(root, "changing.txt"); File.WriteAllText(path, "first");
+        using var stream = LocalFiles.OpenRead(path);
+        var stamp = LocalFiles.Stamp(stream);
+        using (var writer = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { writer.Seek(0, SeekOrigin.End); writer.Write("more"u8); }
+        Throws<DocumentException>(() => LocalFiles.ThrowIfChanged(stream, stamp));
+    });
+    Test("Replacing the file at the same path after it was opened does not affect the opened file", () => {
+        string path = Path.Combine(root, "replaced.txt"), moved = Path.Combine(root, "replaced-old.txt"); File.WriteAllText(path, "original");
+        using var stream = LocalFiles.OpenRead(path);
+        var stamp = LocalFiles.Stamp(stream);
+        File.Move(path, moved); File.WriteAllText(path, "a different, longer file");   // allowed: the viewer shares rename and delete
+        LocalFiles.ThrowIfChanged(stream, stamp);                                      // the opened file is unchanged
+        Check(new StreamReader(stream).ReadToEnd() == "original");
+    });
     Test("Wrong extension content rejected", () => { string path = Path.Combine(root, "fake.txt"); File.WriteAllText(path, "%PDF-1.7"); Throws<DocumentException>(() => TextFiles.Load(path)); });
     Test("Empty text is valid", () => { string path = Path.Combine(root, "empty.txt"); File.WriteAllText(path, ""); Check(TextFiles.Load(path).Text == ""); });
     Test("CSV preview explicitly reports truncation", () => { string path = Path.Combine(root, "large.csv"); File.WriteAllLines(path, Enumerable.Range(0, 1500).Select(i => i + ",001")); var view = TextFiles.Load(path); Check(view.Rows.Count == 1000 && view.Notice.Contains("1,000")); });

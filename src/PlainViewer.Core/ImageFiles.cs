@@ -66,17 +66,16 @@ public static class ImageFiles
         TextFiles.ValidateLocalPath(path);
         string extension = Path.GetExtension(path).ToLowerInvariant();
         if (!IsImage(path)) throw new DocumentException($"{extension} files do not open in the picture view.");
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = LocalFiles.OpenRead(path);
         long length = stream.Length;
-        var modified = File.GetLastWriteTimeUtc(path);
+        var stamp = LocalFiles.Stamp(stream);
         if (length == 0)
             throw new DocumentException("This picture is empty (0 bytes). It may not have finished downloading or copying. Get a complete copy and try again.");
         if (length > SizeLimit)
             throw new DocumentException("This picture is larger than 100 MB, which is more than this viewer can open safely.");
         var bytes = new byte[length];
         stream.ReadExactly(bytes);
-        if (stream.Length != length || File.GetLastWriteTimeUtc(path) != modified)
-            throw new DocumentException("The file changed while it was being opened. Wait until it has finished saving, then open it again.");
+        LocalFiles.ThrowIfChanged(stream, stamp);
         var picture = Identify(bytes) ?? throw Unrecognised(bytes, extension);
         if ((long)picture.Width * picture.Height > PixelLimit)
             throw new DocumentException($"This picture is {picture.Width:N0} × {picture.Height:N0} pixels, which is more than this viewer can show safely.");

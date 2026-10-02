@@ -11,17 +11,16 @@ public static class PdfFiles
         TextFiles.ValidateLocalPath(path);
         if (!string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase))
             throw new DocumentException("Only files ending in .pdf open in the PDF view.");
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = LocalFiles.OpenRead(path);
         long length = stream.Length;
-        var modified = File.GetLastWriteTimeUtc(path);
+        var stamp = LocalFiles.Stamp(stream);
         if (length == 0)
             throw new DocumentException("This PDF file is empty (0 bytes). It may not have finished downloading or copying. Get a complete copy and try again.");
         if (length > SizeLimit)
             throw new DocumentException("This PDF is larger than 512 MB, which is more than this viewer can open safely.");
         var bytes = new byte[length];
         stream.ReadExactly(bytes);
-        if (stream.Length != length || File.GetLastWriteTimeUtc(path) != modified)
-            throw new DocumentException("The file changed while it was being opened. Wait until it has finished saving, then open it again.");
+        LocalFiles.ThrowIfChanged(stream, stamp);
         if (!HasPdfHeader(bytes))
             throw new DocumentException("This file is named .pdf, but its contents are not a PDF. Open it with an application for its actual format.");
         return bytes;

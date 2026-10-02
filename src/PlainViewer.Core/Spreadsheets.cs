@@ -58,9 +58,9 @@ public static class Spreadsheets
             throw new DocumentException($"{extension} files are not supported yet. Save the workbook as .xlsx in a spreadsheet application to view it here.");
         if (!Extensions.Contains(extension)) throw new DocumentException("Only Excel workbooks (.xlsx, .xlsm, .xltx, .xltm) open in the spreadsheet view.");
 
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = LocalFiles.OpenRead(path);
         long length = stream.Length;
-        var modified = File.GetLastWriteTimeUtc(path);
+        var stamp = LocalFiles.Stamp(stream);
         if (length == 0) throw new DocumentException("This workbook is empty (0 bytes). It may not have finished downloading or copying. Get a complete copy and try again.");
         if (length > SizeLimit) throw new DocumentException("This workbook is larger than 256 MB, which is more than this viewer can open safely.");
         byte[] head = new byte[Math.Min(length, 65536)];
@@ -84,8 +84,7 @@ public static class Spreadsheets
         }
         catch (InvalidDataException) { throw Damaged(); }
         catch (XmlException) { throw Damaged(); }
-        if (File.GetLastWriteTimeUtc(path) != modified || new FileInfo(path).Length != length)
-            throw new DocumentException("The file changed while it was being opened. Wait until it has finished saving, then open it again.");
+        LocalFiles.ThrowIfChanged(stream, stamp);
         return view;
     }
 

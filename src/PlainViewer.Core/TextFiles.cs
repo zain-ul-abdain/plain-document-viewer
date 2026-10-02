@@ -60,9 +60,9 @@ public static class TextFiles
         ValidateLocalPath(path);
         string extension = Path.GetExtension(path).ToLowerInvariant();
         if (!Extensions.Contains(extension)) throw new DocumentException($"{extension} files do not open in the text view.");
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = LocalFiles.OpenRead(path);
         long originalLength = stream.Length;
-        var modified = File.GetLastWriteTimeUtc(path);
+        var stamp = LocalFiles.Stamp(stream);
         bool lines = storeFolder is not null && PlainExtensions.Contains(extension) && originalLength > TextLimit;
         long limit = storeFolder is not null && (extension == ".csv" || lines) ? StoreLimit : extension == ".csv" ? 256L * 1024 * 1024 : TextLimit;
         if (originalLength > limit)
@@ -120,8 +120,7 @@ public static class TextFiles
             view.Kind = extension is ".md" or ".markdown" ? "markdown" : "text";
             if (view.Kind == "markdown") view.Blocks = MarkdownView.Parse(view.Text);
         }
-        if (stream.Length != originalLength || File.GetLastWriteTimeUtc(path) != modified)
-            throw new DocumentException("The file changed while opening. Wait for the other application to finish saving, then try again.");
+        LocalFiles.ThrowIfChanged(stream, stamp);
         return view;
     }
 }

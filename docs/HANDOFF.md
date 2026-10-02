@@ -308,3 +308,9 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - `tests/PlainViewer.Worker.Tests` (run by `scripts/test-worker.ps1`, now part of `package.ps1`'s gate) links `src/PlainViewer.App/WorkerClient.cs` and starts itself as a fake worker (`--fake-worker <mode>`) through `WorkerClient.CommandForTests`; `WorkerClient.Timeout` lets the hang test use 2 seconds. Modes: ok, job, crash, garbage, flood, child, memory, hang. The last two tests use the real worker build.
 - Fix: an empty or partial worker answer (crash, memory limit) now raises `WorkerClient.Stopped` instead of a JsonException that became the generic unexpected-problem message.
 - **Open:** source-handle race hardening (SUPPORT.md safety scope); Narrator and scaling checks, SignPath, Partner Center (Zain).
+
+## Agent 2, 2 October 2026: opening checks the opened file
+
+- `Core/LocalFiles.OpenRead` replaces every reader's `new FileStream(path, ...)`: path check (`TextFiles.ValidateLocalPath`), then `CreateFileW` with FILE_FLAG_OPEN_REPARSE_POINT and FILE_FLAG_OPEN_NO_RECALL, then the handle must be an ordinary available file whose final path is on a local drive letter. `LocalFiles.Stamp` and `ThrowIfChanged` replace the path-based change checks. `OpenChecked` (internal, visible to PlainViewer.Tests) is the handle part alone, for tests.
+- The symbolic-link test skips on PCs without Developer Mode or administrator rights (this one).
+- **Open:** spreadsheet gaps (shapes and text boxes, chart labels and axis titles, pattern fills, whole-column/row styles), ARM64; for Zain: SignPath form, Partner Center, Narrator and scaling checks.

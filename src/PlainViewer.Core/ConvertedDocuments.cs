@@ -59,16 +59,15 @@ public static partial class ConvertedDocuments
         string kind = KindOf(path) ?? throw new DocumentException($"{extension} files do not open in this view.");
         string noun = Noun(kind);
         byte[] bytes;
-        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (var stream = LocalFiles.OpenRead(path))
         {
             long length = stream.Length;
-            var modified = File.GetLastWriteTimeUtc(path);
+            var stamp = LocalFiles.Stamp(stream);
             if (length == 0) throw new DocumentException($"This {noun} is empty (0 bytes). It may not have finished downloading or copying. Get a complete copy and try again.");
             if (length > SizeLimit) throw new DocumentException($"This {noun} is larger than 256 MB, which is more than this viewer can open safely.");
             bytes = new byte[length];
             stream.ReadExactly(bytes);
-            if (File.GetLastWriteTimeUtc(path) != modified || new FileInfo(path).Length != length)
-                throw new DocumentException("The file changed while it was being opened. Wait until it has finished saving, then open it again.");
+            LocalFiles.ThrowIfChanged(stream, stamp);
         }
 
         Format format;
