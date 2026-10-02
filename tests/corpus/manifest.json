@@ -361,6 +361,21 @@
             "vAlign": "top"
           },
           {
+            "ref": "C6",
+            "fill": "#bfbfbf",
+            "pattern": null
+          },
+          {
+            "ref": "D6",
+            "fill": "#ffff00",
+            "pattern": "darkTrellis #c00000"
+          },
+          {
+            "ref": "F6",
+            "fill": "#ffffff",
+            "pattern": "lightHorizontal #0070c0"
+          },
+          {
             "ref": "G2",
             "fill": "#ddebf7"
           },

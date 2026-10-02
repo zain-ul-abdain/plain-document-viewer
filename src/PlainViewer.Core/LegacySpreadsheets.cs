@@ -395,6 +395,10 @@ public static partial class LegacySpreadsheets
             return joined.ToArray();
         }
 
+        // XF fill patterns 2 to 18 by their .xlsx names.
+        private static readonly string[] XlsPatterns = ["mediumGray", "darkGray", "lightGray", "darkHorizontal", "darkVertical", "darkDown", "darkUp", "darkGrid", "darkTrellis",
+            "lightHorizontal", "lightVertical", "lightDown", "lightUp", "lightGrid", "lightTrellis", "gray125", "gray0625"];
+
         private string? Colour(int icv) => icv is >= 0 and < 64 ? palette[icv] : null;   // 64 and above: system (automatic) colours
 
         private static string? Border(int kind, string? colour) => kind switch
@@ -412,14 +416,22 @@ public static partial class LegacySpreadsheets
             var font = fontIndex >= 0 && fontIndex < fonts.Count ? fonts[fontIndex] : default;
             var baseFont = fonts.Count > 0 ? fonts[0] : default;
             uint lines = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 10)), more = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(at + 14));
-            int fill = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 18)) & 0x7F;
+            int colours = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 18));
+            // Fill pattern: 1 solid (the pattern colour fills the cell), 2-18 Excel's other patterns over the background colour.
+            var (fill, pattern) = (more >> 26) switch
+            {
+                0 => ((string?)null, (string?)null),
+                1 => (Colour(colours & 0x7F), null),
+                var kind and <= 18 => WorkbookStyles.PatternFill(XlsPatterns[kind - 2], Colour(colours & 0x7F), Colour((colours >> 7) & 0x7F)),
+                _ => (null, null)
+            };
             string? colour = fonts.Count > 0 && font.Colour != baseFont.Colour ? Colour(font.Colour) : null;
             return new CellStyle
             {
                 Bold = font.Bold, Italic = font.Italic, Underline = font.Underline, Strike = font.Strike, Color = colour,
                 Size = font.Height > 0 && baseFont.Height > 0 && font.Height != baseFont.Height ? Math.Round((double)font.Height / baseFont.Height, 3) : 0,
                 Font = font.Name is { } n && n != baseFont.Name ? WorkbookStyles.SafeName(n) : null,
-                Fill = (more >> 26) == 1 ? Colour(fill) : null,
+                Fill = fill, Pattern = pattern,
                 Wrap = (data[at + 6] & 0x08) != 0,
                 VAlign = ((data[at + 6] >> 4) & 0x07) switch { 0 => "top", 1 => "middle", _ => null },
                 Indent = data[at + 8] & 0x0F,

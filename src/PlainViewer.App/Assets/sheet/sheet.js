@@ -255,7 +255,15 @@ function applyStyle(td, style) {
     s.backgroundImage = `linear-gradient(to right, ${bar[2]} 0%, ${bar[2]}40 ${share}%, transparent ${share}%)`;
     s.backgroundSize = "100% 70%"; s.backgroundRepeat = "no-repeat"; s.backgroundPosition = "left center";
   }
+  // Line pattern fills (Excel's stripes, grids and hatching) over the fill colour; a data bar takes their place.
+  const pattern = PATTERN.exec(style.pattern ?? "");
+  if (pattern && !bar) {
+    const [, weight, kind, colour] = pattern, width = weight === "dark" ? 2 : 1;
+    const lines = angle => `repeating-linear-gradient(${angle}deg, ${colour} 0 ${width}px, transparent ${width}px 4px)`;
+    s.backgroundImage = { Horizontal: [0], Vertical: [90], Down: [45], Up: [-45], Grid: [0, 90], Trellis: [45, -45] }[kind].map(lines).join(", ");
+  }
 }
+const PATTERN = /^(dark|light)(Horizontal|Vertical|Down|Up|Grid|Trellis) (#[0-9a-f]{6})$/;
 
 // Icon (conditional formatting icon sets): a coloured symbol before the value. Only known shapes and colours are drawn.
 const ICONS = {

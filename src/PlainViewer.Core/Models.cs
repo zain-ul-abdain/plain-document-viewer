@@ -54,6 +54,8 @@ public sealed class CellStyle
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public bool Strike { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Color { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Fill { get; set; }
+    // A line pattern over the fill ("<kind> #rrggbb", kind one of WorkbookStyles.LinePatterns).
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Pattern { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public double Size { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Font { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public bool Wrap { get; set; }
@@ -68,7 +70,7 @@ public sealed class CellStyle
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Bar { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)] public string? Icon { get; set; }
     // A fill, border, bar or icon shows even in an empty cell.
-    public bool Visible => Fill is not null || Top is not null || Right is not null || Bottom is not null || Left is not null || Bar is not null || Icon is not null;
+    public bool Visible => Fill is not null || Pattern is not null || Top is not null || Right is not null || Bottom is not null || Left is not null || Bar is not null || Icon is not null;
 }
 
 // Spreadsheet sheet as display text. Cells hold what Excel would show; formulas are never recalculated.

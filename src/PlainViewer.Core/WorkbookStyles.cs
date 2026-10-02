@@ -19,7 +19,7 @@ internal sealed partial class WorkbookStyles
     private readonly List<string> theme = [];           // XML order: dk1 lt1 dk2 lt2 accent1..6 hlink folHlink
     public IReadOnlyList<string> Theme => theme;
     private readonly List<Font> fonts = [];
-    private readonly List<string?> fills = [];
+    private readonly List<(string? Fill, string? Pattern)> fills = [];
     private readonly List<string?[]> borders = [];      // left, right, top, bottom
     private readonly Dictionary<string, int> known = [];
 
@@ -61,6 +61,7 @@ internal sealed partial class WorkbookStyles
         {
             string section = "";                 // fonts, fills, borders, cellXfs, dxfs (others are ignored)
             Font? font = null; string? fill = null; string?[]? border = null; string? edge = null;
+            string? pattern = null, patternColour = null, patternBack = null;   // a patterned (not solid) fill being read
             Dxf? dxf = null; string part = "";   // dxfs: the format being read and its font, fill or border part
             (int NumberFormat, int Font, int Fill, int Border, char Horizontal, string? Vertical, bool Wrap, int Indent)? xf = null;
             while (r.Read())
@@ -82,7 +83,9 @@ internal sealed partial class WorkbookStyles
                     {
                         case "fonts" or "fills" or "borders" or "cellXfs" when r.LocalName == section: section = ""; break;
                         case "font" when section == "fonts" && font is not null: fonts.Add(font); font = null; break;
-                        case "fill" when section == "fills": fills.Add(fill); fill = null; break;
+                        case "fill" when section == "fills":
+                            fills.Add(pattern is not null ? PatternFill(pattern, patternColour, patternBack) : (fill is { Length: > 0 } ? fill : null, null));
+                            fill = pattern = patternColour = patternBack = null; break;
                         case "border" when section == "borders" && border is not null: borders.Add(border); border = null; break;
                         case "left" or "right" or "top" or "bottom": edge = null; break;
                         case "xf" when section == "cellXfs" && xf is not null: AddFormat(xf.Value); xf = null; break;
@@ -137,9 +140,16 @@ internal sealed partial class WorkbookStyles
                             };
                         break;
                     case "fills":
-                        if (name == "fill") { fill = null; if (empty) fills.Add(null); }
-                        else if (name == "patternFill") fill = r.GetAttribute("patternType") is "solid" ? "" : null;   // colour follows
+                        if (name == "fill") { fill = pattern = patternColour = patternBack = null; if (empty) fills.Add((null, null)); }
+                        else if (name == "patternFill")
+                        {
+                            string? type = r.GetAttribute("patternType");
+                            if (type == "solid") fill = "";                                                     // colour follows
+                            else if (type is not (null or "none")) pattern = type;
+                        }
                         else if (name == "fgColor" && fill == "") fill = Color(r);
+                        else if (name == "fgColor" && pattern is not null) patternColour = Color(r);
+                        else if (name == "bgColor" && pattern is not null) patternBack = Color(r);
                         else if (name == "stop" && fill is null) fill = "";                                            // gradient: first stop
                         else if (name == "color" && fill == "") fill = Color(r);
                         break;
@@ -191,7 +201,9 @@ internal sealed partial class WorkbookStyles
             Color = f?.Color is { } c && c != baseFont?.Color ? c : null,
             Font = f?.Name is { } n && n != baseFont?.Name ? n : null,
             Size = f is { Size: > 0 } && baseFont is { Size: > 0 } && Math.Abs(f.Size - baseFont.Size) > 0.01 ? Math.Round(f.Size / baseFont.Size, 3) : 0,
-            Fill = xf.Fill >= 2 && xf.Fill < fills.Count && fills[xf.Fill] is { Length: > 0 } fillColour ? fillColour : null,   // 0 and 1 are reserved
+            // Fills 0 and 1 are reserved (none, and a grey pattern Excel never draws).
+            Fill = xf.Fill >= 2 && xf.Fill < fills.Count ? fills[xf.Fill].Fill : null,
+            Pattern = xf.Fill >= 2 && xf.Fill < fills.Count ? fills[xf.Fill].Pattern : null,
             Wrap = xf.Wrap, VAlign = xf.Vertical, Indent = xf.Indent,
             Left = b?[0], Right = b?[1], Top = b?[2], Bottom = b?[3]
         };
@@ -208,6 +220,26 @@ internal sealed partial class WorkbookStyles
         if (Table.Count >= MaxStyles) return -1;
         index = known[key] = Table.Count; Table.Add(style);
         return index;
+    }
+
+    // A patterned fill (Excel's 18 patterns other than solid; the pattern in `fore`, default black, over `back`, default
+    // white): grey shades become the blended colour, which is how they look at normal size; line patterns keep the
+    // background as the fill and become a Pattern ("<kind> #rrggbb") the grid page draws over it.
+    public static readonly string[] LinePatterns = ["darkHorizontal", "darkVertical", "darkDown", "darkUp", "darkGrid", "darkTrellis",
+        "lightHorizontal", "lightVertical", "lightDown", "lightUp", "lightGrid", "lightTrellis"];
+    internal static (string? Fill, string? Pattern) PatternFill(string kind, string? fore, string? back)
+    {
+        fore ??= "#000000"; back ??= "#ffffff";
+        double? shade = kind switch { "gray0625" => 0.0625, "gray125" => 0.125, "lightGray" => 0.25, "mediumGray" => 0.5, "darkGray" => 0.75, _ => null };
+        if (shade is double share) return (Mix(back, fore, share), null);
+        return LinePatterns.Contains(kind) ? (back, $"{kind} {fore}") : (null, null);
+    }
+
+    // Colour a moved `share` (0-1) of the way to colour b.
+    internal static string Mix(string a, string b, double share)
+    {
+        int Channel(int at) => (int)Math.Round(Convert.ToInt32(a.Substring(at, 2), 16) * (1 - share) + Convert.ToInt32(b.Substring(at, 2), 16) * share);
+        return $"#{Channel(1):x2}{Channel(3):x2}{Channel(5):x2}";
     }
 
     // A conditional format (dxf): only the properties it sets; null leaves the cell's own.

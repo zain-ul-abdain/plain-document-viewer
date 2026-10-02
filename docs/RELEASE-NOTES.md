@@ -2,6 +2,7 @@
 
 ## Next version (not yet released)
 
+- Spreadsheets: patterned cell fills (grey shades, stripes, grids and crosshatching) now show, in .xlsx and .xls.
 - Spreadsheets: colours and borders given to whole columns or rows now show in their empty cells too (.xlsx, .xls and .ods).
 - Clearer message when the document worker stops unexpectedly (for example at its memory limit), instead of "an unexpected problem".
 

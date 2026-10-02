@@ -317,7 +317,7 @@ internal sealed class ConditionalFormats(WorkbookStyles? workbook = null)
     private static CellStyle Merge(CellStyle cell, Overlay o) => new()
     {
         Bold = o.Bold ?? cell.Bold, Italic = o.Italic ?? cell.Italic, Underline = o.Underline ?? cell.Underline, Strike = o.Strike ?? cell.Strike,
-        Color = o.Color ?? cell.Color, Fill = o.Fill ?? cell.Fill, Size = cell.Size, Font = cell.Font, Wrap = cell.Wrap, VAlign = cell.VAlign, Indent = cell.Indent,
+        Color = o.Color ?? cell.Color, Fill = o.Fill ?? cell.Fill, Pattern = o.Fill is null ? cell.Pattern : null, Size = cell.Size, Font = cell.Font, Wrap = cell.Wrap, VAlign = cell.VAlign, Indent = cell.Indent,
         Left = o.Left ?? cell.Left, Right = o.Right ?? cell.Right, Top = o.Top ?? cell.Top, Bottom = o.Bottom ?? cell.Bottom,
         Bar = o.Bar ?? cell.Bar, Icon = o.Icon ?? cell.Icon
     };

@@ -498,6 +498,38 @@ try
         string stale = Path.Combine(root, "stale.xls"); File.WriteAllBytes(stale, bytes);
         Check(LegacySpreadsheets.Load(stale, culture).Sheets[0].Rows[6][1] == "$99.00");
     });
+    Test("Older spreadsheets: an XF fill pattern is drawn as a pattern over the background", () => {
+        // LibreOffice cannot save pattern fills, so styles.xls's C2 (a solid green fill, an empty formatted cell) has
+        // its cell format changed to pattern 9 (dark grid): the green becomes the pattern colour.
+        byte[] bytes = File.ReadAllBytes(Path.Combine(corpus, "xls", "styles.xls"));
+        var compound = new CompoundFile(bytes, "file"); var entry = compound.Find("Workbook")!; var book = compound.Read(entry, "file");
+        int xf = -1;
+        for (int at = 0; at + 4 <= book.Length;)
+        {
+            int type = BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at)), length = BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 2));
+            if (type == 0x0201 && BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 4)) == 1 && BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 6)) == 2)
+                xf = BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 8));
+            at += 4 + length;
+        }
+        Check(xf >= 0);
+        int seen = 0; bool patched = false;
+        for (int at = 0; at + 4 <= book.Length;)
+        {
+            int type = BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at)), length = BinaryPrimitives.ReadUInt16LittleEndian(book.AsSpan(at + 2));
+            if (type == 0x00E0 && seen++ == xf)
+            {
+                uint more = BinaryPrimitives.ReadUInt32LittleEndian(book.AsSpan(at + 4 + 14));
+                BinaryPrimitives.WriteUInt32LittleEndian(book.AsSpan(at + 4 + 14), (more & 0x03FFFFFF) | (9u << 26));
+                patched = true;
+            }
+            at += 4 + length;
+        }
+        Check(patched); compound.Write(entry, book, "file");
+        string path = Path.Combine(root, "pattern.xls"); File.WriteAllBytes(path, bytes);
+        var view = LegacySpreadsheets.Load(path, culture);
+        var style = view.CellStyles[int.Parse(view.Sheets[0].Align[1].Split('|')[1].Split('.')[2])];
+        if (style.Pattern != "darkGrid #00b050" || style.Fill is null) throw new Exception($"C2: fill {style.Fill}, pattern {style.Pattern}");
+    });
     Test("Older Office files: password, Word 95 and damaged files are refused clearly", () => {
         string Patched(string source, string name, Func<byte[], CompoundFile, bool> patch)
         {

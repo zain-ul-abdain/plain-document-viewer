@@ -51,6 +51,11 @@ function stylesWorkbook() {
   set("A5", "Hello spill: this text is longer than its column and runs over the empty cells beside it", {});
   set("A6", "No room to spill here", {}); set("B6", "Neighbour", {});
   set("F1", "After hidden E", {});
+  // Pattern fills: a grey shade (drawn blended), crosshatching on a colour and thin lines on the default white.
+  const patterned = (pattern, fg, bg) => ({ fill: { type: "pattern", pattern, fgColor: { argb: fg }, ...(bg ? { bgColor: { argb: bg } } : {}) } });
+  set("C6", null, patterned("lightGray", "FF000000", "FFFFFFFF"));
+  set("D6", null, patterned("darkTrellis", "FFC00000", "FFFFFF00"));
+  set("F6", null, patterned("lightHorizontal", "FF0070C0"));
   ws.getRow(4).height = 45;                                  // tall enough for D4's wrapped text
   // Whole column G and whole row 8 filled: Excel saves no cells for their empty part (the row's fill wins in G8).
   ws.getColumn(7).width = 10;
@@ -97,6 +102,7 @@ export async function generateXlsx({ large }) {
           { ref: "A2", fill: "#ffff00" }, { ref: "B2", fill: "#95b3d7" }, { ref: "C2", fill: "#00b050" },
           { ref: "A3", top: "1 solid #0000ff", bottom: "3 double #0000ff", left: "2 solid #000000", right: "1 dashed #ff0000" },
           { ref: "A4", indent: 2 }, { ref: "B4", size: 1.455 }, { ref: "C4", font: "Consolas" }, { ref: "D4", wrap: true, vAlign: "top" },
+          { ref: "C6", fill: "#bfbfbf", pattern: null }, { ref: "D6", fill: "#ffff00", pattern: "darkTrellis #c00000" }, { ref: "F6", fill: "#ffffff", pattern: "lightHorizontal #0070c0" },
           { ref: "G2", fill: "#ddebf7" }, { ref: "G6", fill: "#ddebf7" }, { ref: "B8", fill: "#fce4d6" }, { ref: "G8", fill: "#fce4d6" }, { ref: "B7", fill: null }],
         align: [{ ref: "B3", align: "c" }, { ref: "C3", align: "r" }, { ref: "D3", align: "l" }],
         hiddenColumns: ["E"], defaultRowHeight: 15, rowHeights: [{ row: 4, points: 45 }] },
