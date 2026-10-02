@@ -549,6 +549,11 @@ try
         var supported = Formats.All.ToHashSet();
         if (!registered.SetEquals(supported)) throw new Exception($"Installer only: {string.Join(" ", registered.Except(supported))}; app only: {string.Join(" ", supported.Except(registered))}");
         Check(Formats.OpenDialogFilter.StartsWith("All supported files|*.pdf;"));
+        // The Microsoft Store package (MSIX) registers the same types.
+        string manifest = File.ReadAllText(Path.Combine(Path.GetDirectoryName(corpus)!, "..", "installer", "msix", "AppxManifest.xml"));
+        var packaged = System.Text.RegularExpressions.Regex.Matches(manifest, "<uap:FileType>([.a-z0-9]+)</uap:FileType>").Select(m => m.Groups[1].Value).ToList();
+        if (packaged.Count != packaged.Distinct().Count() || !packaged.ToHashSet().SetEquals(supported))
+            throw new Exception($"MSIX only: {string.Join(" ", packaged.Except(supported))}; app only: {string.Join(" ", supported.Except(packaged))}");
     });
     Test("Spreadsheet complex fixture reports hidden sheets and the missing formula result", () => {
         var view = Spreadsheets.Load(Path.Combine(corpus, "xlsx", "complex.xlsx"), culture);

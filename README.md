@@ -88,7 +88,7 @@ Plain Viewer never uploads anything, has no account or sign-in, sends no usage d
 
 ## Code signing policy
 
-Plain Viewer has applied for free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). Until the project is accepted, installers are not signed. Once it is, each release installer and the programs inside it are signed by SignPath after being built from this repository by the [release workflow](.github/workflows/release.yml) on GitHub's own build machines, and only after a person approves that release in SignPath.
+The installers on the Releases page are not signed yet. SignPath Foundation, which signs open-source projects for free, declined the project in October 2026 because it is still new; it may apply again once more people use it. A signed version is planned through the Microsoft Store, where Microsoft signs the package. Every installer is built from this repository by the [release workflow](.github/workflows/release.yml) on GitHub's own build machines, after the full test suite passes there.
 
 - Committers and reviewers: [Zain ul abdain](https://github.com/zain-ul-abdain) (repository owner)
 - Approvers: [Zain ul abdain](https://github.com/zain-ul-abdain)

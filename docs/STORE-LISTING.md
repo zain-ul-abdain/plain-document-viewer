@@ -1,8 +1,8 @@
 # Microsoft Store listing (draft)
 
-Text for Partner Center, one section per field, ready to paste. Nothing has been submitted. The Store accepts this
-kind of app as an **EXE installer**, which must be code-signed (with every program file inside it) by a certificate
-from a trusted certificate authority, so the submission waits for SignPath signing (docs/RELEASING.md). Partner Center
+Text for Partner Center, one section per field, ready to paste. Nothing has been submitted. The app goes to the Store
+as an **MSIX package** (DECISIONS.md D15): the Store signs it, so no certificate is needed. How to build and test the
+package: docs/RELEASING.md, "Microsoft Store package (MSIX)". Partner Center
 shows each field's length limit; the texts below are written to fit the usual limits (description well under 10,000
 characters, each feature under 200, at most 7 search terms), but check them there.
 
@@ -106,18 +106,15 @@ Plain Viewer collects no personal data and sends nothing over the network. (The 
 
 Answer "no" to every content question: no violence, sexual content, gambling, drugs, crude humour, user-to-user communication, sharing of location or personal data, in-app purchases, or unrestricted web browsing (links open in the user's browser only after asking). The expected rating is the lowest (3+ / Everyone).
 
-## Installer settings (EXE submission)
+## Package (MSIX submission)
 
-- Package URL: the release asset, for example https://github.com/zain-ul-abdain/plain-viewer/releases/download/v0.5.0/PlainViewer-Setup-0.5.0-x64.exe. Each version has its own URL, and a published file never changes (a Store requirement).
-- Architecture: x64. Language: English.
-- Silent install parameters: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. This uses the default options: "Open with" on, the Windows Firewall rules off (they need an administrator prompt), and the WebView2 Runtime installed if the PC lacks it.
-- Install scope: per user, no administrator rights.
-- Return codes (Inno Setup): 0 success; 1 setup failed to start; 2 cancelled before installing; 3 fatal error while preparing; 4 fatal error while installing; 5 cancelled while installing; 6 setup was forcibly ended; 7 preparing to install found it cannot continue (for example the app is still running and could not be closed); 8 a restart is needed before installing.
+- Upload `artifacts\msix\PlainViewer-<version>.0-x64.msix`, built with the identity from Partner Center's Product identity page (docs/RELEASING.md). The Store signs it. Architecture: x64. Language: English. Minimum Windows: Windows 11 (10.0.22000).
+- Restricted capability `runFullTrust`, justification to paste: "Plain Viewer is a desktop (WPF) application. It opens each document in a separate worker process that lowers itself to low integrity, and converts Word and PowerPoint files with a bundled copy of LibreOffice, also at low integrity; both need a full-trust desktop process. The app makes no network connections."
+- "Open with" entries come from the package; Windows never makes Plain Viewer a default app by itself.
 
 ## Notes for certification (for Microsoft's testers)
 
-Plain Viewer is a read-only document viewer. After installing, open any document from the Start menu app with "Open file" (Ctrl+O), or right-click a file in File Explorer and choose Open with > Plain Viewer. It needs no account and makes no network connections; a sample set of documents is in the tests/corpus folder of the GitHub repository. The installer includes the Microsoft Edge WebView2 Runtime (Microsoft's offline installer) for PCs that lack it, and a trimmed LibreOffice (MPL-2.0) that lays out Word and PowerPoint files.
-
+Plain Viewer is a read-only document viewer. After installing, open any document from the Start menu app with "Open file" (Ctrl+O), or right-click a file in File Explorer and choose Open with > Plain Viewer. It needs no account and makes no network connections; a sample set of documents is in the tests/corpus folder of the GitHub repository. It uses the Microsoft Edge WebView2 Runtime that Windows 11 includes, and a bundled, trimmed LibreOffice (MPL-2.0) that lays out Word and PowerPoint files.
 ## Images
 
 In docs/images/store (made by scripts/screenshot.ps1 and scripts/make-icon.ps1 -StoreLogoOnly from the sample files in docs/images/showcase, which tests/corpus/generate/showcase.mjs makes):
@@ -133,7 +130,7 @@ The status line at the bottom of the window is cropped off: it shows how long a 
 
 ## Before submitting
 
-1. SignPath signing works (docs/RELEASING.md), and every program file in the installer is signed. Not signed today: Markdig.dll, ExcelNumberFormat.dll (third-party libraries) and the uninstaller Inno Setup writes; decide with Microsoft whether they may stay unsigned, or sign them.
+1. The MSIX package passes scripts\msix-sandbox-test.ps1 (with a local test identity), then is rebuilt with the Partner Center identity.
 2. A Partner Center developer account (identity verification), and the name reserved.
 3. Upload the images above.
 4. Whether to mention "beta" in the listing while releases are pre-releases on GitHub.

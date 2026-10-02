@@ -323,3 +323,9 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 
 - Zain submitted the SignPath Foundation application (repository plain-viewer, GitHub 2FA on); SignPath acknowledged it and will reply within a few business days.
 - `Spreadsheets.DefaultStyles` (.xlsx) and `SheetBuilder.ColumnStyle/RowStyle/ApplyDefaultStyles` (.xls, .ods) fill the empty cells of formatted columns and rows within the data before conditional formatting. .ods: empty cells without their own style are no longer added per run (the column's default applies through ColumnStyle), and an empty formatted run reaching column 1,024 or beyond becomes a row style.
+
+## Agent 2, 2 October 2026 (evening): SignPath declined; Microsoft Store MSIX
+
+- SignPath Foundation declined the application (too new). Zain chose signed installs through the Microsoft Store as MSIX (DECISIONS.md D15). Zain approved the SDK build tools package download (21 MB, signature-checked, in `.tools\winsdk-buildtools-10.0.28000.2705`) and a sandbox-only self-signed test certificate.
+- New: `installer/msix/AppxManifest.xml` (file types checked against Formats.cs by the core test), `scripts/package-msix.ps1` (layout from artifacts\publish plus LibreOffice, tile pictures from the logo, makeappx; `-TestSign` for local tests), `scripts/msix-sandbox-test.ps1` and `msix-sandbox-inner.ps1`. Trial passed (TEST-RESULTS.md).
+- **Next, waiting for Zain:** Partner Center account approved and the name reserved; then build with the Product identity values and submit (docs/RELEASING.md, docs/STORE-LISTING.md).

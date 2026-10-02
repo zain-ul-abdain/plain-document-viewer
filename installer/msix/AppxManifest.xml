@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MSIX package for the Microsoft Store (DECISIONS.md D15). scripts/package-msix.ps1 fills in the identity, publisher and
+     version: for the Store they come from Partner Center (Product identity); for local tests a test publisher is used.
+     The file types must match Core/Formats.cs (a core test checks this list against the installer's). -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop rescap">
+  <Identity Name="{IdentityName}" Publisher="{Publisher}" Version="{Version}" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Plain Viewer</DisplayName>
+    <PublisherDisplayName>{PublisherDisplayName}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="PlainViewer" Executable="PlainViewer.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Plain Viewer" Description="Read documents offline: open a file, read it, close it."
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- "PlainViewer.exe" on the command line starts the packaged app with its package identity. -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="PlainViewer.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias><desktop:ExecutionAlias Alias="PlainViewer.exe" /></uap3:AppExecutionAlias>
+        </uap3:Extension>
+        <!-- "Open with" entries; Windows never makes the app the default by itself. -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="pdf">
+            <uap:DisplayName>PDF document</uap:DisplayName>
+            <uap:SupportedFileTypes><uap:FileType>.pdf</uap:FileType></uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="documents">
+            <uap:DisplayName>Word and other text documents</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.docx</uap:FileType><uap:FileType>.docm</uap:FileType><uap:FileType>.dotx</uap:FileType><uap:FileType>.dotm</uap:FileType>
+              <uap:FileType>.odt</uap:FileType><uap:FileType>.rtf</uap:FileType><uap:FileType>.doc</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="spreadsheets">
+            <uap:DisplayName>Excel and other spreadsheets</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.xlsx</uap:FileType><uap:FileType>.xlsm</uap:FileType><uap:FileType>.xltx</uap:FileType><uap:FileType>.xltm</uap:FileType>
+              <uap:FileType>.ods</uap:FileType><uap:FileType>.xls</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="presentations">
+            <uap:DisplayName>PowerPoint and other presentations</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.pptx</uap:FileType><uap:FileType>.pptm</uap:FileType><uap:FileType>.potx</uap:FileType><uap:FileType>.potm</uap:FileType>
+              <uap:FileType>.ppsx</uap:FileType><uap:FileType>.ppsm</uap:FileType><uap:FileType>.odp</uap:FileType><uap:FileType>.ppt</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="pictures">
+            <uap:DisplayName>Pictures</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.jpg</uap:FileType><uap:FileType>.jpeg</uap:FileType><uap:FileType>.jfif</uap:FileType><uap:FileType>.png</uap:FileType>
+              <uap:FileType>.gif</uap:FileType><uap:FileType>.bmp</uap:FileType><uap:FileType>.ico</uap:FileType><uap:FileType>.webp</uap:FileType>
+              <uap:FileType>.avif</uap:FileType><uap:FileType>.svg</uap:FileType><uap:FileType>.tif</uap:FileType><uap:FileType>.tiff</uap:FileType>
+              <uap:FileType>.heic</uap:FileType><uap:FileType>.heif</uap:FileType><uap:FileType>.hif</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="text">
+            <uap:DisplayName>Text, CSV, Markdown and data files</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.txt</uap:FileType><uap:FileType>.json</uap:FileType><uap:FileType>.xml</uap:FileType><uap:FileType>.log</uap:FileType>
+              <uap:FileType>.ini</uap:FileType><uap:FileType>.yaml</uap:FileType><uap:FileType>.yml</uap:FileType><uap:FileType>.csv</uap:FileType>
+              <uap:FileType>.md</uap:FileType><uap:FileType>.markdown</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

@@ -62,6 +62,8 @@ Plain Viewer opens files from strangers, so ship an update whenever a bundled co
 
 ## Signed release builds (SignPath)
 
+**Status: SignPath Foundation declined the application on 2 Oct 2026** (too new; reapplying later is welcome), so the workflow builds unsigned installers. Signed installs go through the Microsoft Store instead (next section, DECISIONS.md D15). The set-up below stays for a later reapplication.
+
 Zain chose SignPath Foundation (30 Sep 2026): free code signing for open-source projects, with a certificate issued to SignPath Foundation (so Windows shows "SignPath Foundation" as the publisher). Conditions: https://signpath.org/terms. The README's "Code signing policy" section is required by them.
 
 **The workflow** `.github/workflows/release.yml` (run it from the repository's Actions tab: "Release build", "Run workflow") builds on a clean GitHub-hosted Windows machine. `scripts/ci-prepare.ps1` fetches the same pinned tools as the one-time setup below and checks each one (NuGet packages by SHA-256, Inno Setup by GitHub's digest and its signature, LibreOffice by The Document Foundation's SHA-256, WebView2 by Microsoft's signature). Then `package.ps1 -Stage Publish` runs the whole test gate and publishes; SignPath signs the app's own five programs (`.signpath/artifact-configurations/binaries.xml`); `package.ps1 -Stage Installer` packs the signed programs; SignPath signs the installer (`installer.xml`). The result is the workflow artifact `PlainViewer-Setup-<version>-x64` (installer and `.sha256`), ready to attach to a GitHub release. Until SignPath is set up, the same workflow builds an unsigned installer.
@@ -78,6 +80,20 @@ Zain chose SignPath Foundation (30 Sep 2026): free code signing for open-source 
 
 Not signed: the uninstaller that Inno Setup writes during installation.
 
+## Microsoft Store package (MSIX)
+
+The Store signs MSIX packages it accepts (DECISIONS.md D15), so this route needs no certificate.
+
+**Tools (once):** Microsoft's SDK build tools package (makeappx, signtool), approved by Zain on 2 Oct 2026: download `microsoft.windows.sdk.buildtools.<version>.nupkg` from `https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.buildtools/<version>/`, check it with `dotnet nuget verify --all <file>` (Microsoft Corporation and nuget.org signatures) and unzip it to `.tools\winsdk-buildtools-<version>`. Covered by the Windows SDK licence terms.
+
+**Each release:**
+
+1. Publish as for the installer: `.\scripts\package.ps1 -Stage Publish` (runs the full test gate).
+2. Test the package on a clean PC: `.\scripts\package-msix.ps1 -TestSign`, then `.\scripts\msix-sandbox-test.ps1`. The local test certificate is trusted inside Windows Sandbox only, never on a real PC, and is never used for distribution.
+3. Build the Store upload with the identity Partner Center shows under **Product management > Product identity** (after the name is reserved): `.\scripts\package-msix.ps1 -IdentityName <Package/Identity/Name> -Publisher "<Package/Identity/Publisher>" -PublisherDisplayName "<Package/Properties/PublisherDisplayName>"`. The result, `artifacts\msix\PlainViewer-<version>.0-x64.msix`, is unsigned: upload it in the submission's **Packages** page. The version's last part must stay 0.
+4. Listing text and pictures: docs/STORE-LISTING.md and docs/images/store.
+
+**Differences from the EXE installer:** no optional firewall rules (they need an administrator prompt; About shows that they are absent), no bundled WebView2 installer (Windows 11 includes the runtime), and the converter profile in `%USERPROFILE%\AppData\LocalLow\PlainViewer` (about 1 MB) stays after the app is removed, because a package cannot run cleanup code. The Store updates installed copies itself.
 ## Windows warnings
 
 What users see while installers are unsigned:
