@@ -1,6 +1,6 @@
 # Plain Viewer beta: problem report
 
-Report problems as a GitHub issue: https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose and choose **Problem report**, which opens these same questions ready to fill in. You can also copy this form into a new issue yourself. One problem per report, please. Leave out anything you are not sure about.
+Report problems as a GitHub issue: https://github.com/zain-ul-abdain/plain-viewer/issues/new/choose and choose **Problem report**, which opens these same questions ready to fill in. You can also copy this form into a new issue yourself. One problem per report, please. Leave out anything you are not sure about.
 
 **Issues are public.** Do not include anything private in the text or screenshots, and do not attach the document itself unless it contains nothing private. The file type and size are usually enough.
 

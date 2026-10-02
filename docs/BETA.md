@@ -93,7 +93,7 @@ When you report a problem, you decide what to write. Problem reports are public 
 
 ## Reporting a problem
 
-Report problems on GitHub: https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose
+Report problems on GitHub: https://github.com/zain-ul-abdain/plain-viewer/issues/new/choose
 
 1. Sign in to GitHub (a free account is enough).
 2. Choose **Problem report**. The form (the same questions as `BETA-FEEDBACK.md`) opens ready to fill in.

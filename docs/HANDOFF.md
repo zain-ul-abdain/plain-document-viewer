@@ -55,7 +55,7 @@ DECISIONS.md research retained without edits. Direction is consistent with the i
 
 ## Agent 2, 27 September 2026
 
-- **Remote created.** Zain asked for a private GitHub repository: `https://github.com/zain-ul-abdain/plain-document-viewer`, added as `origin`. The first commit on `master` contains only root and docs files (`.gitignore`, `AGENTS.md`, an agent entry-point file, `README.md`, `docs/`). Codex's `src/`, `scripts/`, `tests/` and `.tools/` were not staged. Repository rules are in the new "Repository" section of `AGENTS.md`.
+- **Remote created.** Zain asked for a private GitHub repository: `https://github.com/zain-ul-abdain/plain-viewer`, added as `origin`. The first commit on `master` contains only root and docs files (`.gitignore`, `AGENTS.md`, an agent entry-point file, `README.md`, `docs/`). Codex's `src/`, `scripts/`, `tests/` and `.tools/` were not staged. Repository rules are in the new "Repository" section of `AGENTS.md`.
 - **Duplicate removed.** Agent 2 briefly created `docs/STATUS.md` before seeing `docs/TASKS.md` and deleted it; `TASKS.md` and this file are the only trackers. Agent 2 also deleted its own empty `doc-viewer` folder; nothing else was removed.
 - **Disk.** C: had 0.9 GB free after Zain freed space. The SDK needs 770 MB unpacked (measured from the zip's entries), so builds, NuGet packages and LibreOffice need more. The largest item is Docker's data, 52.9 GB: `docker system df` shows 19.95 GB of build cache and 10.2 GB of images reclaimable. Other sessions use Docker, so nothing was pruned; Zain decides.
 - **Docker for building: not recommended.** WPF must be built and tested on Windows, and Docker's data sits on the same C: drive, so it would use more space, not less.
@@ -224,13 +224,13 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 ## Agent 2, 29 September 2026: repository public, v0.1.0 pre-release
 
 - Installer rebuilt after the licence change; full test gate passed (TEST-RESULTS.md). SHA-256 `a4ed3669a9297677d59237a3fb3d77c00de38d422c05c76c3701d82234400acd`.
-- With Zain's approval the repository is now **public**, and https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.1.0 is a pre-release (tag v0.1.0 at fb3de9d) with the installer, its `.sha256`, BETA.md and BETA-FEEDBACK.md.
+- With Zain's approval the repository is now **public**, and https://github.com/zain-ul-abdain/plain-viewer/releases/tag/v0.1.0 is a pre-release (tag v0.1.0 at fb3de9d) with the installer, its `.sha256`, BETA.md and BETA-FEEDBACK.md.
 - C: fell to about 60 MB free after the build because Windows grew its paging file during a low-memory moment (13.4 GB allocated); a restart normally shrinks it. Check free space before any build.
 - Still open for Zain: Narrator and scaling checks, Windows Sandbox rerun of this installer (needs about 8 GB free), where testers send reports, Inno Setup commercial licence, signing, ARM64. Old commit IDs may stay reachable on GitHub by direct ID until GitHub removes them; GitHub Support can purge them on request.
 
 ## Agent 2, 29 September 2026 (later): reports through GitHub Issues; disk clean-up
 
-- Zain chose GitHub Issues for beta reports. New issue template `.github/ISSUE_TEMPLATE/problem-report.md` (same questions as `docs/BETA-FEEDBACK.md`, label `beta`); BETA.md and BETA-FEEDBACK.md point to https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose and warn that issues are public (no private details or documents). The v0.1.0 release text and its BETA.md and BETA-FEEDBACK.md files were replaced with these versions; the installer is unchanged.
+- Zain chose GitHub Issues for beta reports. New issue template `.github/ISSUE_TEMPLATE/problem-report.md` (same questions as `docs/BETA-FEEDBACK.md`, label `beta`); BETA.md and BETA-FEEDBACK.md point to https://github.com/zain-ul-abdain/plain-viewer/issues/new/choose and warn that issues are public (no private details or documents). The v0.1.0 release text and its BETA.md and BETA-FEEDBACK.md files were replaced with these versions; the installer is unchanged.
 - Disk clean-up at Zain's request: worktree `bin`/`obj` folders, `artifacts\publish` and Temp items older than a day were deleted (about 500 MB; Temp\DockerDesktopUpdates left alone). The next build recreates the build outputs. C: had 0.56 GB free afterwards; a restart should shrink the 13.4 GB paging file.
 
 ## Agent 2, 29 September 2026 (afternoon): released installer passes the clean-PC test; beta stage complete
@@ -260,7 +260,7 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **Excel pictures and charts:** `Core/SheetDrawings.cs` reads a worksheet's or chart sheet's drawing part. Pictures stored in the file are identified by `ImageFiles` and written by the worker to the work folder as `media-<sheet>-<n>.<type>` (`ImageFiles.MediaName`); the app checks every name and file after the worker returns, keeps the work folder while the document is open, and serves `/media` from the document host only after re-identifying the bytes (`MainWindow.SheetRequest`). Linked pictures are counted, never resolved. Charts become `ChartData` from the chart part's caches; `Assets/sheet/sheet.js` draws them as SVG (`chartElement`) in a layer over the grid (`withDrawings`), extends the grid under them (`padForDrawings`) and shows chart sheets full-size. The sheet page's CSP now allows images from the document host only.
 - **HEIC:** the worker now targets `net10.0-windows` with WPF so `Worker/HeifPictures.cs` can decode with Windows' own HEIF codec (only that decoder is accepted), apply the orientation and write `picture.png`; the app re-identifies it as PNG and shows it in the picture view. Decision D11 in DECISIONS.md (no decoder bundled). Fixtures: `scripts/make-heic.ps1` (kept in git, remade only with -Force). The installer registers .heic .heif .hif.
 - Verified: see TEST-RESULTS.md (core 163, smoke 70, security 64/64 with 0 requests, installer built, Windows Sandbox clean-PC test passed, including the missing-codec message).
-- **Published** with Zain's approval: https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.4.0 (pre-release, tag at 1fe12ac; installer, .sha256, BETA.md, BETA-FEEDBACK.md).
+- **Published** with Zain's approval: https://github.com/zain-ul-abdain/plain-viewer/releases/tag/v0.4.0 (pre-release, tag at 1fe12ac; installer, .sha256, BETA.md, BETA-FEEDBACK.md).
 - **Open:** conditional formatting; row heights; Narrator and scaling checks (Zain); signing.
 
 ## Agent 2, 30 September 2026: charts and pictures in .xls and .ods (not yet released)
@@ -280,7 +280,7 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - **Windows 10 test** (`scripts/win10-vm-test.ps1`, Hyper-V, Microsoft's Windows 10 22H2 image checked against its published SHA-256, no network): install, firewall, "Open with", WebView2 and uninstall worked, but the app does not start on that unpatched build (.NET 10's CET check). Zain chose to keep CET and require updates, then to skip Windows 10 for now: the installer is Windows 11 only again. Details and how to resume: DECISIONS.md D13. The October 2025 update (KB5066791) is in `%USERPROFILE%\PlainViewerWin10Test` with the Windows 10 image (about 6.9 GB; delete if not resuming).
 - The keyboard and high-contrast checks could not fail before (a missing window counted as a pass); fixed.
 - **0.5.0** is built by GitHub Actions (unsigned until SignPath is set up) and tested in Windows Sandbox before publishing.
-- **0.5.0 published** with Zain's approval: https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.5.0 (tag at 3f713b7). The installer is the one GitHub Actions built (run 36636606446, SHA-256 a76d7bf4...0b0f); it passed the Windows Sandbox clean-PC test before publishing.
+- **0.5.0 published** with Zain's approval: https://github.com/zain-ul-abdain/plain-viewer/releases/tag/v0.5.0 (tag at 3f713b7). The installer is the one GitHub Actions built (run 36636606446, SHA-256 a76d7bf4...0b0f); it passed the Windows Sandbox clean-PC test before publishing.
 - **Store preparation:** docs/STORE-LISTING.md (text), docs/images/store (logo and four screenshots). New sample files (a presentation, Markdown notes) and charts in the budget workbook come from showcase.mjs; README shows the four new screenshots. Zain has not finished the developer registration in Partner Center.
 
 ## Agent 2, 30 September 2026 (evening): Excel conditional formatting (not yet released)
@@ -299,7 +299,7 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 
 ## Agent 2, 30 September 2026 (late night): 0.6.0 published
 
-- With Zain's approval ("publish 0.6.0 once tests pass"): https://github.com/zain-ul-abdain/plain-document-viewer/releases/tag/v0.6.0 (pre-release, tag at dc0a145) with the GitHub Actions installer (run 36738999923, unsigned), its .sha256, BETA.md and BETA-FEEDBACK.md. Windows Sandbox clean-PC test passed (TEST-RESULTS.md).
+- With Zain's approval ("publish 0.6.0 once tests pass"): https://github.com/zain-ul-abdain/plain-viewer/releases/tag/v0.6.0 (pre-release, tag at dc0a145) with the GitHub Actions installer (run 36738999923, unsigned), its .sha256, BETA.md and BETA-FEEDBACK.md. Windows Sandbox clean-PC test passed (TEST-RESULTS.md).
 - `scripts/sandbox-inner.ps1`: the network-adapter line is information only and no longer fails the run when CIM is refused; the three conditional formatting workbooks are opened too.
 - **Open for Zain:** SignPath application, Partner Center registration, Narrator and scaling checks.
 
@@ -314,3 +314,7 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - `Core/LocalFiles.OpenRead` replaces every reader's `new FileStream(path, ...)`: path check (`TextFiles.ValidateLocalPath`), then `CreateFileW` with FILE_FLAG_OPEN_REPARSE_POINT and FILE_FLAG_OPEN_NO_RECALL, then the handle must be an ordinary available file whose final path is on a local drive letter. `LocalFiles.Stamp` and `ThrowIfChanged` replace the path-based change checks. `OpenChecked` (internal, visible to PlainViewer.Tests) is the handle part alone, for tests.
 - The symbolic-link test skips on PCs without Developer Mode or administrator rights (this one).
 - **Open:** spreadsheet gaps (shapes and text boxes, chart labels and axis titles, pattern fills, whole-column/row styles), ARM64; for Zain: SignPath form, Partner Center, Narrator and scaling checks.
+
+## Agent 2, 2 October 2026: repository renamed
+
+- With Zain's approval the GitHub repository is now https://github.com/zain-ul-abdain/plain-viewer (was plain-document-viewer; GitHub redirects the old address). Links in tracked files were updated and `origin` points at the new address. Local folder names are unchanged. Use the new name in the SignPath application.

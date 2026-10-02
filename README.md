@@ -5,9 +5,9 @@
 <p align="center">A simple, read-only document viewer for Windows 11.<br>
 Open a file, read it, close it. Offline, no Microsoft Office needed, and it never changes your files.</p>
 
-<p align="center"><a href="https://github.com/zain-ul-abdain/plain-document-viewer/releases"><b>Download</b></a> ·
+<p align="center"><a href="https://github.com/zain-ul-abdain/plain-viewer/releases"><b>Download</b></a> ·
 <a href="#how-to-install">How to install</a> · <a href="#how-to-use">How to use</a> ·
-<a href="https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose">Report a problem</a></p>
+<a href="https://github.com/zain-ul-abdain/plain-viewer/issues/new/choose">Report a problem</a></p>
 
 <table>
 <tr><td><img src="docs/images/screenshot-document.png" alt="A Word newsletter shown as pages, with page thumbnails"></td><td><img src="docs/images/screenshot-spreadsheet.png" alt="An Excel budget with its cell formatting and two charts"></td></tr>
@@ -33,7 +33,7 @@ Files with macros open with the macros removed or ignored: they never run. What 
 
 You need Windows 11 on a normal Intel or AMD PC (x64) and about 1.3 GB of free disk space. No administrator rights are needed.
 
-1. Download `PlainViewer-Setup-<version>-x64.exe` (the newest version at the top) from the [Releases page](https://github.com/zain-ul-abdain/plain-document-viewer/releases).
+1. Download `PlainViewer-Setup-<version>-x64.exe` (the newest version at the top) from the [Releases page](https://github.com/zain-ul-abdain/plain-viewer/releases).
 2. Run it. Windows may show **"Windows protected your PC"** because the installer is not signed yet. Click **More info**, check the file name, then **Run anyway**.
 3. Accept the terms and choose the options:
    - **Add Plain Viewer to "Open with"** (on by default): right-click a file in File Explorer and choose **Open with > Plain Viewer**. Your default apps do not change; to make Plain Viewer the default, choose it in **Settings > Apps > Default apps**.

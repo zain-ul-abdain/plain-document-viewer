@@ -13,7 +13,7 @@ Read `docs/SPECIFICATION.md`, `docs/DECISIONS.md`, `docs/TASKS.md`, and `docs/HA
 
 ## Repository
 
-- Remote: private GitHub repository `https://github.com/zain-ul-abdain/plain-document-viewer` (`origin`), default branch `master`.
+- Remote: private GitHub repository `https://github.com/zain-ul-abdain/plain-viewer` (`origin`), default branch `master`.
 - Use neutral commit titles: no agent or product names, no `[agent]` prefixes and no attribution trailers. Commit only files from your own claimed task; do not commit another agent's in-progress files.
 - Push finished, verified work to `origin`. If a push fails (for example, no GitHub credentials in the Codex sandbox), keep the commit local and say so in `docs/HANDOFF.md`; Agent 2 can push it later.
 - The working folder is owned by the Codex sandbox account. Agent 2 runs git with `-c safe.directory=*` on each command instead of changing global git configuration.

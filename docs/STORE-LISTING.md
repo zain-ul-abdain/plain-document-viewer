@@ -54,7 +54,7 @@ GOOD TO KNOW
 • iPhone photos (HEIC) need Microsoft's HEIF Image Extensions and HEVC Video Extensions from the Microsoft Store.
 • Password-protected Office files are not supported yet; password-protected PDFs are.
 
-Plain Viewer is free and open source (MIT licence): https://github.com/zain-ul-abdain/plain-document-viewer
+Plain Viewer is free and open source (MIT licence): https://github.com/zain-ul-abdain/plain-viewer
 
 ## What's new in this version
 
@@ -87,14 +87,14 @@ Paste the text of installer/terms.txt (the same terms the installer shows). In t
 
 ## Privacy policy
 
-URL: https://github.com/zain-ul-abdain/plain-document-viewer#privacy-and-safety
+URL: https://github.com/zain-ul-abdain/plain-viewer#privacy-and-safety
 
 Plain Viewer collects no personal data and sends nothing over the network. (The README's "Privacy and safety" and "Code signing policy" sections say this; if Partner Center wants a page that is only a privacy policy, add docs/PRIVACY.md with the same statement and link to it.)
 
 ## Website and support
 
-- Website: https://github.com/zain-ul-abdain/plain-document-viewer
-- Support contact: https://github.com/zain-ul-abdain/plain-document-viewer/issues/new/choose (problem reports are public; the template asks people to leave out private details and documents)
+- Website: https://github.com/zain-ul-abdain/plain-viewer
+- Support contact: https://github.com/zain-ul-abdain/plain-viewer/issues/new/choose (problem reports are public; the template asks people to leave out private details and documents)
 
 ## System requirements
 
@@ -108,7 +108,7 @@ Answer "no" to every content question: no violence, sexual content, gambling, dr
 
 ## Installer settings (EXE submission)
 
-- Package URL: the release asset, for example https://github.com/zain-ul-abdain/plain-document-viewer/releases/download/v0.5.0/PlainViewer-Setup-0.5.0-x64.exe. Each version has its own URL, and a published file never changes (a Store requirement).
+- Package URL: the release asset, for example https://github.com/zain-ul-abdain/plain-viewer/releases/download/v0.5.0/PlainViewer-Setup-0.5.0-x64.exe. Each version has its own URL, and a published file never changes (a Store requirement).
 - Architecture: x64. Language: English.
 - Silent install parameters: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. This uses the default options: "Open with" on, the Windows Firewall rules off (they need an administrator prompt), and the WebView2 Runtime installed if the PC lacks it.
 - Install scope: per user, no administrator rights.
