@@ -18,3 +18,19 @@ function Invoke-PlainViewer([string]$App, [string[]]$Arguments) {
   }
   finally { Remove-Item -LiteralPath $out.FullName, $err.FullName -Force -ErrorAction SilentlyContinue }
 }
+
+# As Invoke-PlainViewer, but returns the exit code and the output (standard output and errors) instead of showing it.
+function Invoke-PlainViewerOutput([string]$App, [string[]]$Arguments) {
+  if (-not $App) {
+    $dll = Join-Path $repoRoot 'src\PlainViewer.App\bin\Release\net10.0-windows\PlainViewer.dll'
+    $output = & $Dotnet $dll @Arguments 2>&1 | Out-String
+    return [pscustomobject]@{ Code = $LASTEXITCODE; Output = $output }
+  }
+  $out = New-TemporaryFile; $err = New-TemporaryFile
+  try {
+    $quoted = @($Arguments | ForEach-Object { '"' + $_ + '"' })
+    $process = Start-Process -FilePath $App -ArgumentList $quoted -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out.FullName -RedirectStandardError $err.FullName
+    return [pscustomobject]@{ Code = $process.ExitCode; Output = (Get-Content -LiteralPath $out.FullName, $err.FullName -Raw | Out-String) }
+  }
+  finally { Remove-Item -LiteralPath $out.FullName, $err.FullName -Force -ErrorAction SilentlyContinue }
+}

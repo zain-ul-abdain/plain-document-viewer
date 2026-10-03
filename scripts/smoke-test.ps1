@@ -19,3 +19,21 @@ if (-not $heicCodecs) { Write-Output 'HEIC codecs are not installed: HEIC photos
 $fixtures += 'heic\simple.heic', 'heic\complex-rotated.heic', 'heic\large-12mp.heic' | ForEach-Object { $(if ($heicCodecs) { '' } else { '!' }) + (Join-Path $repoRoot "tests\corpus\$_") }
 $code = Invoke-PlainViewer $App (@('--smoke-test') + $fixtures)
 if ($code -ne 0) { throw 'Native view/worker smoke test failed.' }
+
+# The app's other start-up modes: preparing the converter (run by the installer), exporting a Word file to PDF through
+# the viewer's own checks and converter (scripts/compare-office.ps1), and measuring (scripts/measure.ps1).
+$prepared = Invoke-PlainViewerOutput $App @('--prepare-converter')
+if ($prepared.Code -ne 0) { throw "--prepare-converter failed: $($prepared.Output)" }
+Write-Output 'PASS --prepare-converter: the converter is ready'
+$pdf = Join-Path ([IO.Path]::GetTempPath()) ("plainviewer-export-" + [Guid]::NewGuid().ToString('N') + '.pdf')
+try {
+  $exported = Invoke-PlainViewerOutput $App @('--export-pdf', (Join-Path $repoRoot 'tests\corpus\docx\simple.docx'), $pdf)
+  $head = if (Test-Path -LiteralPath $pdf) { [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($pdf), 0, 5) } else { '' }
+  if ($exported.Code -ne 0 -or $head -ne '%PDF-') { throw "--export-pdf failed: $($exported.Output)" }
+  Write-Output 'PASS --export-pdf: simple.docx became a PDF'
+}
+finally { if (Test-Path -LiteralPath $pdf) { [IO.File]::Delete($pdf) } }
+$measured = Invoke-PlainViewerOutput $App @('--measure', (Join-Path $repoRoot 'tests\corpus\simple.txt'))
+$line = ($measured.Output -split "`r?`n" | Where-Object { $_.TrimStart().StartsWith('{') } | Select-Object -Last 1)
+if ($measured.Code -ne 0 -or -not $line -or ($line | ConvertFrom-Json).PSObject.Properties.Name -contains 'error') { throw "--measure failed: $($measured.Output)" }
+Write-Output "PASS --measure: $line"
