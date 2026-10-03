@@ -680,7 +680,13 @@ public partial class MainWindow : Window
     private void NumberRow(object s, DataGridRowEventArgs e) => e.Row.Header = (e.Row.GetIndex() + 1).ToString();
     private void FileDropped(object s, DragEventArgs e) { if (e.Data.GetData(DataFormats.FileDrop) is string[] files) foreach (var file in files) OpenPath(file); }
     private static string Version => typeof(MainWindow).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
-    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, $"Plain Viewer {Version} (beta)\n\nRead-only viewer for PDF, Word, Excel, PowerPoint, OpenDocument, RTF, pictures, text, CSV, Markdown and data files. Nothing is uploaded and no network is used. MIT licence.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Word, PowerPoint, OpenDocument text and presentations, RTF and TIFF are converted to PDF by LibreOffice (MPL-2.0). Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\n{SafetyNote()}", "About Plain Viewer");
+    // The build date recorded by PlainViewer.App.csproj, in the PC's local time.
+    internal static string BuiltOn() =>
+        typeof(MainWindow).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false).OfType<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "BuildDate")?.Value is { } value && DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AdjustToUniversal, out var built)
+            ? "\nBuilt " + built.ToLocalTime().ToString("d MMMM yyyy, HH:mm", System.Globalization.CultureInfo.CurrentCulture) : "";
+    private void AboutClicked(object s, RoutedEventArgs e) => MessageBox.Show(this, $"Plain Viewer {Version} (beta){BuiltOn()}\n\nRead-only viewer for PDF, Word, Excel, PowerPoint, OpenDocument, RTF, pictures, text, CSV, Markdown and data files. Nothing is uploaded and no network is used. MIT licence.\n\nPDF uses PDF.js (Apache-2.0) inside Microsoft Edge WebView2. Word, PowerPoint, OpenDocument text and presentations, RTF and TIFF are converted to PDF by LibreOffice (MPL-2.0). Excel number formats use ExcelNumberFormat (MIT). Markdown uses Markdig (BSD-2-Clause). See THIRD-PARTY-NOTICES.md.\n\n{SafetyNote()}", "About Plain Viewer");
 
     private static string SafetyNote() =>
         "Files are read by separate processes that run at low integrity with memory and time limits: they cannot change your files or other programs. PDF pages are drawn inside WebView2's own sandbox.\n\n" +

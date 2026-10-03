@@ -33,7 +33,7 @@
    </WrapPanel>
    <ProgressBar x:Name="Progress" Height="3" IsIndeterminate="True" Visibility="Collapsed" />
   </StackPanel>
-  <TextBlock x:Name="Status" DockPanel.Dock="Bottom" Margin="0,12,0,0" TextWrapping="Wrap" Text="Development preview · Read only · No files are uploaded" AutomationProperties.LiveSetting="Polite" />
+  <TextBlock x:Name="Status" DockPanel.Dock="Bottom" Margin="0,12,0,0" TextWrapping="Wrap" Text="Read only · No files are uploaded" AutomationProperties.LiveSetting="Polite" />
   <Grid>
    <TextBlock x:Name="Welcome" Text="Open a document&#10;&#10;PDF, Word, Excel, PowerPoint, pictures,&#10;text, CSV, Markdown and data files&#10;&#10;Drop a local file here or press Ctrl+O." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" FontSize="22" />
    <local:DocumentWebView x:Name="WebPane" Visibility="Collapsed" />

@@ -2,6 +2,8 @@
   <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><AssemblyName>PlainViewer</AssemblyName><ApplicationIcon>Assets\app.ico</ApplicationIcon></PropertyGroup>
   <!-- The window icon comes from the app itself (development runs start through dotnet.exe, whose icon would show). -->
   <ItemGroup><Resource Include="Assets\app.ico" /></ItemGroup>
+  <!-- When this copy was built (UTC), shown in About. -->
+  <ItemGroup><AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"><_Parameter1>BuildDate</_Parameter1><_Parameter2>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</_Parameter2></AssemblyAttribute></ItemGroup>
   <ItemGroup><ProjectReference Include="../PlainViewer.Core/PlainViewer.Core.csproj" /><ProjectReference Include="../PlainViewer.Worker/PlainViewer.Worker.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
   <ItemGroup><Content Include="../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" /><Content Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <!-- PDF view: WebView2 SDK plus PDF.js 6.3.289 (Apache-2.0) served from the app's own folder. -->

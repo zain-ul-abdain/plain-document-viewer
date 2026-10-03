@@ -19,6 +19,11 @@ string settings = Path.Combine(root, "PlainViewer", "settings.json");
 AppSettings.FilePath = settings;
 AppSettings Fresh() { AppSettings.Reload(); return AppSettings.Current; }
 
+Test("About shows when this copy was built", () =>
+{
+    string built = MainWindow.BuiltOn();
+    Check(built.StartsWith("\nBuilt ") &&built.Contains(DateTime.Now.Year.ToString()), "no build date: " + built);
+});
 Test("Settings: no file gives the defaults", () =>
 {
     var current = Fresh();
