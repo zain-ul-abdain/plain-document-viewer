@@ -105,6 +105,7 @@ Windows with the .NET 10 SDK (installed normally or under `.tools/dotnet`). From
 .\scripts\test-markdown.ps1
 .\scripts\test-office-safety.ps1
 .\scripts\test-worker.ps1
+.\scripts\coverage.ps1        # optional: line coverage report (needs dotnet-coverage, see docs/RELEASING.md)
 .\scripts\smoke-test.ps1         # opens files of every format in real windows
 .\scripts\security-smoke.ps1     # hostile and broken files, with a listener that records any network request
 .\scripts\run.ps1 -File "$PWD\tests\corpus\complex.markdown"

@@ -94,6 +94,11 @@ The Store signs MSIX packages it accepts (DECISIONS.md D15), so this route needs
 4. Listing text and pictures: docs/STORE-LISTING.md and docs/images/store.
 
 **Differences from the EXE installer:** no optional firewall rules (they need an administrator prompt; About shows that they are absent), no bundled WebView2 installer (Windows 11 includes the runtime), and the converter profile in `%USERPROFILE%\AppData\LocalLow\PlainViewer` (about 1 MB) stays after the app is removed, because a package cannot run cleanup code. The Store updates installed copies itself.
+## Code coverage
+
+`scripts\coverage.ps1` runs the core, Markdown, Office safety and worker test programs and the smoke test under Microsoft's **dotnet-coverage** and writes `artifacts\coverage\summary.txt` (line coverage per part and per file) and `coverage.cobertura.xml`. Only Plain Viewer's own app, core library and worker are measured; the page scripts (JavaScript) are not. Telemetry is switched off for the runs.
+
+Set-up (once): download `dotnet-coverage.<version>.nupkg` from `https://api.nuget.org/v3-flatcontainer/dotnet-coverage/<version>/` into `.tools\downloads`, check it with `dotnet nuget verify --all` (Microsoft Corporation and nuget.org signatures), then `dotnet tool install dotnet-coverage --version <version> --tool-path .tools\dotnet-coverage --add-source .tools\downloads`. Zain approved version 18.11.2 and accepted its Microsoft licence terms (free use for developing and testing; the tool may send usage data to Microsoft, so the script opts out) on 3 Oct 2026. The tool is never shipped with the app.
 ## Windows warnings
 
 What users see while installers are unsigned:
