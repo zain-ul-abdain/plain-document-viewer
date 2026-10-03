@@ -329,3 +329,11 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - SignPath Foundation declined the application (too new). Zain chose signed installs through the Microsoft Store as MSIX (DECISIONS.md D15). Zain approved the SDK build tools package download (21 MB, signature-checked, in `.tools\winsdk-buildtools-10.0.28000.2705`) and a sandbox-only self-signed test certificate.
 - New: `installer/msix/AppxManifest.xml` (file types checked against Formats.cs by the core test), `scripts/package-msix.ps1` (layout from artifacts\publish plus LibreOffice, tile pictures from the logo, makeappx; `-TestSign` for local tests), `scripts/msix-sandbox-test.ps1` and `msix-sandbox-inner.ps1`. Trial passed (TEST-RESULTS.md).
 - **Next, waiting for Zain:** Partner Center account approved and the name reserved; then build with the Product identity values and submit (docs/RELEASING.md, docs/STORE-LISTING.md).
+
+## Agent 2, 3 October 2026: shapes and text boxes in all three spreadsheet formats (not yet released)
+
+- .xlsx: `SheetDrawings.ReadShape` (sp, cxnSp; own or style-referenced theme colours; shade/tint in linear light like Office), groups through `Group` (members get `SheetPicture.Part`, fractions of the anchor box). Page: `shapeElement` in sheet.js (SVG outline, arrow markers, text in a foreignObject).
+- .ods: `OpenDocumentDrawings.ReadShapeStyles` and `Shapes` (custom shapes, rect/ellipse, line/connector, draw:g); `SheetDrawings.Normalize` turns offsets past the anchor cell and sizes into start and end cells.
+- .xls: Office Art FSP type/flags, simple properties, FSPGR/child anchors (`Locate`), TXO text and runs captured in `ReadSheet`; `ShapeOf`. LibreOffice's freeform outlines (type 4095, guide-based points) are drawn as rectangles.
+- One smoke run stalled on complex.rtf (LibreOffice over two minutes); the rerun passed 78/78. Watch for it.
+- **Open:** ARM64; for Zain: Partner Center, Narrator and scaling checks; releasing 0.7.0 when Zain asks.

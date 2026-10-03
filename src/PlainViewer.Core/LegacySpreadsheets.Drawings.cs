@@ -32,6 +32,9 @@ public static partial class LegacySpreadsheets
             public readonly SortedDictionary<int, double> Cached = [];
         }
 
+        // The text of a text box or shape (TXO with its CONTINUE records): characters, runs (first character, font), flags.
+        private sealed record TextObject(string Text, List<(int Char, int Font)> Runs, int Flags);
+
         private sealed class ChartSpec
         {
             public string Type = "", Title = "", CategoryTitle = "", ValueTitle = "";
@@ -239,10 +242,18 @@ public static partial class LegacySpreadsheets
             public int[]? Anchor;                          // column, dx (1/1024 of the column), row, dy (1/256 of the row), then the end
             public int Picture;                            // 1-based index into the picture store
             public bool HasObject, Linked;
+            public int Type, Flags;                        // FSP: shape type, and flags (1 group, 4 patriarch, 0x40/0x80 flips)
+            public readonly Dictionary<int, uint> Properties = [];
+            public int[]? Child, GroupBox;                 // a group member's box in its group's coordinates; a group's coordinates
+            public Shape? Parent;                          // the group the shape belongs to
+            public bool Patriarch => (Flags & 0x4) != 0;
         }
 
+        // The group a container's shapes belong to: its first shape is the group itself.
+        private sealed class GroupScope { public Shape? Group, Parent; }
+
         // Walks Office Art records (containers are entered); `onAtom` sees every atom with the shape it belongs to.
-        private static void Walk(byte[] d, int start, int end, int depth, Shape? shape, List<Shape> shapes, Action<int, int, int, int, Shape?> onAtom)
+        private static void Walk(byte[] d, int start, int end, int depth, Shape? shape, List<Shape> shapes, Action<int, int, int, int, Shape?> onAtom, GroupScope? scope = null)
         {
             for (int pos = start; pos + 8 <= end && depth < 16;)
             {
@@ -251,9 +262,18 @@ public static partial class LegacySpreadsheets
                 int body = pos + 8, stop = (int)Math.Min(end, body + length);
                 if ((verInstance & 0xF) == 0xF)
                 {
-                    var inner = shape;
-                    if (type == 0xF004) { inner = new Shape(); shapes.Add(inner); }      // one shape
-                    Walk(d, body, stop, depth + 1, inner, shapes, onAtom);
+                    var inner = shape; var innerScope = scope;
+                    if (type == 0xF003) innerScope = new GroupScope { Parent = scope?.Group is { Patriarch: false } enclosing ? enclosing : null };   // a group
+                    if (type == 0xF004)                                                   // one shape
+                    {
+                        inner = new Shape(); shapes.Add(inner);
+                        if (scope is not null)
+                        {
+                            if (scope.Group is null) { inner.Parent = scope.Parent; scope.Group = inner; }
+                            else inner.Parent = scope.Group.Patriarch ? null : scope.Group;
+                        }
+                    }
+                    Walk(d, body, stop, depth + 1, inner, shapes, onAtom, innerScope);
                 }
                 else onAtom(type, verInstance >> 4, body, stop, shape);
                 if (stop <= pos) break;
@@ -262,7 +282,7 @@ public static partial class LegacySpreadsheets
         }
 
         // The sheet's shapes paired with its OBJ records (each shape with client data has one, in the same order).
-        private List<SheetPicture> Drawings(SheetData sheet, int index, byte[] drawing, List<(int Kind, int Chart)> objects, string? folder)
+        private List<SheetPicture> Drawings(SheetData sheet, int index, byte[] drawing, List<(int Kind, int Chart)> objects, Dictionary<int, TextObject> texts, string? folder)
         {
             var result = new List<SheetPicture>();
             if (drawing.Length == 0 || objects.Count == 0) return result;
@@ -275,12 +295,16 @@ public static partial class LegacySpreadsheets
                     case 0xF00B or 0xF121 or 0xF122:                                   // properties
                         for (int k = 0; k < instance && body + k * 6 + 6 <= stop; k++)
                         {
-                            int id = U16(drawing, body + k * 6) & 0x3FFF;
+                            int raw = U16(drawing, body + k * 6), id = raw & 0x3FFF;
                             uint value = BinaryPrimitives.ReadUInt32LittleEndian(drawing.AsSpan(body + k * 6 + 2));
                             if (id == 0x0104) shape.Picture = (int)Math.Min(value, int.MaxValue);
                             else if (id == 0x0105) shape.Linked = true;              // a file name the picture is linked to
+                            else if ((raw & 0x8000) == 0 && shape.Properties.Count < 200) shape.Properties[id] = value;
                         }
                         break;
+                    case 0xF00A when stop - body >= 8: shape.Type = instance; shape.Flags = (int)BinaryPrimitives.ReadUInt32LittleEndian(drawing.AsSpan(body + 4)); break;   // FSP
+                    case 0xF009 when stop - body >= 16: shape.GroupBox = Box(drawing, body); break;   // FSPGR: the group's coordinates
+                    case 0xF00F when stop - body >= 16: shape.Child = Box(drawing, body); break;      // child anchor
                     case 0xF010 when stop - body >= 18:                                // client anchor: the cells it spans
                         shape.Anchor = Enumerable.Range(0, 8).Select(k => U16(drawing, body + 2 + k * 2)).ToArray();
                         break;
@@ -292,9 +316,11 @@ public static partial class LegacySpreadsheets
             {
                 var shape = placedShapes[i];
                 var (kind, chartAt) = objects[i];
-                if (shape.Anchor is not { } a) continue;
+                var (anchor, part) = Locate(shape, 0);
+                if (anchor is not { } a) continue;
                 var placed = new SheetPicture
                 {
+                    Part = part,
                     Column = a[0], ColumnOffset = Math.Min(a[1], 1024) / 1024.0 * SheetDrawings.ColumnPixels(sheet, a[0]),
                     Row = a[2], RowOffset = Math.Min(a[3], 256) / 256.0 * SheetDrawings.RowPixels(sheet, a[2]),
                     ToColumn = a[4], ToColumnOffset = Math.Min(a[5], 1024) / 1024.0 * SheetDrawings.ColumnPixels(sheet, a[4]),
@@ -311,8 +337,80 @@ public static partial class LegacySpreadsheets
                     }
                     else if (shape.Linked) pictureBudget.Linked++;
                 }
+                // Lines, rectangles, ovals, arcs, text boxes, polygons and Office Art shapes (not groups, charts or pictures).
+                else if (kind is 1 or 2 or 3 or 4 or 6 or 9 or 30)
+                {
+                    placed.Shape = ShapeOf(shape, texts.GetValueOrDefault(i));
+                    placed.Description = string.Join(" ", placed.Shape.Paragraphs.Select(p => p.Text)).Trim();
+                    result.Add(placed);
+                }
             }
             return result;
+        }
+
+        private static int[] Box(byte[] d, int at) => [.. Enumerable.Range(0, 4).Select(k => BinaryPrimitives.ReadInt32LittleEndian(d.AsSpan(at + k * 4)))];
+
+        // The shape's top-level anchor and, for a group member, its box within it as fractions (through every group).
+        private static (int[]? Anchor, double[]? Part) Locate(Shape shape, int depth)
+        {
+            if (shape.Parent is not { } group || depth > 8) return (shape.Anchor, null);
+            var (anchor, part) = Locate(group, depth + 1);
+            if (shape.Child is not { } c || group.GroupBox is not { } g || g[2] == g[0] || g[3] == g[1]) return (anchor, part);
+            part ??= [0, 0, 1, 1];
+            double width = g[2] - g[0], height = g[3] - g[1];
+            return (anchor, [part[0] + (c[0] - g[0]) / width * part[2], part[1] + (c[1] - g[1]) / height * part[3], (c[2] - c[0]) / width * part[2], (c[3] - c[1]) / height * part[3]]);
+        }
+
+        // Office Art shape types by their outline (others, and freeform outlines, are drawn as rectangles).
+        private static string Geometry(int type) => type switch
+        {
+            2 => "roundRect", 3 => "ellipse", 4 => "diamond", 5 => "triangle", 6 => "rtTriangle", 7 => "parallelogram", 9 => "hexagon",
+            13 => "rightArrow", 66 => "leftArrow", 67 => "downArrow", 68 => "upArrow", 20 or 32 or 33 or 34 or 35 or 36 or 37 or 38 or 39 or 40 => "line", _ => "rect"
+        };
+
+        // A shape's look from its Office Art properties, and its text from the TXO record with the workbook's fonts.
+        private ShapeData ShapeOf(Shape shape, TextObject? text)
+        {
+            uint Property(int id, uint missing) => shape.Properties.TryGetValue(id, out uint v) ? v : missing;
+            // A boolean property set: the value's bit when its "use" bit (16 higher) is set, otherwise the default.
+            bool Switch(int id, int bit, bool missing) =>
+                shape.Properties.TryGetValue(id, out uint v) && (v & (1u << (bit + 16))) != 0 ? (v & (1u << bit)) != 0 : missing;
+            // Office Art colours: 0x00bbggrr, or a palette entry (flag 0x08 in the high byte); system colours are not used.
+            string? ArtColour(uint value) => (value >> 24) switch
+            {
+                0 => $"#{value & 0xFF:x2}{(value >> 8) & 0xFF:x2}{(value >> 16) & 0xFF:x2}",
+                var flags when (flags & 0x08) != 0 => Colour((int)(value & 0xFF)),
+                _ => null
+            };
+            var data = new ShapeData { Geometry = Geometry(shape.Type) };
+            data.FlipH = (shape.Flags & 0x40) != 0; data.FlipV = (shape.Flags & 0x80) != 0;
+            data.Rotation = Math.Round((int)Property(0x0004, 0) / 65536.0, 2) % 360;
+            if (data.Geometry != "line") data.Fill = Switch(0x01BF, 4, true) ? ArtColour(Property(0x0181, 0xFFFFFF)) : null;
+            data.Line = Switch(0x01FF, 3, true) ? ArtColour(Property(0x01C0, 0)) : null;
+            data.LineWidth = Math.Clamp(Math.Round(Property(0x01CB, 9525) / 9525.0, 2), 0.5, 20);
+            data.Dash = Property(0x01CE, 0) switch { 0 => "", 2 or 5 => "dot", _ => "dash" };
+            data.StartArrow = Property(0x01D0, 0) != 0;
+            data.EndArrow = Property(0x01D1, 0) != 0;
+            if (text is null) return data;
+            // TXO flags: horizontal alignment in bits 1-3 (1 left, 2 centre, 3 right), vertical in bits 4-6 (1 top, 2 middle, 3 bottom).
+            string align = ((text.Flags >> 1) & 7) switch { 2 => "ctr", 3 => "r", _ => "l" };
+            data.VAlign = ((text.Flags >> 4) & 7) switch { 2 => "ctr", 3 => "b", _ => "t" };
+            int start = 0;
+            foreach (string line in text.Text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Take(200))
+            {
+                int fontIndex = text.Runs.Where(r => r.Char <= start).Select(r => r.Font).DefaultIfEmpty(0).Last();
+                if (fontIndex >= 4) fontIndex--;                                       // BIFF has no font 4
+                var font = fontIndex >= 0 && fontIndex < fonts.Count ? fonts[fontIndex] : default;
+                data.Paragraphs.Add(new ShapeParagraph
+                {
+                    Text = line, Align = align, Bold = font.Bold, Italic = font.Italic,
+                    Size = font.Height > 0 ? Math.Round(font.Height / 20.0, 2) : 10,
+                    Color = font.Colour is > 0 and < 64 && Colour(font.Colour) is { } colour ? colour : "#000000"
+                });
+                start += line.Length + 1;
+            }
+            while (data.Paragraphs.Count > 0 && data.Paragraphs[^1].Text.Length == 0) data.Paragraphs.RemoveAt(data.Paragraphs.Count - 1);
+            return data;
         }
 
         // The drawing group's picture store: one entry per stored picture (its bytes, or null and whether it is in a

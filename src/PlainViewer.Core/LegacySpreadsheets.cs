@@ -530,6 +530,7 @@ public static partial class LegacySpreadsheets
                     chartCells[(tab, row, column)] = (value, text);
             }
             var drawing = new MemoryStream();
+            var objectTexts = new Dictionary<int, TextObject>();                  // by object index
             var objects = new List<(int Kind, int Chart)>();                    // OBJ records in order: kind, and the chart substream's BOF offset
             for (int i = 1; i < records.Count; i++)
             {
@@ -549,6 +550,33 @@ public static partial class LegacySpreadsheets
                 }
                 if (type == 0x005D && length >= 6 && BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)) == 0x0015)
                 { objects.Add((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4)), -1)); continue; }
+                if (type == 0x01B6 && length >= 14 && objects.Count > 0)
+                {
+                    // TXO: the text of the object before it, in the CONTINUE records that follow (the characters, each
+                    // record starting with its own flags byte; then 8-byte formatting runs: first character and font).
+                    int count = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 10)), runBytes = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 12));
+                    var text = new StringBuilder();
+                    var runs = new List<(int Char, int Font)>();
+                    int k = i + 1;
+                    while (text.Length < count && k < records.Count && records[k].Type == 0x003C && records[k].Length >= 1)
+                    {
+                        var (_, part, partLength) = records[k++];
+                        bool wide = (data[part] & 1) != 0;
+                        int chars = Math.Min(count - text.Length, (partLength - 1) / (wide ? 2 : 1));
+                        if (chars <= 0) break;
+                        text.Append(wide ? Encoding.Unicode.GetString(data, part + 1, chars * 2) : Encoding.Latin1.GetString(data, part + 1, chars));
+                    }
+                    for (int read = 0; read < runBytes && k < records.Count && records[k].Type == 0x003C; k++)
+                    {
+                        var (_, part, partLength) = records[k];
+                        for (int p = 0; p + 8 <= partLength && runs.Count < 1000; p += 8)
+                            runs.Add((BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(part + p)), BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(part + p + 2))));
+                        read += partLength;
+                    }
+                    objectTexts[objects.Count - 1] = new TextObject(text.ToString(), runs, BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at)));
+                    i = k - 1;
+                    continue;
+                }
                 int Row() => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at));
                 int Column() => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 2));
                 int Xf() => BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(at + 4));
@@ -638,7 +666,7 @@ public static partial class LegacySpreadsheets
             conditionalNotShown += conditional.NotShown;
             var built = sheet.Build();
             truncated |= sheet.Truncated; stored |= built.Store.Length > 0;
-            built.Pictures = Drawings(built, index, drawing.ToArray(), objects, storeFolder);
+            built.Pictures = Drawings(built, index, drawing.ToArray(), objects, objectTexts, storeFolder);
             if (built.Pictures.Count > 0 && built.RowCount == 0) built.Notice = "";
             return built;
         }
@@ -665,6 +693,7 @@ public static partial class LegacySpreadsheets
         private bool truncated, stored;
         private readonly SheetDrawings.Budget pictureBudget = new();
         private List<SheetPicture> pictures = [], pageAnchored = [];
+        private OpenDocumentDrawings.ShapeStyles shapeStyles = new();
         private int sheetIndex;
         private readonly Dictionary<string, double> rowStyleHeights = [];            // row style -> height in points
         private readonly List<(int Row, int Count, double Points)> rowHeights = [];  // the current sheet's styled rows
@@ -692,6 +721,7 @@ public static partial class LegacySpreadsheets
                     if (reader.ReadToEnd().Contains("encryption-data", StringComparison.Ordinal))
                         throw new DocumentException("This spreadsheet is protected with a password. Password-protected files cannot be opened in this version. Remove the password in the application that made it, or ask the sender for an unprotected copy.");
             var content = zip.GetEntry("content.xml") ?? throw Damaged();
+            shapeStyles = OpenDocumentDrawings.ReadShapeStyles(zip);
             if (zip.GetEntry("styles.xml") is { } common) using (var r = Open(common)) while (r.Read()) if (r.NodeType == XmlNodeType.Element && r.LocalName == "style") ReadStyle(r);
             var frozen = ReadFrozen();
             var view = new DocumentView { Kind = "sheet", Encoding = "OpenDocument spreadsheet", CellStyles = styles.Table };
@@ -725,8 +755,10 @@ public static partial class LegacySpreadsheets
                             case "shapes" when sheet is not null && r.NamespaceURI == TableNs:
                                 // Frames anchored to the sheet rather than to a cell.
                                 using (var subtree = r.ReadSubtree())
-                                    foreach (var frame in XElement.Load(subtree).Elements(XName.Get("frame", DrawNs)))
-                                        if (OpenDocumentDrawings.Frame(frame, zip, storeFolder, sheetIndex, pictureBudget, pictures, 0, 0) is { } placed) pageAnchored.Add(placed);
+                                    foreach (var drawn in XElement.Load(subtree).Elements())
+                                        if (drawn.Name == XName.Get("frame", DrawNs))
+                                        { if (OpenDocumentDrawings.Frame(drawn, zip, storeFolder, sheetIndex, pictureBudget, pictures, 0, 0) is { } placed) pageAnchored.Add(placed); }
+                                        else pageAnchored.AddRange(OpenDocumentDrawings.Shapes(drawn, shapeStyles, pictures, 0, 0));
                                 break;
                             case "conditional-formats" when sheet is not null && r.NamespaceURI == CalcExtNs:
                                 using (var subtree = r.ReadSubtree()) ReadConditions(XElement.Load(subtree), conditional, ConditionStyle);
@@ -791,6 +823,8 @@ public static partial class LegacySpreadsheets
             }
             foreach (var picture in pageAnchored)
                 (picture.Column, picture.ColumnOffset, picture.Row, picture.RowOffset) = SheetDrawings.CellAt(built, picture.ColumnOffset, picture.RowOffset);
+            // Shapes carry offsets that may run past their cell and a size: their start and end become cells.
+            foreach (var picture in pictures) if (picture.Shape is not null) SheetDrawings.Normalize(built, picture);
             built.Pictures = pictures;
             if (pictures.Count > 0 && built.RowCount == 0) built.Notice = "";
             return built;
@@ -993,6 +1027,7 @@ public static partial class LegacySpreadsheets
                     // A subtree reader leaves the main reader on the drawing's end, so the loop continues after it.
                     using var subtree = r.ReadSubtree();
                     if (r.LocalName == "frame") OpenDocumentDrawings.Frame(XElement.Load(subtree), zip, storeFolder, sheetIndex, pictureBudget, pictures, row, column);
+                    else OpenDocumentDrawings.Shapes(XElement.Load(subtree), shapeStyles, pictures, row, column);
                 }
                 else if (r.NodeType == XmlNodeType.Element)
                 {

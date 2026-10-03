@@ -76,6 +76,152 @@ internal static class OpenDocumentDrawings
         return null;
     }
 
+    // Graphic, paragraph and text styles that shapes use: styles.xml's styles and graphic default, then content.xml's
+    // automatic styles (read up to the document body).
+    public sealed class ShapeStyles
+    {
+        public readonly Dictionary<string, XElement> Named = [];
+        public XElement? Default;
+    }
+
+    public static ShapeStyles ReadShapeStyles(ZipArchive zip)
+    {
+        var styles = new ShapeStyles();
+        foreach (var name in new[] { "styles.xml", "content.xml" })
+        {
+            if (zip.GetEntry(name) is not { } entry) continue;
+            using var reader = XmlReader.Create(entry.Open(), Settings);
+            while (reader.Read())
+            {
+                if (reader.NodeType != XmlNodeType.Element) continue;
+                if (reader.LocalName == "body" && reader.NamespaceURI == OfficeNs) break;
+                if (reader.NamespaceURI != StyleNs || reader.LocalName is not ("style" or "default-style")) continue;
+                string? family = reader.GetAttribute("family", StyleNs), styleName = reader.GetAttribute("name", StyleNs);
+                if (family is not ("graphic" or "paragraph" or "text")) continue;
+                bool isDefault = reader.LocalName == "default-style";
+                XElement style;
+                using (var subtree = reader.ReadSubtree()) style = XElement.Load(subtree);
+                if (isDefault && family == "graphic") styles.Default = style;
+                else if (styleName is not null && styles.Named.Count < 20_000) styles.Named[styleName] = style;
+            }
+        }
+        return styles;
+    }
+
+    // A style property, following parent styles and finally the graphic default.
+    private static string? Property(ShapeStyles styles, string? style, string properties, string ns, string name)
+    {
+        for (int depth = 0; style is not null && depth < 10 && styles.Named.TryGetValue(style, out var element); depth++)
+        {
+            if (element.Element(XName.Get(properties, StyleNs))?.Attribute(XName.Get(name, ns))?.Value is { } value) return value;
+            style = Attr(element, StyleNs, "parent-style-name");
+        }
+        return styles.Default?.Element(XName.Get(properties, StyleNs))?.Attribute(XName.Get(name, ns))?.Value;
+    }
+
+    private const string FoNs = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0";
+    private const string TextNs = "urn:oasis:names:tc:opendocument:xmlns:text:1.0";
+
+    // Shapes (custom shapes, rectangles, ellipses, lines, connectors and the shapes of groups) anchored at a cell, or
+    // on the sheet (row and column 0; the caller converts their positions to cells). Returns what was placed.
+    public static List<SheetPicture> Shapes(XElement element, ShapeStyles styles, List<SheetPicture> result, int row, int column, int depth = 0)
+    {
+        var placed = new List<SheetPicture>();
+        if (result.Count >= SheetDrawings.MaxPictures) return placed;
+        if (element.Name.LocalName == "g")
+        {
+            if (depth < 8) foreach (var child in element.Elements().Take(500)) placed.AddRange(Shapes(child, styles, result, row, column, depth + 1));
+            return placed;
+        }
+        if (element.Name.NamespaceName != DrawNs || element.Name.LocalName is not ("custom-shape" or "rect" or "ellipse" or "line" or "connector")) return placed;
+        string? style = Attr(element, DrawNs, "style-name");
+        string Graphic(string name, string ns = DrawNs) => Property(styles, style, "graphic-properties", ns, name) ?? "";
+        var shape = new ShapeData();
+        var picture = new SheetPicture { Row = row, Column = column, Shape = shape };
+        if (element.Name.LocalName is "line" or "connector")
+        {
+            double x1 = Length(Attr(element, SvgNs, "x1")), y1 = Length(Attr(element, SvgNs, "y1")), x2 = Length(Attr(element, SvgNs, "x2")), y2 = Length(Attr(element, SvgNs, "y2"));
+            shape.Geometry = "line";
+            (picture.ColumnOffset, picture.RowOffset, picture.Width, picture.Height) = (Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1), Math.Abs(y2 - y1));
+            (shape.FlipH, shape.FlipV) = (x2 < x1, y2 < y1);
+        }
+        else
+        {
+            (picture.ColumnOffset, picture.RowOffset) = (Length(Attr(element, SvgNs, "x")), Length(Attr(element, SvgNs, "y")));
+            (picture.Width, picture.Height) = (Length(Attr(element, SvgNs, "width")), Length(Attr(element, SvgNs, "height")));
+            var geometry = element.Element(XName.Get("enhanced-geometry", DrawNs));
+            string type = element.Name.LocalName == "custom-shape" ? Attr(geometry ?? element, DrawNs, "type") ?? "" : element.Name.LocalName;
+            if (type.StartsWith("ooxml-", StringComparison.Ordinal)) type = type[6..];
+            shape.Geometry = type switch
+            {
+                "rect" or "rectangle" => "rect", "roundRect" or "round-rectangle" => "roundRect", "ellipse" => "ellipse",
+                "triangle" or "isosceles-triangle" => "triangle", "rtTriangle" or "right-triangle" => "rtTriangle", "diamond" => "diamond",
+                "parallelogram" => "parallelogram", "hexagon" => "hexagon", "rightArrow" or "right-arrow" => "rightArrow", "leftArrow" or "left-arrow" => "leftArrow",
+                "upArrow" or "up-arrow" => "upArrow", "downArrow" or "down-arrow" => "downArrow", _ => "rect"
+            };
+            shape.FlipH = geometry is not null && Attr(geometry, DrawNs, "mirror-horizontal") == "true";
+            shape.FlipV = geometry is not null && Attr(geometry, DrawNs, "mirror-vertical") == "true";
+            string fill = Graphic("fill");
+            shape.Fill = fill is "none" or "bitmap" or "hatch" ? null : WorkbookStyles.Hex(Graphic("fill-color").TrimStart('#'));
+            shape.VAlign = Graphic("textarea-vertical-align") switch { "middle" => "ctr", "bottom" => "b", _ => "t" };
+        }
+        if (Attr(element, TableNs, "end-cell-address") is { } end && EndCell(end) is var (toRow, toColumn) && shape.Geometry != "line")
+        {
+            (picture.ToRow, picture.ToColumn) = (toRow, toColumn);
+            (picture.ToRowOffset, picture.ToColumnOffset) = (Length(Attr(element, TableNs, "end-y")), Length(Attr(element, TableNs, "end-x")));
+        }
+        string stroke = Graphic("stroke");
+        shape.Line = stroke == "none" ? null : WorkbookStyles.Hex(Graphic("stroke-color", SvgNs).TrimStart('#')) ?? "#000000";
+        if (Length(Graphic("stroke-width", SvgNs)) is > 0 and var width) shape.LineWidth = Math.Clamp(Math.Round(width, 2), 0.5, 20);
+        shape.Dash = stroke != "dash" ? "" : Graphic("stroke-dash").Contains("Dot", StringComparison.OrdinalIgnoreCase) && !Graphic("stroke-dash").Contains("Dash", StringComparison.OrdinalIgnoreCase) ? "dot" : "dash";
+        shape.StartArrow = Graphic("marker-start").Length > 0;
+        shape.EndArrow = Graphic("marker-end").Length > 0;
+        // Text: each paragraph with its alignment and its first span's look (else the paragraph's, else the shape's).
+        string? paragraphDefault = Attr(element, DrawNs, "text-style-name");
+        foreach (var paragraph in element.Elements(XName.Get("p", TextNs)).Take(200))
+        {
+            string? paragraphStyle = Attr(paragraph, TextNs, "style-name");
+            string? span = paragraph.Elements(XName.Get("span", TextNs)).Select(s => Attr(s, TextNs, "style-name")).FirstOrDefault(s => s is not null);
+            string? Text(string name) => Property(styles, span, "text-properties", FoNs, name) ?? Property(styles, paragraphStyle, "text-properties", FoNs, name)
+                ?? Property(styles, style, "text-properties", FoNs, name);
+            string? align = Property(styles, paragraphStyle, "paragraph-properties", FoNs, "text-align") ?? Property(styles, paragraphDefault, "paragraph-properties", FoNs, "text-align")
+                ?? Property(styles, style, "paragraph-properties", FoNs, "text-align");
+            double size = Length(Text("font-size")) * 72 / 96;
+            shape.Paragraphs.Add(new ShapeParagraph
+            {
+                Text = ParagraphText(paragraph),
+                Align = align switch { "center" => "ctr", "end" or "right" => "r", _ => "l" },
+                Bold = Text("font-weight") is "bold" or "600" or "700" or "800" or "900",
+                Italic = Text("font-style") is "italic" or "oblique",
+                Size = size is >= 1 and <= 400 ? Math.Round(size, 2) : 11,
+                Color = WorkbookStyles.Hex(Text("color")?.TrimStart('#')) ?? "#000000"
+            });
+        }
+        while (shape.Paragraphs.Count > 0 && shape.Paragraphs[^1].Text.Length == 0) shape.Paragraphs.RemoveAt(shape.Paragraphs.Count - 1);
+        picture.Description = string.Join(" ", shape.Paragraphs.Select(p => p.Text)).Trim();
+        result.Add(picture); placed.Add(picture);
+        return placed;
+    }
+
+    // A paragraph's text with its spaces, tabs and line breaks.
+    private static string ParagraphText(XElement paragraph)
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (var node in paragraph.DescendantNodes())
+        {
+            if (text.Length > 4000) break;
+            if (node is XText value && value.Parent?.Name.LocalName is not ("s" or "tab" or "line-break")) text.Append(value.Value);
+            else if (node is XElement e && e.Name.NamespaceName == TextNs)
+                switch (e.Name.LocalName)
+                {
+                    case "s": text.Append(' ', int.TryParse(Attr(e, TextNs, "c"), out int c) ? Math.Clamp(c, 1, 100) : 1); break;
+                    case "tab": text.Append('\t'); break;
+                    case "line-break": text.Append('\n'); break;
+                }
+        }
+        return text.ToString();
+    }
+
     private static readonly XmlReaderSettings Settings = new()
     { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersFromEntities = 1024, IgnoreComments = true, IgnoreProcessingInstructions = true, CloseInput = true };
 

@@ -549,6 +549,21 @@ try
         var style = view.CellStyles[int.Parse(view.Sheets[0].Align[1].Split('|')[1].Split('.')[2])];
         if (style.Pattern != "darkGrid #00b050" || style.Fill is null) throw new Exception($"C2: fill {style.Fill}, pattern {style.Pattern}");
     });
+    Test("Older spreadsheets: Office Art shape types give their outlines", () => {
+        // LibreOffice saves shapes.xls's ellipse as a freeform outline (type 4095, drawn as a rectangle); Excel saves an
+        // ellipse as type 3. The second freeform shape record (the ellipse) is changed to type 3.
+        byte[] bytes = File.ReadAllBytes(Path.Combine(corpus, "xls", "shapes.xls"));
+        var compound = new CompoundFile(bytes, "file"); var entry = compound.Find("Workbook")!; var book = compound.Read(entry, "file");
+        int seen = 0; bool patched = false;
+        for (int at = 0; at + 4 <= book.Length && !patched; at++)
+            if (book[at] == 0xF2 && book[at + 1] == 0xFF && book[at + 2] == 0x0A && book[at + 3] == 0xF0 && ++seen == 2)
+            { book[at] = 0x32; book[at + 1] = 0x00; patched = true; }
+        Check(patched); compound.Write(entry, book, "file");
+        string path = Path.Combine(root, "ellipse.xls"); File.WriteAllBytes(path, bytes);
+        var shapes = LegacySpreadsheets.Load(path, culture).Sheets[0].Pictures.Where(p => p.Shape is not null).Select(p => p.Shape!).ToList();
+        if (shapes.Count != 8 || shapes[2].Geometry != "ellipse" || shapes[2].Fill is not null || shapes[2].Line != "#c00000" || shapes[2].Dash != "dash")
+            throw new Exception($"third shape: {shapes.ElementAtOrDefault(2)?.Geometry} fill {shapes.ElementAtOrDefault(2)?.Fill}");
+    });
     Test("Older Office files: password, Word 95 and damaged files are refused clearly", () => {
         string Patched(string source, string name, Func<byte[], CompoundFile, bool> patch)
         {

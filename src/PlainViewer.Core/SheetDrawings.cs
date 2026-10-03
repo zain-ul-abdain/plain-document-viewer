@@ -162,6 +162,18 @@ internal static class SheetDrawings
         return (column, Math.Max(0, x), row, y);
     }
 
+    // A drawing placed by a cell and an offset that may run past that cell, with a size instead of an end cell (.ods
+    // shapes, group members and lines): its start and end as cells with offsets inside them, as the page expects.
+    public static void Normalize(SheetData sheet, SheetPicture picture)
+    {
+        double x = picture.ColumnOffset, y = picture.RowOffset;
+        for (int c = 0; c < picture.Column && c < Spreadsheets.MaxColumns; c++) x += ColumnPixels(sheet, c);
+        for (int r = 0; r < picture.Row && r < Spreadsheets.MaxStoredRows; r++) y += RowPixels(sheet, r);
+        (picture.Column, picture.ColumnOffset, picture.Row, picture.RowOffset) = CellAt(sheet, x, y);
+        if (picture.ToRow < 0 && picture.Width >= 0 && picture.Height >= 0)
+            (picture.ToColumn, picture.ToColumnOffset, picture.ToRow, picture.ToRowOffset) = CellAt(sheet, x + picture.Width, y + picture.Height);
+    }
+
     private static string? Attribute(XElement? element, string name) => element?.Attributes().FirstOrDefault(a => a.Name.LocalName == name)?.Value;
     private static XElement? Child(XElement? element, string name) => element?.Elements().FirstOrDefault(e => e.Name.LocalName == name);
     private static double Number(string? text) => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && double.IsFinite(v) ? v : 0;

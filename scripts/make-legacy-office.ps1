@@ -29,7 +29,7 @@ $jobs = @(
   @('docx\attack-remote-image.docx', 'doc\attack-remote-image.doc'), @('docx\attack-unc-image.docx', 'doc\attack-unc-image.doc'),
   @('xlsx\simple.xlsx', 'xls\simple.xls'), @('xlsx\complex.xlsx', 'xls\complex.xls'), @('xlsx\styles.xlsx', 'xls\styles.xls'), @('ods\large-12000-rows.ods', 'xls\large-12000-rows.xls'),
   @('xlsx\drawings.xlsx', 'xls\drawings.xls'), @('xlsx\drawings.xlsx', 'ods\drawings.ods'),
-  @('xlsx\conditional.xlsx', 'xls\conditional.xls'), @('xlsx\conditional.xlsx', 'ods\conditional.ods'), @('xlsx\styles.xlsx', 'ods\styles-libreoffice.ods'),
+  @('xlsx\conditional.xlsx', 'xls\conditional.xls'), @('xlsx\conditional.xlsx', 'ods\conditional.ods'), @('xlsx\styles.xlsx', 'ods\styles-libreoffice.ods'), @('xlsx\shapes.xlsx', 'ods\shapes.ods'), @('xlsx\shapes.xlsx', 'xls\shapes.xls'),
   @('pptx\simple.pptx', 'ppt\simple.ppt'), @('pptx\complex.pptx', 'ppt\complex.ppt'), @('pptx\attack-remote-image.pptx', 'ppt\attack-remote-image.ppt'))
 try {
   foreach ($job in $jobs) {
