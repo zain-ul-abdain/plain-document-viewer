@@ -224,8 +224,8 @@ try
     else Console.WriteLine("SKIP 500,000-row workbook fixture (run npm run generate:large in tests/corpus/generate)");
     using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "manifest.json")));
     var errorWords = new Dictionary<string, string[]> {
-        ["damaged"] = ["damaged", "too large to open safely"], ["empty"] = ["empty"], ["password"] = ["password"],
-        ["mismatch"] = ["not an Excel workbook", "older Excel file", "contents are not", "older Office file", "binary data"],
+        ["damaged"] = ["damaged", "too large to open safely"], ["empty"] = ["empty"], ["password"] = ["password", "DRM"],
+        ["mismatch"] = ["not an Excel workbook", "older Excel file", "contents are not", "older Office file", "binary data", "do not match"],
         ["unsupported"] = ["not supported", "cannot be opened in this version"], ["too-large"] = ["more than this viewer can"], ["rename"] = ["Rename it"] };
 
     // Word and PowerPoint: OfficePackages.Prepare must refuse bad packages with the right message and write a
@@ -440,7 +440,7 @@ try
     foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
     {
         string file = fixture.GetProperty("file").GetString()!;
-        bool picture = ImageFiles.IsImage(file), data = TextFiles.PlainExtensions.Contains(Path.GetExtension(file)) && !file.EndsWith(".txt");
+        bool picture = ImageFiles.IsImage(file), data = (TextFiles.PlainExtensions.Contains(Path.GetExtension(file)) && !file.EndsWith(".txt")) || file.EndsWith(".tsv");
         if (!(picture || data) || fixture.TryGetProperty("generated", out _)) continue;
         var expect = fixture.GetProperty("expect");
         Test((picture ? "Picture fixture " : "Data fixture ") + file, () => {
@@ -465,14 +465,60 @@ try
             else
             {
                 var view = TextFiles.Load(path);
-                Check(view.Kind == "text");
+                // Tab-separated files open in the grid, split on tabs only (their fields contain commas).
+                string shown = view.Kind == "csv" && file.EndsWith(".tsv") && view.Delimiter == '\t' && view.Rows.All(row => row.Length == view.Rows[0].Length)
+                    ? string.Join("\n", view.Rows.Select(row => string.Join("\t", row))) : view.Kind == "text" ? view.Text : throw new Exception($"Shown as {view.Kind}");
                 foreach (var text in expect.GetProperty("text").EnumerateArray())
-                    if (!view.Text.Contains(text.GetString()!)) throw new Exception($"Text '{text.GetString()}' not shown.");
+                    if (!shown.Contains(text.GetString()!)) throw new Exception($"Text '{text.GetString()}' not shown.");
             }
             Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))));
             Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
         });
     }
+    // Web pages, web archives and books (0.8.0): the worker's part. What the page removes is checked by the smoke tests.
+    foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
+    {
+        string file = fixture.GetProperty("file").GetString()!;
+        if (!WebDocuments.Handles(file) || fixture.TryGetProperty("generated", out _)) continue;
+        var expect = fixture.GetProperty("expect");
+        Test("Web fixture " + file, () => {
+            string path = Path.Combine(corpus, file.Replace('/', Path.DirectorySeparatorChar));
+            string work = Path.Combine(root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(work);
+            byte[] before = SHA256.HashData(File.ReadAllBytes(path)); var siblings = Directory.GetFiles(Path.GetDirectoryName(path)!);
+            if (expect.GetProperty("result").GetString() == "error")
+            {
+                string message = "";
+                try { WebDocuments.Load(path, work); } catch (DocumentException ex) { message = ex.Message; }
+                var words = errorWords[expect.GetProperty("error").GetString()!];
+                if (!words.Any(w => message.Contains(w, StringComparison.OrdinalIgnoreCase))) throw new Exception($"Expected a {string.Join("/", words)} message, got: '{message}'");
+            }
+            else
+            {
+                var view = WebDocuments.Load(path, work);
+                Check(view.Kind == "web" && view.Store == WebDocuments.Output);
+                var content = System.Text.Json.JsonSerializer.Deserialize<WebDocuments.Content>(File.ReadAllText(Path.Combine(work, WebDocuments.Output)), new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase })!;
+                if (expect.TryGetProperty("parts", out var parts) && content.Parts.Count != parts.GetInt32()) throw new Exception($"Parts: {content.Parts.Count}");
+                if (expect.TryGetProperty("pictures", out var pictures) && content.Pictures.Values.Distinct().Count() != pictures.GetInt32()) throw new Exception($"Pictures: {content.Pictures.Count}");
+                if (expect.TryGetProperty("styles", out var styles) && content.Styles.Values.Distinct().Count() != styles.GetInt32()) throw new Exception($"Style sheets: {content.Styles.Count}");
+                string all = string.Join("\n", content.Parts.Select(p => p.Html));
+                foreach (var text in expect.GetProperty("text").EnumerateArray())
+                    if (!all.Contains(text.GetString()!)) throw new Exception($"Text '{text.GetString()}' not found.");
+                // Pictures written by the worker are the files the page may ask for, each still a picture of its named type.
+                foreach (var name in content.Pictures.Values.Distinct())
+                    Check(ImageFiles.ContentTypeOf(name) is { } type && ImageFiles.Identify(File.ReadAllBytes(Path.Combine(work, name)))?.ContentType == type);
+                // Nothing outside the file was written: only web.json and the pictures.
+                Check(Directory.GetFiles(work).Select(Path.GetFileName).All(name => name == WebDocuments.Output || ImageFiles.ContentTypeOf(name!) is not null));
+            }
+            Check(before.SequenceEqual(SHA256.HashData(File.ReadAllBytes(path))));
+            Check(siblings.SequenceEqual(Directory.GetFiles(Path.GetDirectoryName(path)!)));
+        });
+    }
+    Test("Web references stay inside the book", () =>
+    {
+        Check(WebDocuments.Resolve("OEBPS/text/", "../images/a.png") == "OEBPS/images/a.png");
+        Check(WebDocuments.Resolve("OEBPS/", "../../../../outside.png") == "outside.png");
+        Check(WebDocuments.Resolve("", "a/./b/../c.xhtml#x") == "a/c.xhtml");
+    });
     // Formats shown through LibreOffice: the worker's preparation must refuse what it should, and its private copy
     // must hold no address of the test listener (remote or network share) in single-byte or UTF-16 text.
     foreach (var fixture in manifest.RootElement.GetProperty("fixtures").EnumerateArray())
@@ -503,6 +549,15 @@ try
                 if (expect.TryGetProperty("removedAtLeast", out var least) && count < least.GetInt32()) throw new Exception($"Removed {count} references, expected at least {least.GetInt32()}");
                 // Everything the copy holds, part by part: ZIP entries (decompressed) or compound-file streams.
                 byte[] copy = File.ReadAllBytes(output);
+                // A template's copy is labelled as the document it holds (no "-template" media type left).
+                if (file.EndsWith(".ott"))
+                {
+                    using var package = new System.IO.Compression.ZipArchive(new MemoryStream(copy));
+                    using var mime = new StreamReader(package.GetEntry("mimetype")!.Open());
+                    Check(mime.ReadToEnd() == "application/vnd.oasis.opendocument.text" && ConvertedDocuments.CopyExtension(view) == ".odt");
+                    using var manifestPart = new StreamReader(package.GetEntry("META-INF/manifest.xml")!.Open());
+                    Check(!manifestPart.ReadToEnd().Contains("-template"));
+                }
                 var parts = new List<(string Name, byte[] Bytes)> { ("file", copy) };
                 if (copy.AsSpan().StartsWith("PK"u8))
                     using (var zip = ZipFile.OpenRead(output))

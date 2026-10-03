@@ -1,0 +1,38 @@
+From: <Saved by Plain Viewer's test generator>
+Subject: Hello web archive
+Date: Sat, 3 Oct 2026 00:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----=_NextPart_PlainViewer"
+
+This is a multi-part message in MIME format.
+
+------=_NextPart_PlainViewer
+Content-Type: text/html;
+	charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://example.com/saved/page.html
+
+<!DOCTYPE html><html><head><meta charset=3D"utf-8"><title>Hello web arch=
+ive</title><link rel=3D"stylesheet" href=3D"style.css"></head>
+<body><h1>Hello web archive</h1><p>Saved with its picture and style shee=
+t: <img src=3D"images/dot.png" alt=3D"Saved picture"> and by content ID:=
+ <img src=3D"cid:dot@plainviewer" alt=3D"Content ID picture"></p>
+<p dir=3D"rtl">=D8=A7=D8=B1=D8=AF=D9=88 =D8=B3=D9=86=DA=8C=D9=8A</p></bo=
+dy></html>
+------=_NextPart_PlainViewer
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://example.com/saved/style.css
+
+h1 { color: #2e7d32; }
+------=_NextPart_PlainViewer
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: https://example.com/saved/images/dot.png
+Content-ID: <dot@plainviewer>
+
+iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGOQqziBFTEMLQkABkZX
+gRDDjAEAAAAASUVORK5CYII=
+------=_NextPart_PlainViewer--

@@ -16,7 +16,8 @@ namespace PlainViewer.Core;
 // as for .xlsx.
 public static partial class LegacySpreadsheets
 {
-    public static readonly string[] Extensions = [".xls", ".ods"];
+    // .xlt and .ots are templates (0.8.0), shown as the workbook they hold; .fods is the single-XML-file form of .ods.
+    public static readonly string[] Extensions = [".xls", ".xlt", ".ods", ".ots", ".fods"];
     public static bool Handles(string path) => Extensions.Contains(Path.GetExtension(path).ToLowerInvariant());
 
     public static DocumentView Load(string path, CultureInfo? culture = null, string? storeFolder = null)
@@ -56,14 +57,61 @@ public static partial class LegacySpreadsheets
                     throw new DocumentException($"This is a newer Excel file (.xlsx) saved with a {extension} name. Rename it to end in .xlsx to view it.");
                 string mime = "";
                 if (zip.GetEntry("mimetype") is { Length: < 200 } entry) using (var reader = new StreamReader(entry.Open())) mime = reader.ReadToEnd().Trim();
-                if (mime != "application/vnd.oasis.opendocument.spreadsheet") throw new DocumentException(Named());
+                if (mime is not ("application/vnd.oasis.opendocument.spreadsheet" or "application/vnd.oasis.opendocument.spreadsheet-template")) throw new DocumentException(Named());
                 return new OpenDocumentSheets(zip, storeFolder).Read();
+            }
+            if (FlatOpenDocument(bytes) is { } flat)
+            {
+                using var zip = new ZipArchive(new MemoryStream(flat, false), ZipArchiveMode.Read);
+                var view = new OpenDocumentSheets(zip, storeFolder).Read();
+                view.Encoding = "OpenDocument spreadsheet (flat XML)";
+                return view;
             }
         }
         catch (InvalidDataException) { throw Damaged(); }
         catch (XmlException) { throw Damaged(); }
         catch (Exception ex) when (ex is ArgumentOutOfRangeException or IndexOutOfRangeException or OverflowException) { throw Damaged(); }
         throw new DocumentException(Named());
+    }
+
+    public const long FlatSizeLimit = 64L * 1024 * 1024;
+
+    // A flat OpenDocument spreadsheet (.fods): one XML file holding what an .ods keeps in several parts. It is read
+    // through the .ods reader as a package whose content.xml is the whole file (the reader takes styles from it as it
+    // goes) plus a settings.xml copied from its office:settings, for frozen panes. Pictures and charts in a flat file
+    // are stored inside the XML rather than as parts, so they are not shown. Null when the bytes are not one.
+    private static byte[]? FlatOpenDocument(byte[] bytes)
+    {
+        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersFromEntities = 1024, IgnoreComments = true, IgnoreProcessingInstructions = true };
+        const string OfficeNs = "urn:oasis:names:tc:opendocument:xmlns:office:1.0";
+        int start = bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xef, 0xbb, 0xbf]) ? 3 : 0;
+        while (start < bytes.Length && bytes[start] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n') start++;
+        if (start >= bytes.Length || bytes[start] != (byte)'<') return null;
+        string? settingsXml = null;
+        try
+        {
+            using var reader = XmlReader.Create(new MemoryStream(bytes, false), settings);
+            reader.MoveToContent();
+            if (reader.LocalName != "document" || reader.NamespaceURI != OfficeNs) return null;
+            if (reader.GetAttribute("mimetype", OfficeNs) is not ("application/vnd.oasis.opendocument.spreadsheet" or "application/vnd.oasis.opendocument.spreadsheet-template"))
+                throw new DocumentException("This OpenDocument file is not a spreadsheet. Open it with an application for its actual format.");
+            if (bytes.Length > FlatSizeLimit) throw new DocumentException("This flat OpenDocument spreadsheet is larger than 64 MB, which is more than this viewer can open safely. Save it as .ods to view it.");
+            while (reader.Read())
+            {
+                if (reader.NodeType != XmlNodeType.Element || reader.NamespaceURI != OfficeNs) continue;
+                if (reader.LocalName == "settings") { settingsXml = reader.ReadOuterXml(); break; }
+                if (reader.LocalName == "body") break;
+            }
+        }
+        catch (XmlException) { return null; }
+        var output = new MemoryStream();
+        using (var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var mimetype = zip.CreateEntry("mimetype", CompressionLevel.NoCompression).Open()) mimetype.Write("application/vnd.oasis.opendocument.spreadsheet"u8);
+            using (var content = zip.CreateEntry("content.xml", CompressionLevel.NoCompression).Open()) content.Write(bytes);
+            if (settingsXml is not null) using (var part = zip.CreateEntry("settings.xml", CompressionLevel.Fastest).Open()) part.Write(Encoding.UTF8.GetBytes(settingsXml));
+        }
+        return output.ToArray();
     }
 
     private static DocumentException Damaged() => new("This spreadsheet is damaged or incomplete, so it cannot be shown. Try another copy of the file.");

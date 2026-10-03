@@ -30,7 +30,11 @@ $jobs = @(
   @('xlsx\simple.xlsx', 'xls\simple.xls'), @('xlsx\complex.xlsx', 'xls\complex.xls'), @('xlsx\styles.xlsx', 'xls\styles.xls'), @('ods\large-12000-rows.ods', 'xls\large-12000-rows.xls'),
   @('xlsx\drawings.xlsx', 'xls\drawings.xls'), @('xlsx\drawings.xlsx', 'ods\drawings.ods'),
   @('xlsx\conditional.xlsx', 'xls\conditional.xls'), @('xlsx\conditional.xlsx', 'ods\conditional.ods'), @('xlsx\styles.xlsx', 'ods\styles-libreoffice.ods'), @('xlsx\shapes.xlsx', 'ods\shapes.ods'), @('xlsx\shapes.xlsx', 'xls\shapes.xls'),
-  @('pptx\simple.pptx', 'ppt\simple.ppt'), @('pptx\complex.pptx', 'ppt\complex.ppt'), @('pptx\attack-remote-image.pptx', 'ppt\attack-remote-image.ppt'))
+  @('pptx\simple.pptx', 'ppt\simple.ppt'), @('pptx\complex.pptx', 'ppt\complex.ppt'), @('pptx\attack-remote-image.pptx', 'ppt\attack-remote-image.ppt'),
+  # Templates and the flat OpenDocument spreadsheet (0.8.0); the third item is LibreOffice's export filter.
+  @('docx\simple.docx', 'doc\template.dot', 'MS Word 97 Vorlage'), @('docx\simple.docx', 'odt\template.ott', 'writer8_template'),
+  @('xlsx\complex.xlsx', 'xls\template.xlt', 'MS Excel 97 Vorlage/Template'), @('xlsx\complex.xlsx', 'ods\template.ots', 'calc8_template'),
+  @('xlsx\complex.xlsx', 'ods\complex.fods', 'OpenDocument Spreadsheet Flat XML'), @('xlsx\styles.xlsx', 'ods\styles.fods', 'OpenDocument Spreadsheet Flat XML'))
 try {
   foreach ($job in $jobs) {
     $target = Join-Path $corpus $job[1]
@@ -38,7 +42,7 @@ try {
     $format = [IO.Path]::GetExtension($target).TrimStart('.')
     $out = Join-Path $work 'out'; New-Item -ItemType Directory -Force $out, (Split-Path $target) | Out-Null
     $process = Start-Process $soffice -Wait -PassThru -WindowStyle Hidden -ArgumentList @('--headless', '--norestore', '--nologo', '--nolockcheck',
-      "`"-env:UserInstallation=$profileUrl`"", '--convert-to', $format, '--outdir', "`"$out`"", "`"$(Join-Path $corpus $job[0])`"")
+      "`"-env:UserInstallation=$profileUrl`"", '--convert-to', $(if ($job.Count -gt 2) { "`"$($format):$($job[2])`"" } else { $format }), '--outdir', "`"$out`"", "`"$(Join-Path $corpus $job[0])`"")
     $made = Join-Path $out ([IO.Path]::GetFileNameWithoutExtension($job[0]) + ".$format")
     if ($process.ExitCode -ne 0 -or -not (Test-Path $made)) { throw "LibreOffice could not make $($job[1])." }
     Move-Item -LiteralPath $made -Destination $target -Force

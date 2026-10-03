@@ -4,9 +4,14 @@ namespace PlainViewer.Core;
 public static class TextFiles
 {
     public const long TextLimit = 4 * 1024 * 1024;
-    // Plain-text formats are shown as text and never parsed: XML entities, JSON and YAML stay exactly as written.
-    public static readonly string[] PlainExtensions = [".txt", ".json", ".xml", ".log", ".ini", ".yaml", ".yml"];
-    public static readonly string[] Extensions = [.. PlainExtensions, ".csv", ".md", ".markdown"];
+    // Plain-text formats are shown as text and never parsed: XML entities, JSON and YAML stay exactly as written, and
+    // source code and project files (0.8.0) are only read, never run or built.
+    public static readonly string[] DataExtensions = [".txt", ".json", ".xml", ".log", ".ini", ".yaml", ".yml"];
+    public static readonly string[] CodeExtensions = [".c", ".h", ".cs", ".java", ".js", ".vb", ".css", ".php", ".asp", ".aspx", ".razor", ".config", ".csproj", ".sln"];
+    public static readonly string[] PlainExtensions = [.. DataExtensions, .. CodeExtensions];
+    // Delimited data shown in the grid; .tsv starts with the tab as its delimiter.
+    public static readonly string[] DelimitedExtensions = [".csv", ".tsv"];
+    public static readonly string[] Extensions = [.. PlainExtensions, .. DelimitedExtensions, ".md", ".markdown"];
     public static void ValidateLocalPath(string path)
     {
         // Reject network/device paths before filesystem access can contact them.
@@ -64,7 +69,8 @@ public static class TextFiles
         long originalLength = stream.Length;
         var stamp = LocalFiles.Stamp(stream);
         bool lines = storeFolder is not null && PlainExtensions.Contains(extension) && originalLength > TextLimit;
-        long limit = storeFolder is not null && (extension == ".csv" || lines) ? StoreLimit : extension == ".csv" ? 256L * 1024 * 1024 : TextLimit;
+        bool delimited = DelimitedExtensions.Contains(extension);
+        long limit = storeFolder is not null && (delimited || lines) ? StoreLimit : delimited ? 256L * 1024 * 1024 : TextLimit;
         if (originalLength > limit)
             throw new DocumentException(limit == StoreLimit ? "This file is larger than the 1 GB this viewer can open."
                 : "This file exceeds the preview limit (4 MB for Markdown). Open it as plain text or in an editor.");
@@ -75,11 +81,11 @@ public static class TextFiles
         var (encoding, skip) = Detect(sample, encodingChoice); stream.Position = skip;
         using var reader = new StreamReader(stream, encoding, encodingChoice == "Auto", 8192, true);
         var view = new DocumentView { Encoding = encoding.WebName };
-        if (extension == ".csv")
+        if (delimited)
         {
             // Detection tolerates a sample ending inside a UTF-8 character.
             string prefix = Encoding.GetEncoding(encoding.CodePage).GetString(sample.AsSpan(skip));
-            char delimiter = delimiterChoice switch { "Comma" => ',', "Semicolon" => ';', "Tab" => '\t', _ => Csv.DetectDelimiter(prefix) };
+            char delimiter = delimiterChoice switch { "Comma" => ',', "Semicolon" => ';', "Tab" => '\t', _ => extension == ".tsv" ? '\t' : Csv.DetectDelimiter(prefix) };
             view.Kind = "csv"; view.Delimiter = delimiter;
             if (storeFolder is not null)
             {

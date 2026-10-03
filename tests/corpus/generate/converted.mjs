@@ -204,6 +204,14 @@ export async function generateConverted() {
     ["ppt/simple.ppt", "ppt", "simple", { result: "open", kind: "slides", text: ["Hello"] }],
     ["ppt/complex.ppt", "ppt", "complex", { result: "open", kind: "slides", text: ["Hello"] }],
     ["ppt/attack-remote-image.ppt", "ppt", "attack", { result: "open", kind: "slides", removedAtLeast: 1, text: ["Hello"] }, "Linked picture to the listener."],
+    // Templates and the flat OpenDocument spreadsheet (0.8.0): shown as the document or workbook they hold.
+    ["doc/template.dot", "dot", "simple", { result: "open", kind: "word", text: ["Hello from a Word document"] }, "Word 97-2003 template."],
+    ["odt/template.ott", "ott", "simple", { result: "open", kind: "word", text: ["Hello from a Word document"] }, "OpenDocument text template: the private copy is labelled as a document."],
+    ["xls/template.xlt", "xlt", "complex", { result: "open", kind: "sheet", sheets: ["Summary", "Urdu"], cells: [{ sheet: "Summary", ref: "B7", text: "$20.00" }] }, "Excel 97-2003 template of the complex workbook."],
+    ["ods/template.ots", "ots", "complex", { result: "open", kind: "sheet", sheets: ["Summary", "Urdu"] }, "OpenDocument spreadsheet template of the complex workbook."],
+    ["ods/complex.fods", "fods", "complex", { result: "open", kind: "sheet", sheets: ["Summary", "Urdu"] }, "The complex workbook as one flat XML file: hidden sheets stay hidden."],
+    ["ods/styles.fods", "fods", "complex", { result: "open", kind: "sheet", sheets: ["Styles"], styles: [{ ref: "A2", fill: "#ffff00" }, { ref: "G2", fill: "#ddebf7" }, { ref: "B8", fill: "#fce4d6" }] },
+      "The styles workbook as one flat XML file: styles come from the same file as the cells."],
   ]) if (fs.existsSync(path.join(CORPUS, file))) rec(file, format, category, expect, lo, notes ? { notes } : {});
   // Hostile: the .ods pictures workbook with three linked pictures in cell A7 (a web address, a network share and a
   // path outside the file). They must be counted and never opened.

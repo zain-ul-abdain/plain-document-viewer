@@ -15,7 +15,8 @@ $open = @('pdf\attack-javascript.pdf', 'pdf\attack-links.pdf', 'xlsx\complex.xls
   'xlsx\macro.xlsm', 'docx\macro.docm', 'pptx\macro.pptm', 'images\attack-svg-active.svg', 'data\attack-xxe.xml',
   'images\damaged-truncated.webp', 'images\damaged-truncated.jpg', 'images\damaged-truncated.png', 'images\attack-svg-xxe.svg',
   'odt\attack-external.odt', 'ods\attack-external.ods', 'odp\attack-remote-image.odp', 'rtf\attack.rtf',
-  'doc\attack-remote-image.doc', 'doc\attack-unc-image.doc', 'ppt\attack-remote-image.ppt')
+  'doc\attack-remote-image.doc', 'doc\attack-unc-image.doc', 'ppt\attack-remote-image.ppt',
+  'code\attack-script.js', 'code\attack-import.css', 'web\attack-active.html', 'web\attack-remote.mhtml', 'web\attack.epub')
 $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'xlsx\attack-zip-bomb.xlsx', 'xlsx\password.xlsx',
   'xlsx\old-format-renamed.xlsx', 'xlsx\damaged-truncated.xlsx', 'xlsx\zero-byte.xlsx', 'xlsx\not-a-workbook.xlsx',
   'docx\attack-xxe.docx', 'docx\attack-zip-bomb.docx', 'docx\password.docx', 'docx\old-format-renamed.docx', 'docx\damaged-truncated.docx',
@@ -25,7 +26,8 @@ $refuse = @('pdf\zero-byte.pdf', 'pdf\not-a-pdf.pdf', 'xlsx\attack-xxe.xlsx', 'x
   'images\attack-pixel-bomb.png', 'data\binary-named.json',
   'odt\password.odt', 'odt\zero-byte.odt', 'odt\not-a-document.odt', 'odt\damaged-truncated.odt', 'odt\docx-named.odt', 'ods\zero-byte.ods',
   'rtf\zero-byte.rtf', 'tiff\zero-byte.tif', 'doc\zero-byte.doc', 'doc\xls-named.doc',
-  'heic\damaged-truncated.heic', 'heic\zero-byte.heic')
+  'heic\damaged-truncated.heic', 'heic\zero-byte.heic',
+  'code\binary-named.cs', 'web\zero-byte.html', 'web\png-named.html', 'web\drm.epub', 'web\zip-named.epub')
 # Switch off the converter's extra dead-proxy layer so the listener observes LibreOffice directly.
 $env:PLAINVIEWER_LO_PROXY_OFF = '1'
 $arguments = @($open | ForEach-Object { Join-Path $corpus $_ }) + @($refuse | ForEach-Object { '!' + (Join-Path $corpus $_) })

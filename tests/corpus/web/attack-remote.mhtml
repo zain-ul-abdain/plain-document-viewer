@@ -1,0 +1,17 @@
+From: <Saved by Plain Viewer's test generator>
+Subject: Hello web archive
+Date: Sat, 3 Oct 2026 00:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----=_NextPart_PlainViewer"
+
+This is a multi-part message in MIME format.
+
+------=_NextPart_PlainViewer
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+Content-Location: https://example.com/hostile.html
+
+<html><body><h1>Hello web archive</h1><img src="http://127.0.0.1:47831/mht-image.png"><img src="not-in-archive.png"><script>fetch("http://127.0.0.1:47831/mht-script")</script><iframe src="http://127.0.0.1:47831/mht-frame"></iframe></body></html>
+------=_NextPart_PlainViewer--

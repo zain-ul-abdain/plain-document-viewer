@@ -9,7 +9,9 @@ $fixtures = @('simple.txt','complex.txt','simple.csv','complex.csv','simple.md',
   'xlsx\variant.xltx','xlsx\macro.xlsm','docx\variant.dotx','docx\macro.docm','pptx\variant.ppsx','pptx\variant.potx','pptx\macro.pptm',
   'images\simple.png','images\complex.png','images\simple.jpg','images\complex-rotated-exif.jpg','images\simple.gif','images\simple.bmp','images\simple.ico',
   'images\simple.webp','images\complex.webp','images\simple.avif','images\complex.avif','images\simple.svg','images\complex.svg','images\png-named.jpg',
-  'data\simple.json','data\complex.json','data\simple.xml','data\simple.log','data\simple.ini','data\simple.yaml','data\simple.yml',
+  'data\simple.json','data\complex.json','data\simple.xml','data\simple.log','data\simple.ini','data\simple.yaml','data\simple.yml','data\simple.tsv','code\simple.cs','code\simple.sln',
+  'web\simple.html','web\simple.xhtml','web\windows-1252.htm','web\simple.mht','web\simple.epub','web\complex.epub',
+  'doc\template.dot','odt\template.ott','xls\template.xlt','ods\template.ots','ods\complex.fods','ods\styles.fods',
   'odt\simple.odt','odt\complex.odt','ods\simple.ods','ods\complex.ods','odp\simple.odp','odp\complex.odp','rtf\simple.rtf','rtf\complex.rtf','rtf\rtf-named.doc',
   'doc\simple.doc','doc\complex-20-pages.doc','xls\simple.xls','xls\complex.xls','xls\styles.xls','xls\large-12000-rows.xls','ods\styles.ods','ods\large-12000-rows.ods','xls\drawings.xls','ods\drawings.ods','xls\conditional.xls','ods\conditional.ods','xls\shapes.xls','ods\shapes.ods','ppt\simple.ppt','ppt\complex.ppt','tiff\simple.tif','tiff\scan-3-pages.tiff','heic\jpeg-named.heic') | ForEach-Object { Join-Path $repoRoot "tests\corpus\$_" }
 # HEIC photos need Windows' HEIF and HEVC codecs (Microsoft Store). Without them (for example on GitHub's Windows Server

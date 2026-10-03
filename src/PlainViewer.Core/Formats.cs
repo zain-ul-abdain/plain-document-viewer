@@ -11,6 +11,7 @@ public static class Formats
         ("Excel and other spreadsheets", [.. Spreadsheets.Extensions, .. LegacySpreadsheets.Extensions]),
         ("PowerPoint and other presentations", [.. OfficePackages.SlideExtensions, .. ConvertedDocuments.SlideExtensions]),
         ("Pictures", [.. ImageFiles.Extensions, .. ConvertedDocuments.PictureExtensions]),
+        ("Web pages and EPUB books", WebDocuments.Extensions),
         ("Text, CSV, Markdown and data files", TextFiles.Extensions),
     ];
 

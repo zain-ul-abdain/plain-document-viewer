@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Hello hostile page</title>
+<meta http-equiv="refresh" content="0; url=http://127.0.0.1:47831/web-refresh">
+<base href="http://127.0.0.1:47831/web-base/">
+<link rel="stylesheet" href="http://127.0.0.1:47831/web-stylesheet.css">
+<link rel="stylesheet" href="local.css">
+<link rel="icon" href="http://127.0.0.1:47831/web-icon.ico">
+<link rel="preload" href="http://127.0.0.1:47831/web-preload" as="fetch">
+<style>@import url("http://127.0.0.1:47831/web-import.css"); body { background: url("http://127.0.0.1:47831/web-background.png"); } @font-face { font-family: X; src: url("http://127.0.0.1:47831/web-font.woff"); }</style>
+<script>fetch("http://127.0.0.1:47831/web-script-fetch"); document.write('<img src="http://127.0.0.1:47831/web-script-image">');</script>
+<script src="http://127.0.0.1:47831/web-script.js"></script>
+</head>
+<body onload="fetch('http://127.0.0.1:47831/web-onload')" background="http://127.0.0.1:47831/web-body-background.png">
+<h1>Hello web page</h1>
+<p>Every reference below points outside this file and must not be loaded.</p>
+<img src="http://127.0.0.1:47831/web-image.png" alt="Remote picture">
+<img src="file://127.0.0.1@47831/share/web-unc.png" alt="Network share picture">
+<img src="\\127.0.0.1@47831\share\web-unc-backslash.png" alt="Backslash share picture">
+<img src="pictures/local.png" alt="Local picture">
+<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGOQqziBFTEMLQkABkZXgRDDjAEAAAAASUVORK5CYII=" srcset="http://127.0.0.1:47831/web-srcset.png 2x" alt="Srcset picture">
+<img src="x" onerror="fetch('http://127.0.0.1:47831/web-onerror')" alt="Handler picture">
+<picture><source srcset="http://127.0.0.1:47831/web-source.png"><img src="http://127.0.0.1:47831/web-picture.png" alt="Picture element"></picture>
+<div style="background-image: url('http://127.0.0.1:47831/web-inline-style.png')">Styled box</div>
+<iframe src="http://127.0.0.1:47831/web-iframe"></iframe>
+<object data="http://127.0.0.1:47831/web-object"></object>
+<embed src="http://127.0.0.1:47831/web-embed">
+<video src="http://127.0.0.1:47831/web-video.mp4" poster="http://127.0.0.1:47831/web-poster.png"></video>
+<audio src="http://127.0.0.1:47831/web-audio.mp3" autoplay></audio>
+<form action="http://127.0.0.1:47831/web-form"><input name="q" value="Hello form"><input type="image" src="http://127.0.0.1:47831/web-input-image.png"><button formaction="http://127.0.0.1:47831/web-formaction">Send</button></form>
+<a href="javascript:fetch('http://127.0.0.1:47831/web-javascript')">Script link</a>
+<a href="http://127.0.0.1:47831/web-link" ping="http://127.0.0.1:47831/web-ping">Web link</a>
+<a href="file://127.0.0.1@47831/share/web-file-link">Share link</a>
+<svg width="40" height="40"><image href="http://127.0.0.1:47831/web-svg-image.png" width="40" height="40"/><use href="http://127.0.0.1:47831/web-svg-use.svg#a"/><script>fetch("http://127.0.0.1:47831/web-svg-script")</script></svg>
+<math><mi xlink:href="http://127.0.0.1:47831/web-math">x</mi></math>
+<noscript><img src="http://127.0.0.1:47831/web-noscript.png" alt="Noscript picture"></noscript>
+<template><img src="http://127.0.0.1:47831/web-template.png"></template>
+</body></html>

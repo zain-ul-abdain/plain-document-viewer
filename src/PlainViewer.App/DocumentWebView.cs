@@ -30,6 +30,7 @@ internal sealed class DocumentWebView : Border
     public int Rotation { get; private set; }      // degrees clockwise, for pictures
     public double Scale { get; private set; } = 1;
     public int BlockedRequests { get; private set; }
+    public string PageNotice { get; private set; } = "";   // web pages: what the page removed before showing the document
     public event Action? StateChanged;
     public event Action<int, int, bool>? FindResult;          // current, total, finished
     public event Action<string>? LinkRequested;
@@ -85,7 +86,8 @@ internal sealed class DocumentWebView : Border
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
         core.WebResourceRequested += OnResourceRequested;
         core.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith($"https://{AppHost}/{page}", StringComparison.Ordinal)) e.Cancel = true; };
-        core.FrameNavigationStarting += (_, e) => e.Cancel = true;
+        // Frames are refused, except the web page view's own sandboxed frame, which holds no address (Assets/web).
+        core.FrameNavigationStarting += (_, e) => e.Cancel = !(page == "web/web.html" && e.Uri == "about:srcdoc");
         core.NewWindowRequested += (_, e) => e.Handled = true;          // no window is created
         core.DownloadStarting += (_, e) => e.Cancel = true;
         core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
@@ -148,9 +150,13 @@ internal sealed class DocumentWebView : Border
     public Task<int> LoadSheets(byte[] json, bool dark, CancellationToken cancellation) =>
         Load("sheet/sheet.html", json, "workbook.json", "application/json; charset=utf-8", dark, cancellation, "");
 
+    // Web pages, saved web archives and EPUB books: the parts the worker collected (web.json).
+    public Task<int> LoadWeb(byte[] json, bool dark, CancellationToken cancellation) =>
+        Load("web/web.html", json, "web.json", "application/json; charset=utf-8", dark, cancellation, "");
+
     private async Task<int> Load(string pagePath, byte[] data, string name, string type, bool dark, CancellationToken cancellation, string query)
     {
-        bytes = data; resource = name; contentType = type; page = pagePath;
+        bytes = data; resource = name; contentType = type; page = pagePath; PageNotice = "";
         await EnsureReady();
         opening = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellation.Register(() => opening.TrySetCanceled(cancellation));
@@ -169,6 +175,7 @@ internal sealed class DocumentWebView : Border
         {
             case "loaded":
                 Pages = message.TryGetProperty("pages", out var pages) ? pages.GetInt32() : message.GetProperty("sheets").GetInt32();
+                PageNotice = message.TryGetProperty("notice", out var pageNotice) ? pageNotice.GetString() ?? "" : "";
                 Page = 1;
                 opening?.TrySetResult(Pages);
                 break;
@@ -203,6 +210,7 @@ internal sealed class DocumentWebView : Border
         "password-cancelled" => "This PDF is password protected. Open it again and enter its password to view it.",
         "unavailable" => "The document could not be passed to the viewer. Open the file again.",
         "image" => "This picture is damaged or incomplete, or uses a variant of its format that cannot be shown. Try another copy of the file.",
+        "web" => "This web page or book could not be shown. It may be damaged; try another copy of the file.",
         _ => "This PDF is damaged or incomplete, so it cannot be shown. Try another copy of the file."
     };
 

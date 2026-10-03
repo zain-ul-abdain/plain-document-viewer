@@ -42,7 +42,7 @@
             <uap:DisplayName>Word and other text documents</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.docx</uap:FileType><uap:FileType>.docm</uap:FileType><uap:FileType>.dotx</uap:FileType><uap:FileType>.dotm</uap:FileType>
-              <uap:FileType>.odt</uap:FileType><uap:FileType>.rtf</uap:FileType><uap:FileType>.doc</uap:FileType>
+              <uap:FileType>.odt</uap:FileType><uap:FileType>.rtf</uap:FileType><uap:FileType>.doc</uap:FileType><uap:FileType>.dot</uap:FileType><uap:FileType>.ott</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>
@@ -51,7 +51,7 @@
             <uap:DisplayName>Excel and other spreadsheets</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.xlsx</uap:FileType><uap:FileType>.xlsm</uap:FileType><uap:FileType>.xltx</uap:FileType><uap:FileType>.xltm</uap:FileType>
-              <uap:FileType>.ods</uap:FileType><uap:FileType>.xls</uap:FileType>
+              <uap:FileType>.ods</uap:FileType><uap:FileType>.xls</uap:FileType><uap:FileType>.xlt</uap:FileType><uap:FileType>.ots</uap:FileType><uap:FileType>.fods</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>
@@ -76,11 +76,20 @@
           </uap:FileTypeAssociation>
         </uap:Extension>
         <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="web">
+            <uap:DisplayName>Web pages and EPUB books</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.htm</uap:FileType><uap:FileType>.html</uap:FileType><uap:FileType>.xhtml</uap:FileType><uap:FileType>.mht</uap:FileType>
+              <uap:FileType>.mhtml</uap:FileType><uap:FileType>.epub</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
           <uap:FileTypeAssociation Name="text">
             <uap:DisplayName>Text, CSV, Markdown and data files</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.txt</uap:FileType><uap:FileType>.json</uap:FileType><uap:FileType>.xml</uap:FileType><uap:FileType>.log</uap:FileType>
-              <uap:FileType>.ini</uap:FileType><uap:FileType>.yaml</uap:FileType><uap:FileType>.yml</uap:FileType><uap:FileType>.csv</uap:FileType>
+              <uap:FileType>.ini</uap:FileType><uap:FileType>.yaml</uap:FileType><uap:FileType>.yml</uap:FileType><uap:FileType>.c</uap:FileType><uap:FileType>.h</uap:FileType><uap:FileType>.cs</uap:FileType><uap:FileType>.java</uap:FileType><uap:FileType>.js</uap:FileType><uap:FileType>.vb</uap:FileType><uap:FileType>.css</uap:FileType><uap:FileType>.php</uap:FileType><uap:FileType>.asp</uap:FileType><uap:FileType>.aspx</uap:FileType><uap:FileType>.razor</uap:FileType><uap:FileType>.config</uap:FileType><uap:FileType>.csproj</uap:FileType><uap:FileType>.sln</uap:FileType><uap:FileType>.csv</uap:FileType><uap:FileType>.tsv</uap:FileType>
               <uap:FileType>.md</uap:FileType><uap:FileType>.markdown</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>

@@ -25,8 +25,8 @@
      <TextBox x:Name="PageBox" Width="56" Padding="6,5" KeyDown="PageBoxKeyDown" AutomationProperties.Name="Go to page number" />
      <TextBlock x:Name="PageCount" VerticalAlignment="Center" Margin="6,0,4,0" />
      <Button x:Name="NextPageButton" Content="›" Click="NextPage" Padding="10,6" Margin="0,0,12,0" AutomationProperties.Name="Next page" ToolTip="Next page" />
-     <Button Content="Fit width" Click="FitWidth" Margin="0,0,4,0" Padding="10,6" />
-     <Button Content="Fit page" Click="FitPage" Padding="10,6" />
+     <Button x:Name="FitWidthButton" Content="Fit width" Click="FitWidth" Margin="0,0,4,0" Padding="10,6" />
+     <Button x:Name="FitPageButton" Content="Fit page" Click="FitPage" Padding="10,6" />
      <Button x:Name="RotateLeftButton" Content="⟲" Click="RotateLeft" Padding="10,6" Margin="12,0,4,0" Visibility="Collapsed" AutomationProperties.Name="Rotate left" ToolTip="Rotate left (Ctrl+Shift+R)" />
      <Button x:Name="RotateRightButton" Content="⟳" Click="RotateRight" Padding="10,6" Visibility="Collapsed" AutomationProperties.Name="Rotate right" ToolTip="Rotate right (Ctrl+R)" />
     </StackPanel>

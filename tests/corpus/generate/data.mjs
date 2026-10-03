@@ -1,4 +1,4 @@
-// Plain-text data fixtures (.json .xml .log .ini .yaml .yml). The viewer shows them as text and never parses them.
+// Plain-text data fixtures (.json .xml .log .ini .yaml .yml), source code and project files, and .tsv. The viewer shows them as text and never parses them.
 import fs from "node:fs";
 import path from "node:path";
 import { GENERATED, LISTENER, SAFE_RULES, record, write } from "./lib.mjs";
@@ -31,6 +31,38 @@ export function generateData({ large }) {
   rec("simple.yml", "simple", { result: "open", text: ["greeting: Hello data"] });
   write("data/binary-named.json", Buffer.from([0x7b, 0x00, 0x01, 0x02, 0xff, 0xfe, 0x00, 0x7d]));
   rec("binary-named.json", "wrong-extension", { result: "error", error: "mismatch" }, { notes: "Binary data with a .json name." });
+
+  // Source code and project files (0.8.0): shown as text, never run or built. The script and style sheet name the
+  // test listener, so a viewer that ran or loaded them would be caught by the security smoke test.
+  const code = {
+    "simple.c": '#include <stdio.h>\n\nint main(void) {\n    printf("Hello code\\n");\n    return 0;\n}\n',
+    "simple.h": "#ifndef HELLO_H\n#define HELLO_H\n/* Hello code */\nint hello(void);\n#endif\n",
+    "simple.cs": 'namespace Sample;\n\npublic static class Program\n{\n    public static void Main() => System.Console.WriteLine("Hello code");\n}\n',
+    "simple.java": 'public class Hello {\n    public static void main(String[] args) {\n        System.out.println("Hello code");\n    }\n}\n',
+    "attack-script.js": `// Hello code: shown as text only; running it would reach the test listener.\nfetch("${LISTENER}/code-js/run");\ndocument.write('<img src="${LISTENER}/code-js/image">');\n`,
+    "simple.vb": 'Module Hello\r\n    Sub Main()\r\n        Console.WriteLine("Hello code")\r\n    End Sub\r\nEnd Module\r\n',
+    "attack-import.css": `/* Hello code */\n@import url("${LISTENER}/code-css/import");\nbody { background: url("${LISTENER}/code-css/image"); }\n`,
+    "simple.php": '<?php\necho "Hello code";\n',
+    "simple.asp": '<%\r\nResponse.Write "Hello code"\r\n%>\r\n',
+    "simple.aspx": '<%@ Page Language="C#" %>\r\n<html><body><p>Hello code</p></body></html>\r\n',
+    "simple.razor": '@page "/hello"\n<h1>Hello code</h1>\n@code {\n    private int count = 0;\n}\n',
+    "app.config": '<?xml version="1.0" encoding="utf-8"?>\r\n<configuration>\r\n  <appSettings><add key="Greeting" value="Hello code" /></appSettings>\r\n</configuration>\r\n',
+    "simple.csproj": '<Project Sdk="Microsoft.NET.Sdk">\r\n  <!-- Hello code -->\r\n  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>\r\n</Project>\r\n',
+    "simple.sln": "﻿\r\nMicrosoft Visual Studio Solution File, Format Version 12.00\r\n# Hello code\r\nGlobal\r\nEndGlobal\r\n",
+  };
+  for (const [file, text] of Object.entries(code)) {
+    const attack = file.startsWith("attack");
+    write(`code/${file}`, text);
+    record({ id: `code-${file.replace(/[/.]/g, "-")}`, file: `code/${file}`, format: path.extname(file).slice(1), category: attack ? "attack" : "simple",
+      producer, licence, expect: { result: "open", text: ["Hello code"] }, rules: SAFE_RULES, ...(attack ? { notes: "Must be shown as text; zero listener requests." } : {}) });
+  }
+  write("code/binary-named.cs", Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00]));
+  record({ id: "code-binary-named-cs", file: "code/binary-named.cs", format: "cs", category: "wrong-extension", producer, licence,
+    expect: { result: "error", error: "mismatch" }, rules: SAFE_RULES, notes: "A program file with a .cs name." });
+
+  // Tab-separated values (0.8.0): the grid splits on tabs even where commas appear in fields.
+  write("data/simple.tsv", "Name\tValue\tNote\r\nHello data\t001\tleading zero, kept\r\nSecond\t2\tcomma, inside\r\n");
+  rec("simple.tsv", "simple", { result: "open", text: ["Hello data", "001"] });
 
   if (large) {
     // About 60 MB of JSON lines: shown through the disk-backed line view.

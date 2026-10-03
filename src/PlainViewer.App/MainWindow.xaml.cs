@@ -70,8 +70,8 @@ public partial class MainWindow : Window
     // Shown as pages through the converter: Office files, OpenDocument text and presentations, RTF, .doc, .ppt and TIFF.
     private static bool IsOffice(string path) => OfficePackages.IsOfficeDocument(path) || ConvertedDocuments.KindOf(path) is "word" or "slides" or "pages";
     private static bool IsPicture(string path) => ImageFiles.IsImage(path);
-    private static bool UsesWebPane(string path) => IsPdf(path) || IsWorkbook(path) || IsOffice(path) || IsPicture(path);
-    private bool InWebPane => document?.Kind is "pdf" or "sheet" or "word" or "slides" or "image";
+    private static bool UsesWebPane(string path) => IsPdf(path) || IsWorkbook(path) || IsOffice(path) || IsPicture(path) || WebDocuments.Handles(path);
+    private bool InWebPane => document?.Kind is "pdf" or "sheet" or "word" or "slides" or "image" or "web";
     private bool Paginated => document?.Kind is "pdf" or "word" or "slides";
     internal async Task<string> VerifyRefusedAsync(string path)
     {
@@ -247,7 +247,7 @@ public partial class MainWindow : Window
         loading?.Cancel(); var operation = new CancellationTokenSource(); loading = operation;
         CancelButton.IsEnabled = true; Progress.Visibility = Visibility.Visible; Status.Text = "Opening document…";
         var stopwatch = Stopwatch.StartNew();
-        string? work = null; RowStore? opened = null; var openedSheets = new Dictionary<int, RowStore>();
+        string? work = null; RowStore? opened = null; var openedSheets = new Dictionary<int, RowStore>(); byte[]? webParts = null;
         try
         {
             DocumentView loaded;
@@ -260,7 +260,10 @@ public partial class MainWindow : Window
                 loaded = await WorkerClient.Load(currentPath, Choice(EncodingChoice), Choice(DelimiterChoice), work, operation.Token);
                 // Store names and counts come from the worker, so only the names it may use are accepted, and each
                 // store must hold exactly the rows the worker reported.
-                if (loaded.Store.Length > 0) opened = loaded.Store == "rows" ? RowStore.Open(work, "rows") : throw new InvalidDataException("Unexpected worker output.");
+                // Web pages and books: the parts the worker collected, for the page to clean and show (Assets/web).
+                if (loaded.Kind == "web") webParts = loaded.Store == WebDocuments.Output && new FileInfo(Path.Combine(work, WebDocuments.Output)) is { Exists: true, Length: <= 256L * 1024 * 1024 } parts
+                    ? File.ReadAllBytes(parts.FullName) : throw new InvalidDataException("Unexpected worker output.");
+                else if (loaded.Store.Length > 0) opened = loaded.Store == "rows" ? RowStore.Open(work, "rows") : throw new InvalidDataException("Unexpected worker output.");
                 if (opened is not null && opened.Count != loaded.RowCount) throw new InvalidDataException("Unexpected worker output.");
                 for (int i = 0; i < loaded.Sheets.Count; i++)
                 {
@@ -275,11 +278,13 @@ public partial class MainWindow : Window
                             throw new InvalidDataException("Unexpected worker output.");
             }
             if (loading != operation) return;
-            bool media = loaded.Sheets.Any(s => s.Pictures.Any(p => p.Media.Length > 0));
+            // Pictures on sheets or in web pages and books stay in the work folder while the document is open.
+            bool media = loaded.Sheets.Any(s => s.Pictures.Any(p => p.Media.Length > 0)) || webParts is not null;
             bool stores = opened is not null || openedSheets.Count > 0 || media;
             ReplaceRowStore(opened, openedSheets, stores ? work : null);
             if (stores) { opened = null; openedSheets = []; work = null; }
             if (loaded.Kind == "sheet") await LoadSheets(loaded, operation.Token);
+            else if (webParts is not null) await LoadWeb(webParts, operation.Token);
             if (loading != operation) return;
             document = loaded; Title = Path.GetFileName(currentPath) + " · Plain Viewer";
             openSeconds = stopwatch.Elapsed.TotalSeconds;
@@ -353,9 +358,11 @@ public partial class MainWindow : Window
         bool web = InWebPane;
         WebPane.Visibility = web ? Visibility.Visible : Visibility.Collapsed;
         bool picture = document.Kind == "image";
-        PageControls.Visibility = Paginated || picture ? Visibility.Visible : Visibility.Collapsed;
+        PageControls.Visibility = Paginated || picture || Book ? Visibility.Visible : Visibility.Collapsed;
         foreach (var element in new FrameworkElement[] { PreviousPageButton, PageLabel, PageBox, PageCount, NextPageButton })
             element.Visibility = picture ? Visibility.Collapsed : Visibility.Visible;
+        // Books move by chapter; their text reflows, so there is no page to fit.
+        FitWidthButton.Visibility = FitPageButton.Visibility = Book ? Visibility.Collapsed : Visibility.Visible;
         RotateLeftButton.Visibility = RotateRightButton.Visibility = picture ? Visibility.Visible : Visibility.Collapsed;
         // Pictures (and TIFF scans shown as pages) have no text: search is switched off and says why.
         bool noText = picture || document.Encoding == "TIFF picture";
@@ -366,8 +373,8 @@ public partial class MainWindow : Window
             ToolTipService.SetShowOnDisabled(control, true);
             System.Windows.Automation.AutomationProperties.SetHelpText(control, noSearch ?? "");
         }
-        PageLabel.Text = document.Kind == "slides" ? "Slide" : "Page";
-        System.Windows.Automation.AutomationProperties.SetName(PageBox, document.Kind == "slides" ? "Go to slide number" : "Go to page number");
+        PageLabel.Text = document.Kind == "slides" ? "Slide" : Book ? "Chapter" : "Page";
+        System.Windows.Automation.AutomationProperties.SetName(PageBox, document.Kind == "slides" ? "Go to slide number" : Book ? "Go to chapter number" : "Go to page number");
         // Text encoding and CSV delimiter appear only where they apply (Zain's choice, DECISIONS.md D14): the encoding for
         // text, CSV, Markdown and data files, the delimiter for CSV.
         EncodingChoice.Visibility = web ? Visibility.Collapsed : Visibility.Visible;
@@ -578,6 +585,14 @@ public partial class MainWindow : Window
         WebPane.Visibility = Visibility.Visible;
         await WebPane.LoadSheets(json, IsDarkTheme(), cancellation);
     }
+    private async Task LoadWeb(byte[] json, CancellationToken cancellation)
+    {
+        Welcome.Visibility = TextView.Visibility = MarkdownDisplay.Visibility = CsvGrid.Visibility = Visibility.Collapsed;
+        WebPane.Visibility = Visibility.Visible;
+        await WebPane.LoadWeb(json, IsDarkTheme(), cancellation);
+    }
+    // EPUB books: one "chapter" per part of the book's reading order.
+    private bool Book => document?.Kind == "web" && WebPane.Pages > 1;
     private void ShowWebStatus()
     {
         if (document is null || !InWebPane) return;
@@ -595,6 +610,13 @@ public partial class MainWindow : Window
             PageCount.Text = $"of {WebPane.Pages}";
             if (!PageBox.IsKeyboardFocused) PageBox.Text = WebPane.Page.ToString();
             Status.Text = $"Read only · {type} · {unit} {WebPane.Page} of {WebPane.Pages} · Opened in {openSeconds:F2}s. {document.Notice}";
+        }
+        else if (document.Kind == "web")
+        {
+            PageCount.Text = $"of {WebPane.Pages}";
+            if (!PageBox.IsKeyboardFocused) PageBox.Text = WebPane.Page.ToString();
+            string where = Book ? $" · {(document.Encoding == "EPUB book" ? "Chapter" : "Part")} {WebPane.Page} of {WebPane.Pages}" : "";
+            Status.Text = $"Read only · {document.Encoding}{where} · Opened in {openSeconds:F2}s. {document.Notice} {WebPane.PageNotice}".TrimEnd();
         }
         else Status.Text = $"Read only · {document.Encoding} · Sheet {WebPane.Page} of {WebPane.Pages}: {WebPane.SheetName} · Opened in {openSeconds:F2}s. {document.Notice}";
     }

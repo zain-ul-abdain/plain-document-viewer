@@ -12,6 +12,7 @@ import { generateLargeText } from "./large-text.mjs";
 import { generateImages } from "./images.mjs";
 import { generateData } from "./data.mjs";
 import { generateConverted } from "./converted.mjs";
+import { generateWeb } from "./web.mjs";
 
 const large = process.argv.includes("--large");
 await generatePdf({ large });
@@ -22,6 +23,7 @@ generateLargeText({ large });
 await generateImages({ large });
 generateData({ large });
 await generateConverted();
+await generateWeb({ large });
 
 // Codex's hand-written fixtures (tests/corpus/*.txt|csv|md|markdown) keep their own provenance table in SOURCES.md.
 const codexLicence = "Authored for this project by Codex (see SOURCES.md)";

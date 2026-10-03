@@ -20,6 +20,7 @@ try
     // "<file> <encoding> <delimiter> <work folder>": large rows go to a RowStore in the work folder.
     var document = args.ElementAtOrDefault(1) == "--prepare-office" ? (ConvertedDocuments.Handles(args[0]) ? ConvertedDocuments.Prepare(args[0], args[2]) : OfficePackages.Prepare(args[0], args[2]))
         : ImageFiles.IsImage(args[0]) && args.Length == 4 ? PlainViewer.Worker.HeifPictures.Load(args[0], args[3])
+        : WebDocuments.Handles(args[0]) && args.Length == 4 ? WebDocuments.Load(args[0], args[3])
         : LegacySpreadsheets.Handles(args[0]) ? LegacySpreadsheets.Load(args[0], storeFolder: args.ElementAtOrDefault(3))
         : Spreadsheets.IsWorkbook(args[0]) || extension is ".xlsb" ? Spreadsheets.Load(args[0], storeFolder: args.ElementAtOrDefault(3))
         : TextFiles.Load(args[0], args.ElementAtOrDefault(1) ?? "Auto", args.ElementAtOrDefault(2) ?? "Auto", args.ElementAtOrDefault(3));

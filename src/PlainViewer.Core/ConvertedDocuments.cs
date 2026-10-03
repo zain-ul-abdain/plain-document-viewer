@@ -17,7 +17,7 @@ namespace PlainViewer.Core;
 public static partial class ConvertedDocuments
 {
     public const long SizeLimit = 256L * 1024 * 1024;
-    public static readonly string[] WordExtensions = [".odt", ".rtf", ".doc"];
+    public static readonly string[] WordExtensions = [".odt", ".rtf", ".doc", ".dot", ".ott"];
     public static readonly string[] SlideExtensions = [".odp", ".ppt"];
     public static readonly string[] PictureExtensions = [".tif", ".tiff"];
     private static readonly string[] FetchingFields = ["INCLUDEPICTURE", "INCLUDETEXT", "LINK", "DDE", "DDEAUTO", "IMPORT", "DATABASE"];
@@ -126,7 +126,8 @@ public static partial class ConvertedDocuments
                 throw new DocumentException($"This is a newer Office file (such as .docx, .xlsx or .pptx) saved with a {extension} name. Rename it with the right ending to view it.");
             string mime = "";
             if (zip.GetEntry("mimetype") is { Length: < 200 } entry) using (var reader = new StreamReader(entry.Open())) mime = reader.ReadToEnd().Trim();
-            var format = mime switch
+            // Templates (.ott, 0.8.0) are shown as the document they hold; Prepare labels the copy as a document.
+            var format = mime.Replace("-template", "") switch
             {
                 "application/vnd.oasis.opendocument.text" => Format.Odt,
                 "application/vnd.oasis.opendocument.spreadsheet" => Format.Ods,
@@ -140,6 +141,9 @@ public static partial class ConvertedDocuments
     }
 
     // ---- OpenDocument ----
+
+    // A template's media type ("…opendocument.text-template"): the copy is labelled as the document type instead.
+    private static readonly Regex TemplateType = new(@"(application/vnd\.oasis\.opendocument\.[a-z]+)-template", RegexOptions.CultureInvariant);
 
     private static byte[] OpenDocument(byte[] bytes, string label, ref int removed, ref bool macros)
     {
@@ -160,9 +164,15 @@ public static partial class ConvertedDocuments
                 if (entry.FullName.Equals("META-INF/manifest.xml", StringComparison.OrdinalIgnoreCase))
                 {
                     using var buffer = new MemoryStream(); input.CopyTo(buffer);
-                    if (Encoding.UTF8.GetString(buffer.ToArray()).Contains("encryption-data", StringComparison.Ordinal))
+                    string manifest = Encoding.UTF8.GetString(buffer.ToArray());
+                    if (manifest.Contains("encryption-data", StringComparison.Ordinal))
                         throw new DocumentException($"This {label} is protected with a password. Password-protected files cannot be opened in this version. Remove the password in the application that made it, or ask the sender for an unprotected copy.");
-                    buffer.Position = 0; buffer.CopyTo(destination);
+                    destination.Write(Encoding.UTF8.GetBytes(TemplateType.Replace(manifest, "$1")));
+                }
+                else if (entry.FullName == "mimetype")
+                {
+                    using var reader = new StreamReader(input);
+                    destination.Write(Encoding.ASCII.GetBytes(TemplateType.Replace(reader.ReadToEnd(), "$1")));
                 }
                 else if (entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) removed += FilterXml(input, destination);
                 else input.CopyTo(destination);
