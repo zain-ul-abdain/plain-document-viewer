@@ -404,9 +404,9 @@ public partial class MainWindow : Window
     }
     private void OpenLink(string address)
     {
-        if (!LinkPolicy.CanOpen(address)) return;
-        if (MessageBox.Show(this, "Open this address in your default application?\n\n" + address, "Open link", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        try { Process.Start(new ProcessStartInfo(address) { UseShellExecute = true }); }
+        if (LinkPolicy.LaunchAddress(address) is not { } launch) { Status.Text = "This link was not opened because its address is not valid."; return; }
+        if (MessageBox.Show(this, "Open this address in your default application?\n\n" + launch, "Open link", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        try { Process.Start(new ProcessStartInfo(launch) { UseShellExecute = true }); }
         catch { Status.Text = "The link could not open. Check your default browser or email application."; }
     }
     private void Find(bool previous)

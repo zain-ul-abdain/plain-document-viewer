@@ -34,6 +34,17 @@ try
     Test("UTF-16 heuristic", () => Check(TextFiles.Detect([65, 0, 66, 0, 67, 0]).Encoding.CodePage == 1200));
     Test("UTF-8 partial sample", () => Check(TextFiles.Detect([65, 0xe2, 0x82]).Encoding.CodePage == 65001));
     Test("Unsafe link schemes remain inert", () => { foreach (var link in new[] { "javascript:alert(1)", "file:///c:/secret", @"\\server\share", "data:text/html,test", "relative.md" }) Check(!LinkPolicy.CanOpen(link)); Check(LinkPolicy.CanOpen("https://example.com")); });
+    Test("Opened links are encoded so they cannot add program arguments", () =>
+    {
+        foreach (var link in new[] { "mailto:boss@corp.example?subject=x\" /a \"C:\\Users\\v\\salary.xlsx", "https://example.com/a b\"c<d>e^f`g", "http://example.com/?q=\" --flag" })
+        {
+            string? launch = LinkPolicy.LaunchAddress(link);
+            if (launch is not null && launch.Any(c => char.IsWhiteSpace(c) || c is '"' or '<' or '>' or '^' or '`')) throw new Exception($"{link} -> {launch}");
+        }
+        Check(LinkPolicy.LaunchAddress("https://example.com/a b\"c") == "https://example.com/a%20b%22c");
+        Check(LinkPolicy.LaunchAddress("mailto:someone@example.com") == "mailto:someone@example.com");
+        Check(LinkPolicy.LaunchAddress("javascript:alert(1)") is null && LinkPolicy.LaunchAddress(null) is null);
+    });
     Test("Markdown literal HTML, no image references in display data", () => {
         var blocks = MarkdownView.Parse("# Hello\n\n<script>alert(1)</script>\n\n![private](file:///c:/secret.png)\n\n[bad](javascript:alert)\n");
         string json = System.Text.Json.JsonSerializer.Serialize(blocks); Check(blocks[0].Kind == "heading"); Check(json.Contains("script")); Check(!json.Contains("secret.png")); Check(!json.Contains("\"Link\":\"javascript")); });

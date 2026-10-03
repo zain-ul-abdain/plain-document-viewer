@@ -2,6 +2,7 @@
 
 ## Next version (not yet released)
 
+- Safer links: a link is now shown and opened in its encoded form (spaces and quotes become %20 and %22), so a crafted link in a document cannot pass extra instructions to your browser or email program. Found by a security review of the code.
 - Clearer messages when a file has been moved or deleted, cannot be read because of its permissions, or is locked by another program, for every kind of file (PDFs and pictures used to show "an unexpected problem").
 - Spreadsheet shapes and text boxes (.xlsx, .xls and .ods): notes, callouts, arrows, lines and grouped shapes drawn over the cells now show, with their colours and text.
 - Spreadsheet charts show their axis titles and data labels (values, pie percentages and category names), in .xlsx, .xls and .ods.

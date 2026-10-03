@@ -21,7 +21,7 @@ No format is release-certified yet (beta). The Open dialog lists every format be
 
 ## Safety scope
 
-Markdown image/file references are never followed by implemented code. Links require an allowed scheme and confirmation. Document HTML/XAML is never instantiated. The worker uses a Windows Job Object with a 256 MB memory cap, one-process limit and kill-on-close. Parent enforces 20 seconds for opening and 32 MB for serialized output.
+Markdown image/file references are never followed by implemented code. Links require an allowed scheme and confirmation; the confirmation shows, and Windows receives, the percent-encoded address (LinkPolicy.LaunchAddress), so quotes and spaces in a document's link cannot add arguments to the browser or mail program. Document HTML/XAML is never instantiated. The worker uses a Windows Job Object with a 256 MB memory cap, one-process limit and kill-on-close. Parent enforces 20 seconds for opening and 32 MB for serialized output.
 
 Privilege isolation (Zain's gate 1 decision, DECISIONS.md): the worker drops to low integrity before it reads a document and refuses to continue if it cannot; LibreOffice is started at low integrity in a Job Object limited to its launcher plus one process. At low integrity Windows stops them writing the user's files and registry and opening other programs to change them (tested: `test.ps1` low-integrity test; all LibreOffice processes observed at low integrity). They can still read files the user can read. PDF pages (PDF.js) and the spreadsheet grid run inside WebView2, in Chromium's renderer sandbox.
 

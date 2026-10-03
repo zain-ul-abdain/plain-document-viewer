@@ -41,6 +41,15 @@ public static class LinkPolicy
     public static bool CanOpen(string? address) => address is not null &&
         Uri.TryCreate(address, UriKind.Absolute, out var uri) && !address.Any(char.IsControl) &&
         (uri.Scheme == "http" || uri.Scheme == "https" || uri.Scheme == "mailto");
+
+    // The exact address shown in the confirmation and handed to Windows: the percent-encoded form, so quotes and spaces
+    // from the document cannot end the address and add arguments to the browser's or mail program's command line.
+    public static string? LaunchAddress(string? address)
+    {
+        if (!CanOpen(address)) return null;
+        string canonical = new Uri(address!, UriKind.Absolute).AbsoluteUri;
+        return canonical.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '"' or '<' or '>' or '^' or '`') ? null : canonical;
+    }
 }
 
 // How one kind of cell looks, from the workbook's styles. Colours are "#rrggbb"; borders are "<px> <solid|dashed|

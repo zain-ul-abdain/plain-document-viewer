@@ -337,3 +337,8 @@ Suggested title: Preserve Markdown list starts and table alignment and scroll wi
 - .xls: Office Art FSP type/flags, simple properties, FSPGR/child anchors (`Locate`), TXO text and runs captured in `ReadSheet`; `ShapeOf`. LibreOffice's freeform outlines (type 4095, guide-based points) are drawn as rectangles.
 - One smoke run stalled on complex.rtf (LibreOffice over two minutes); the rerun passed 78/78. Watch for it.
 - **Open:** ARM64; for Zain: Partner Center, Narrator and scaling checks; releasing 0.7.0 when Zain asks.
+
+## Agent 2, 3 October 2026 (later): security review of the whole repository; link fix
+
+- At Zain's request a full-repository security review ran (an automated multi-reviewer code audit at its deepest setting; the report stays outside Git in an ignored folder of the worktree). Thirteen candidates; twelve were rejected by every reviewer. One low finding survived: `OpenLink` handed the document's raw link text to ShellExecute, so quotes and spaces in an angle-bracket Markdown link (or a PDF link) could add arguments to a mail or browser program that does not take its address as a single argument (for example classic Outlook for mailto).
+- Fix: `LinkPolicy.LaunchAddress` returns the percent-encoded `Uri.AbsoluteUri` (and refuses anything still containing whitespace, quotes, `<`, `>`, `^` or a backtick); `OpenLink` shows and launches that string. New core test. Full gate except the installer: build 0 warnings, core 182, Markdown 23, app 6, smoke, security smoke 65 with 0 requests.
