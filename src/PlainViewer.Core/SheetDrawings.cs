@@ -7,14 +7,15 @@ namespace PlainViewer.Core;
 // Pictures and charts placed on an .xlsx worksheet (its drawing part). Pictures stored in the file are checked by
 // ImageFiles (format from the bytes, size limits) and written to the work folder for the grid page, which decodes them
 // in its sandbox; linked pictures (stored elsewhere) are never fetched. Charts become ChartData from the values saved
-// in the chart itself, never recalculated from the cells. Shapes and text boxes are not shown.
+// in the chart itself, never recalculated from the cells. Shapes and text boxes become ShapeData (outline, colours, text);
+// grouped shapes are counted and not shown.
 internal static class SheetDrawings
 {
     private const double Emu = 9525;                          // EMUs per pixel at 96 dpi
     public const int MaxPictures = 200, MaxSeries = 50, MaxPoints = 10_000;
     public const long MaxPictureBytes = 20L * 1024 * 1024, MaxTotalBytes = 64L * 1024 * 1024;
 
-    public sealed class Budget { public int Pictures = MaxPictures; public long Bytes = MaxTotalBytes; public int Skipped, Unsupported, Linked; }
+    public sealed class Budget { public int Pictures = MaxPictures; public long Bytes = MaxTotalBytes; public int Skipped, Unsupported, Linked, Groups; }
 
     public static List<SheetPicture> Read(string drawingPart, Func<string, Dictionary<string, (string Type, string Target)>> relationships,
         Func<string, XmlReader> open, Func<string, ZipArchiveEntry?> entry, string? folder, int sheet, Budget budget, IReadOnlyList<string> theme)
@@ -28,7 +29,7 @@ internal static class SheetDrawings
             if (result.Count >= MaxPictures) break;
             var placed = Place(anchor);
             if (placed is null) continue;
-            var content = anchor.Elements().FirstOrDefault(e => e.Name.LocalName is "pic" or "graphicFrame" or "grpSp" or "sp");
+            var content = anchor.Elements().FirstOrDefault(e => e.Name.LocalName is "pic" or "graphicFrame" or "grpSp" or "sp" or "cxnSp");
             if (content?.Name.LocalName == "pic")
             {
                 var blip = content.Descendants().FirstOrDefault(e => e.Name.LocalName == "blip");
@@ -52,6 +53,14 @@ internal static class SheetDrawings
                 placed.Description = placed.Chart.Title;
                 result.Add(placed);
             }
+            else if (content?.Name.LocalName is "sp" or "cxnSp")
+            {
+                placed.Shape = ReadShape(content, theme);
+                placed.Description = string.Join(" ", placed.Shape.Paragraphs.Select(p => p.Text)).Trim();
+                if (placed.Description.Length == 0) placed.Description = Attribute(content.Descendants().FirstOrDefault(e => e.Name.LocalName == "cNvPr"), "descr") ?? "";
+                result.Add(placed);
+            }
+            else if (content?.Name.LocalName == "grpSp") budget.Groups++;
         }
         return result;
     }
@@ -83,6 +92,7 @@ internal static class SheetDrawings
     {
         if (budget.Unsupported > 0) yield return $"{budget.Unsupported} picture{(budget.Unsupported == 1 ? " is" : "s are")} in a format this viewer cannot show (for example EMF or WMF) and {(budget.Unsupported == 1 ? "is" : "are")} left out.";
         if (budget.Skipped > 0) yield return $"{budget.Skipped} picture{(budget.Skipped == 1 ? " is" : "s are")} left out because the workbook's pictures are larger than this viewer shows at once.";
+        if (budget.Groups > 0) yield return $"{budget.Groups} group{(budget.Groups == 1 ? "" : "s")} of shapes {(budget.Groups == 1 ? "is" : "are")} not shown.";
         if (budget.Linked > 0) yield return $"{budget.Linked} linked picture{(budget.Linked == 1 ? " is" : "s are")} stored outside this file and {(budget.Linked == 1 ? "is" : "are")} not loaded.";
     }
 
@@ -284,6 +294,137 @@ internal static class SheetDrawings
             else labels.Add(value);
         }
         return labels;
+    }
+
+    // Shape outlines drawn as such; any other preset is drawn as a rectangle (with its text).
+    public static readonly string[] Geometries = ["rect", "roundRect", "ellipse", "triangle", "rtTriangle", "diamond", "parallelogram", "hexagon",
+        "line", "rightArrow", "leftArrow", "upArrow", "downArrow"];
+
+    // A shape (xdr:sp) or connector (xdr:cxnSp): outline, fill and line (its own, else from its style's references to
+    // the theme), rotation and flips, and the text of a text box or shape.
+    internal static ShapeData ReadShape(XElement shape, IReadOnlyList<string> theme)
+    {
+        var properties = Child(shape, "spPr");
+        var style = Child(shape, "style");
+        string preset = Attribute(Child(properties, "prstGeom"), "prst") ?? "rect";
+        var data = new ShapeData
+        {
+            Geometry = preset is "straightConnector1" or "bentConnector2" or "bentConnector3" or "curvedConnector3" ? "line" : Geometries.Contains(preset) ? preset : "rect"
+        };
+        if (Child(properties, "xfrm") is { } transform)
+        {
+            data.Rotation = Math.Round(Number(Attribute(transform, "rot")) / 60000, 2) % 360;
+            data.FlipH = Attribute(transform, "flipH") is "1" or "true";
+            data.FlipV = Attribute(transform, "flipV") is "1" or "true";
+        }
+        // Fill: none, a solid colour, a gradient's first colour, or the style's fill colour.
+        if (data.Geometry != "line")
+        {
+            if (Child(properties, "noFill") is not null) data.Fill = null;
+            else if (Child(properties, "solidFill") is { } solid) data.Fill = DrawingColour(solid, theme);
+            else if (Child(properties, "gradFill")?.Descendants().FirstOrDefault(e => e.Name.LocalName == "gs") is { } stop) data.Fill = DrawingColour(stop, theme);
+            else if (Child(style, "fillRef") is { } fillRef && Number(Attribute(fillRef, "idx")) > 0) data.Fill = DrawingColour(fillRef, theme);
+        }
+        // Outline: none, its own colour, or the style's line colour; width in EMUs; dashes; arrow ends.
+        var line = Child(properties, "ln");
+        if (Child(line, "noFill") is not null) data.Line = null;
+        else if (Child(line, "solidFill") is { } lineFill) data.Line = DrawingColour(lineFill, theme);
+        else if (Child(style, "lnRef") is { } lineRef && Number(Attribute(lineRef, "idx")) > 0) data.Line = DrawingColour(lineRef, theme);
+        if (Attribute(line, "w") is { } width) data.LineWidth = Math.Clamp(Math.Round(Number(width) / Emu, 2), 0.5, 20);
+        data.Dash = Attribute(Child(line, "prstDash"), "val") switch { "dash" or "sysDash" or "lgDash" or "dashDot" or "lgDashDot" or "lgDashDotDot" or "sysDashDot" or "sysDashDotDot" => "dash", "dot" or "sysDot" => "dot", _ => "" };
+        data.StartArrow = Attribute(Child(line, "headEnd"), "type") is { } head && head != "none";
+        data.EndArrow = Attribute(Child(line, "tailEnd"), "type") is { } tail && tail != "none";
+        // Text: paragraphs of runs, with the first run's look; the style's font colour, else black.
+        var body = Child(shape, "txBody");
+        string defaultColour = Child(style, "fontRef") is { } fontRef ? DrawingColour(fontRef, theme) ?? "#000000" : "#000000";
+        data.VAlign = Attribute(Child(body, "bodyPr"), "anchor") switch { "ctr" => "ctr", "b" => "b", _ => "t" };
+        foreach (var paragraph in body?.Elements().Where(e => e.Name.LocalName == "p").Take(200) ?? [])
+        {
+            var text = new System.Text.StringBuilder();
+            foreach (var part in paragraph.Elements())
+                if (part.Name.LocalName is "r" or "fld") text.Append(Child(part, "t")?.Value);
+                else if (part.Name.LocalName == "br") text.Append('\n');
+            var look = paragraph.Elements().FirstOrDefault(e => e.Name.LocalName is "r" or "fld") is { } run ? Child(run, "rPr") : Child(paragraph, "endParaRPr");
+            double size = Number(Attribute(look, "sz")) / 100;
+            data.Paragraphs.Add(new ShapeParagraph
+            {
+                Text = text.Length > 4000 ? text.ToString(0, 4000) : text.ToString(),
+                Align = Attribute(Child(paragraph, "pPr"), "algn") switch { "ctr" => "ctr", "r" => "r", _ => "l" },
+                Bold = Attribute(look, "b") is "1" or "true", Italic = Attribute(look, "i") is "1" or "true",
+                Size = size is >= 1 and <= 400 ? size : 11,
+                Color = Child(look, "solidFill") is { } runFill ? DrawingColour(runFill, theme) ?? defaultColour : defaultColour
+            });
+        }
+        while (data.Paragraphs.Count > 0 && data.Paragraphs[^1].Text.Length == 0) data.Paragraphs.RemoveAt(data.Paragraphs.Count - 1);
+        return data;
+    }
+
+    // A DrawingML colour (the element holding srgbClr, schemeClr, sysClr or prstClr) with its shade, tint and luminance
+    // changes; null when there is none.
+    internal static string? DrawingColour(XElement holder, IReadOnlyList<string> theme)
+    {
+        var colour = holder.Elements().FirstOrDefault(e => e.Name.LocalName is "srgbClr" or "schemeClr" or "sysClr" or "prstClr");
+        if (colour is null) return null;
+        string? value = colour.Name.LocalName switch
+        {
+            "srgbClr" => WorkbookStyles.Hex(Attribute(colour, "val")),
+            "sysClr" => WorkbookStyles.Hex(Attribute(colour, "lastClr")) ?? (Attribute(colour, "val") == "window" ? "#ffffff" : "#000000"),
+            "prstClr" => Attribute(colour, "val") switch { "black" => "#000000", "white" => "#ffffff", "red" => "#ff0000", "green" => "#008000", "blue" => "#0000ff", "yellow" => "#ffff00", "gray" => "#808080", _ => null },
+            _ when theme.Count >= 10 => Attribute(colour, "val") switch
+            {
+                "dk1" or "tx1" => theme[0], "lt1" or "bg1" => theme[1], "dk2" or "tx2" => theme[2], "lt2" or "bg2" => theme[3],
+                "accent1" => theme[4], "accent2" => theme[5], "accent3" => theme[6], "accent4" => theme[7], "accent5" => theme[8], "accent6" => theme[9], _ => null
+            },
+            _ => Attribute(colour, "val") switch { "dk1" or "tx1" => "#000000", "lt1" or "bg1" => "#ffffff", _ => null }
+        };
+        if (value is null) return null;
+        foreach (var change in colour.Elements())
+        {
+            double amount = Number(Attribute(change, "val")) / 100000;
+            value = change.Name.LocalName switch
+            {
+                "shade" => Linear(value, c => c * Math.Clamp(amount, 0, 1)),
+                "tint" => Linear(value, c => 1 - (1 - c) * Math.Clamp(amount, 0, 1)),
+                "lumMod" => Luminance(value, amount, 0),
+                "lumOff" => Luminance(value, 1, amount),
+                _ => value
+            };
+        }
+        return value;
+    }
+
+    // Shade and tint work on linear light (sRGB with its gamma removed), as Office computes them: accent1 #4f81bd at a
+    // 50% shade is #385d8a.
+    private static string Linear(string colour, Func<double, double> change)
+    {
+        string Channel(int at)
+        {
+            double s = Convert.ToInt32(colour.Substring(at, 2), 16) / 255.0;
+            double linear = s <= 0.04045 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+            linear = Math.Clamp(change(linear), 0, 1);
+            double back = linear <= 0.0031308 ? linear * 12.92 : 1.055 * Math.Pow(linear, 1 / 2.4) - 0.055;
+            return ((int)Math.Round(Math.Clamp(back, 0, 1) * 255)).ToString("x2");
+        }
+        return "#" + Channel(1) + Channel(3) + Channel(5);
+    }
+
+    // HSL lightness × scale + offset (DrawingML's lumMod and lumOff).
+    private static string Luminance(string colour, double scale, double offset)
+    {
+        double r = Convert.ToInt32(colour[1..3], 16) / 255.0, g = Convert.ToInt32(colour[3..5], 16) / 255.0, b = Convert.ToInt32(colour[5..7], 16) / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), l = (max + min) / 2, h = 0, s = 0;
+        if (max != min)
+        {
+            double d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            h = max == r ? (g - b) / d + (g < b ? 6 : 0) : max == g ? (b - r) / d + 2 : (r - g) / d + 4;
+            h /= 6;
+        }
+        l = Math.Clamp(l * scale + offset, 0, 1);
+        double q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+        double Hue(double t) { t = t < 0 ? t + 1 : t > 1 ? t - 1 : t; return t < 1 / 6.0 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3.0 ? p + (q - p) * (2 / 3.0 - t) * 6 : p; }
+        int Byte(double v) => (int)Math.Round(Math.Clamp(v, 0, 1) * 255);
+        return s == 0 ? $"#{Byte(l):x2}{Byte(l):x2}{Byte(l):x2}" : $"#{Byte(Hue(h + 1 / 3.0)):x2}{Byte(Hue(h)):x2}{Byte(Hue(h - 1 / 3.0)):x2}";
     }
 
     // The series' fill (bars, areas, slices) or line colour: an sRGB value or a theme colour.

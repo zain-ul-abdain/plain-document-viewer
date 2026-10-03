@@ -364,7 +364,7 @@ try
                     {
                         int index = drawn.Sheets.FindIndex(s => s.Name == item.GetProperty("sheet").GetString());
                         var sheet = drawn.Sheets[index];
-                        var media = sheet.Pictures.Where(p => p.Chart is null).ToList();
+                        var media = sheet.Pictures.Where(p => p.Chart is null && p.Shape is null).ToList();
                         if (item.TryGetProperty("pictures", out var count) && media.Count != count.GetInt32()) throw new Exception($"{sheet.Name}: {media.Count} pictures");
                         foreach (var picture in media)
                             Check(ImageFiles.ContentTypeOf(picture.Media) == "image/png" && picture.Media.StartsWith($"media-{index}-") && File.Exists(Path.Combine(folder, picture.Media)));
@@ -376,6 +376,14 @@ try
                             Check(sheet.Pictures.Where(p => p.Chart is not null).All(p => p.Chart!.Categories.Count > 0 && p.Chart.Series.All(s => s.Values.Count > 0 && s.Values.All(v => v is not null))));
                         }
                         Check(item.TryGetProperty("chartSheet", out _) == sheet.ChartSheet);
+                        // Shapes as "geometry:fill:line:paragraph/paragraph" ("-" for none).
+                        if (item.TryGetProperty("shapes", out var shapes))
+                        {
+                            var got = sheet.Pictures.Where(p => p.Shape is not null)
+                                .Select(p => $"{p.Shape!.Geometry}:{p.Shape.Fill ?? "-"}:{p.Shape.Line ?? "-"}:{string.Join("/", p.Shape.Paragraphs.Select(x => x.Text))}").ToArray();
+                            var wanted = shapes.EnumerateArray().Select(s => s.GetString()!).ToArray();
+                            if (!got.SequenceEqual(wanted)) throw new Exception($"{sheet.Name} shapes: got {string.Join(" | ", got)}");
+                        }
                         // Series values and categories, as saved, of the first ("values") and second ("values2") chart.
                         foreach (var (suffix, n) in new[] { ("", 0), ("2", 1) })
                             if (item.TryGetProperty("values" + suffix, out var values))

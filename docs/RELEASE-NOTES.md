@@ -2,6 +2,7 @@
 
 ## Next version (not yet released)
 
+- Excel shapes and text boxes (.xlsx): notes, callouts, arrows and lines drawn over the cells now show, with their colours and text.
 - Spreadsheet charts show their axis titles and data labels (values, pie percentages and category names), in .xlsx, .xls and .ods.
 - Spreadsheets: patterned cell fills (grey shades, stripes, grids and crosshatching) now show, in .xlsx and .xls.
 - Spreadsheets: colours and borders given to whole columns or rows now show in their empty cells too (.xlsx, .xls and .ods).

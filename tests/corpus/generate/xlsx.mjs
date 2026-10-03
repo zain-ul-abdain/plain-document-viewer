@@ -358,6 +358,49 @@ export async function generateXlsx({ large }) {
       rules: SAFE_RULES, notes: "The picture is the corpus's own PNG. Charts are drawn from their cached values; the chart sheet shows its chart filling the view." });
   }
 
+  // Shapes and text boxes, hand-written DrawingML (exceljs cannot write shapes): a text box, shapes coloured through
+  // their style's theme references, a dashed outline, an arrow line, a block arrow, a star (drawn as a rectangle) and
+  // a group (counted, not shown).
+  {
+    const wb = workbook();
+    const ws = wb.addWorksheet("Notes");
+    ws.getCell("A1").value = "Hello shapes";
+    const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+    const anchor = (from, to, body) => `<xdr:twoCellAnchor><xdr:from><xdr:col>${from[0]}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${from[1]}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>` +
+      `<xdr:to><xdr:col>${to[0]}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${to[1]}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>${body}<xdr:clientData/></xdr:twoCellAnchor>`;
+    const geometry = prst => `<a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm><a:prstGeom prst="${prst}"><a:avLst/></a:prstGeom>`;
+    const sp = (id, name, prst, look, extra = "", box = false) => `<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id}" name="${name}"/><xdr:cNvSpPr${box ? ' txBox="1"' : ""}/></xdr:nvSpPr>` +
+      `<xdr:spPr>${geometry(prst)}${look}</xdr:spPr>${extra}</xdr:sp>`;
+    const paragraph = (text, size, attributes = "", align = "") => `<a:p>${align ? `<a:pPr algn="${align}"/>` : ""}<a:r><a:rPr lang="en-US" sz="${size}"${attributes}/><a:t>${text}</a:t></a:r></a:p>`;
+    const body = (anchorAt, paragraphs) => `<xdr:txBody><a:bodyPr vertOverflow="clip" wrap="square" rtlCol="0" anchor="${anchorAt}"/><a:lstStyle/>${paragraphs}</xdr:txBody>`;
+    const themed = `<xdr:style><a:lnRef idx="2"><a:schemeClr val="accent1"><a:shade val="50000"/></a:schemeClr></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent1"/></a:fillRef>` +
+      `<a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></xdr:style>`;
+    const shapes =
+      anchor([1, 1], [5, 6], sp(2, "Note", "rect", '<a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:ln w="9525" cmpd="sng"><a:solidFill><a:schemeClr val="lt1"><a:shade val="50000"/></a:schemeClr></a:solidFill></a:ln>',
+        body("t", paragraph("Hello shapes", 1400, ' b="1"') + paragraph("A read-only note", 1100)), true)) +
+      anchor([6, 1], [9, 4], sp(3, "Approved", "roundRect", "", themed + body("ctr", paragraph("Approved", 1200, "", "ctr")))) +
+      anchor([6, 5], [8, 9], sp(4, "Circle", "ellipse", '<a:noFill/><a:ln w="19050"><a:solidFill><a:srgbClr val="C00000"/></a:solidFill><a:prstDash val="dash"/></a:ln>')) +
+      anchor([1, 7], [5, 10], `<xdr:cxnSp macro=""><xdr:nvCxnSpPr><xdr:cNvPr id="5" name="Arrow"/><xdr:cNvCxnSpPr/></xdr:nvCxnSpPr><xdr:spPr>${geometry("straightConnector1")}` +
+        '<a:ln w="19050"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:tailEnd type="triangle"/></a:ln></xdr:spPr></xdr:cxnSp>') +
+      anchor([1, 11], [4, 14], sp(6, "Next", "rightArrow", '<a:solidFill><a:srgbClr val="70AD47"/></a:solidFill><a:ln><a:noFill/></a:ln>', body("ctr", paragraph("Next", 1100, "", "ctr")))) +
+      anchor([6, 11], [8, 15], sp(7, "Star", "star5", '<a:solidFill><a:srgbClr val="FFC000"/></a:solidFill>')) +
+      anchor([10, 1], [12, 4], `<xdr:grpSp><xdr:nvGrpSpPr><xdr:cNvPr id="8" name="Group"/><xdr:cNvGrpSpPr/></xdr:nvGrpSpPr><xdr:grpSpPr/>${sp(9, "Inside", "rect", "")}</xdr:grpSp>`);
+    zip.file("xl/drawings/drawing1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${shapes}</xdr:wsDr>`);
+    zip.file("xl/worksheets/_rels/sheet1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdDrawing" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>`);
+    const sheetXml = await zip.file("xl/worksheets/sheet1.xml").async("string");
+    if (!sheetXml.includes("xmlns:r=")) throw new Error("shapes.xlsx: worksheet has no r namespace");
+    zip.file("xl/worksheets/sheet1.xml", sheetXml.replace("</worksheet>", '<drawing r:id="rIdDrawing"/></worksheet>'));
+    zip.file("[Content_Types].xml", (await zip.file("[Content_Types].xml").async("string")).replace("</Types>",
+      '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>'));
+    write("xlsx/shapes.xlsx", await stable(await zip.generateAsync({ type: "nodebuffer" })));
+    record({ id: "xlsx-shapes", file: "xlsx/shapes.xlsx", format: "xlsx", category: "complex", producer: `${producer}, shapes added as hand-written DrawingML with JSZip`, licence,
+      expect: { result: "open", sheets: ["Notes"], text: ["Hello shapes"],
+        drawings: [{ sheet: "Notes", pictures: 0, shapes: ["rect:#ffffff:#bcbcbc:Hello shapes/A read-only note", "roundRect:#4f81bd:#385d8a:Approved", "ellipse:-:#c00000:",
+          "line:-:#000000:", "rightArrow:#70ad47:-:Next", "rect:#ffc000:-:"] }],
+        workbookNotice: "1 group of shapes is not shown" },
+      rules: SAFE_RULES, notes: "Theme colours from exceljs's Office theme (accent1 #4f81bd; the rounded rectangle's outline is accent1 at 50% shade). The star is drawn as a rectangle; the group is counted in the notice." });
+  }
+
   // Hostile: a linked picture (stored outside the file) pointing at the request listener and at a network share.
   {
     const zip = await JSZip.loadAsync(fs.readFileSync(path.join(CORPUS, "xlsx", "drawings.xlsx")));

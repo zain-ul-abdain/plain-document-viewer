@@ -118,6 +118,35 @@ public sealed class SheetPicture
     public string Media { get; set; } = "";
     public string Description { get; set; } = "";
     public ChartData? Chart { get; set; }
+    public ShapeData? Shape { get; set; }
+}
+
+// A shape or text box drawn over the grid: its outline (Geometry, one of the names SheetDrawings.Geometries lists; other
+// shapes are drawn as rectangles), colours as "#rrggbb" (null: none), sizes in pixels, and its text.
+public sealed class ShapeData
+{
+    public string Geometry { get; set; } = "rect";
+    public string? Fill { get; set; }
+    public string? Line { get; set; }
+    public double LineWidth { get; set; } = 1;
+    public string Dash { get; set; } = "";                    // "", "dash" or "dot"
+    public bool StartArrow { get; set; }
+    public bool EndArrow { get; set; }
+    public bool FlipH { get; set; }
+    public bool FlipV { get; set; }
+    public double Rotation { get; set; }                     // degrees, clockwise
+    public string VAlign { get; set; } = "t";                // t, ctr or b
+    public List<ShapeParagraph> Paragraphs { get; set; } = [];
+}
+
+public sealed class ShapeParagraph
+{
+    public string Text { get; set; } = "";
+    public string Align { get; set; } = "l";                 // l, ctr or r
+    public bool Bold { get; set; }
+    public bool Italic { get; set; }
+    public double Size { get; set; } = 11;                   // points
+    public string Color { get; set; } = "#000000";
 }
 
 // A chart as the values saved in the file (the chart's own cache): never recalculated from the cells.

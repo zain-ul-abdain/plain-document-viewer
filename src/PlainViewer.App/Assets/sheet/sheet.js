@@ -355,11 +355,14 @@ function withDrawings(sheet, table, offsets) {
   const y = (r, offset) => rowTop(sheet, r) + (hidden.has(r + 1) ? 0 : Math.min(rowPixels(sheet, r), offset * SCALE));
   for (const p of sheet.pictures) {
     const left = x(p.column, p.columnOffset), top = y(p.row, p.rowOffset);
-    const width = p.toColumn >= 0 ? x(p.toColumn, p.toColumnOffset) - left : p.width;
-    const height = p.toRow >= 0 ? y(p.toRow, p.toRowOffset) - top : p.height * SCALE;
+    let width = p.toColumn >= 0 ? x(p.toColumn, p.toColumnOffset) - left : p.width;
+    let height = p.toRow >= 0 ? y(p.toRow, p.toRowOffset) - top : p.height * SCALE;
+    // A line may be flat in one direction; everything else needs some width and height.
+    if (p.shape?.geometry === "line" && (width > 1 || height > 1)) { width = Math.max(width, 2); height = Math.max(height, 2); }
     if (!(width > 1 && height > 1)) continue;
     let item;
     if (p.chart) item = chartElement(p.chart, width, height);
+    else if (p.shape) item = shapeElement(p.shape, width, height, p.description);
     else if (MEDIA.test(p.media ?? "")) {
       item = document.createElement("img");
       item.src = `${DOC}/media?name=${encodeURIComponent(p.media)}`;
@@ -469,6 +472,82 @@ function chartElement(chart, width, height) {
   else if (chart.type === "scatter") drawScatter(root, series, area);
   else drawAxes(root, chart, series, area);
   if (chart.notice) root.append(svg("text", { x: width - 8, y: height - 4 - legendHeight, "text-anchor": "end", class: "chart-note" }, chart.notice));
+  return root;
+}
+
+// A shape or text box: its outline (flipped and rotated as saved), then its text laid out inside, as Excel does with
+// its default insets. Only checked colours, known outlines and plain text reach the page.
+let markerCount = 0;
+function shapeElement(shape, width, height, description) {
+  const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, class: "shape", overflow: "visible" });
+  root.setAttribute("role", "img");
+  root.setAttribute("aria-label", description || "Shape");
+  const colour = c => COLOUR.test(c ?? "") ? c : "none";
+  const stroke = colour(shape.line), lineWidth = Math.min(20, Math.max(0.5, +shape.lineWidth || 1));
+  const look = { fill: shape.geometry === "line" ? "none" : colour(shape.fill), stroke, "stroke-width": stroke === "none" ? 0 : lineWidth };
+  if (shape.dash === "dash") look["stroke-dasharray"] = `${lineWidth * 4} ${lineWidth * 3}`;
+  else if (shape.dash === "dot") look["stroke-dasharray"] = `${lineWidth} ${lineWidth * 2}`;
+  const all = svg("g", {});
+  const rotation = finite(shape.rotation) ? shape.rotation : 0;
+  if (rotation) all.setAttribute("transform", `rotate(${rotation} ${width / 2} ${height / 2})`);
+  const outline = svg("g", { transform: `translate(${shape.flipH ? width : 0} ${shape.flipV ? height : 0}) scale(${shape.flipH ? -1 : 1} ${shape.flipV ? -1 : 1})` });
+  const w = width, h = height, m = Math.min(w, h), points = list => svg("polygon", { points: list.map(p => p.join(",")).join(" "), ...look });
+  switch (shape.geometry) {
+    case "line": {
+      const line = svg("line", { x1: w <= 2 ? w / 2 : 0, y1: h <= 2 ? h / 2 : 0, x2: w <= 2 ? w / 2 : w, y2: h <= 2 ? h / 2 : h, ...look });
+      // Arrow heads as markers in the line's colour.
+      for (const [end, wanted] of [["marker-start", shape.startArrow], ["marker-end", shape.endArrow]]) {
+        if (!wanted || stroke === "none") continue;
+        const id = `arrow-${++markerCount}`;
+        const marker = svg("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 5, markerHeight: 5, orient: "auto-start-reverse" });
+        marker.append(svg("path", { d: "M0,0 L10,5 L0,10 Z", fill: stroke }));
+        root.append(marker);
+        line.setAttribute(end, `url(#${id})`);
+      }
+      outline.append(line);
+      break;
+    }
+    case "roundRect": outline.append(svg("rect", { x: 0, y: 0, width: w, height: h, rx: m / 6, ...look })); break;
+    case "ellipse": outline.append(svg("ellipse", { cx: w / 2, cy: h / 2, rx: w / 2, ry: h / 2, ...look })); break;
+    case "triangle": outline.append(points([[w / 2, 0], [w, h], [0, h]])); break;
+    case "rtTriangle": outline.append(points([[0, 0], [0, h], [w, h]])); break;
+    case "diamond": outline.append(points([[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2]])); break;
+    case "parallelogram": outline.append(points([[m / 4, 0], [w, 0], [w - m / 4, h], [0, h]])); break;
+    case "hexagon": outline.append(points([[m / 4, 0], [w - m / 4, 0], [w, h / 2], [w - m / 4, h], [m / 4, h], [0, h / 2]])); break;
+    case "rightArrow": case "leftArrow": {
+      const head = Math.min(w, h / 2 * 1);
+      const right = [[0, h / 4], [w - head, h / 4], [w - head, 0], [w, h / 2], [w - head, h], [w - head, h * 3 / 4], [0, h * 3 / 4]];
+      outline.append(points(shape.geometry === "rightArrow" ? right : right.map(([px, py]) => [w - px, py])));
+      break;
+    }
+    case "upArrow": case "downArrow": {
+      const head = Math.min(h, w / 2);
+      const down = [[w / 4, 0], [w / 4, h - head], [0, h - head], [w / 2, h], [w, h - head], [w * 3 / 4, h - head], [w * 3 / 4, 0]];
+      outline.append(points(shape.geometry === "downArrow" ? down : down.map(([px, py]) => [px, h - py])));
+      break;
+    }
+    default: outline.append(svg("rect", { x: 0, y: 0, width: w, height: h, ...look }));
+  }
+  all.append(outline);
+  const paragraphs = (shape.paragraphs ?? []).filter(p => typeof p.text === "string");
+  if (paragraphs.length && shape.geometry !== "line") {
+    const box = svg("foreignObject", { x: 0, y: 0, width: w, height: h });
+    const text = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    text.className = `shape-text ${{ ctr: "middle", b: "bottom" }[shape.vAlign] ?? "top"}`;
+    for (const p of paragraphs) {
+      const line = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      line.textContent = p.text || " ";
+      Object.assign(line.style, {
+        textAlign: { ctr: "center", r: "right" }[p.align] ?? "left",
+        fontWeight: p.bold ? "700" : "400", fontStyle: p.italic ? "italic" : "normal",
+        fontSize: `${Math.min(96, Math.max(4, +p.size || 11)) * 4 / 3}px`, color: COLOUR.test(p.color ?? "") ? p.color : "#000000"
+      });
+      text.append(line);
+    }
+    box.append(text);
+    all.append(box);
+  }
+  root.append(all);
   return root;
 }
 
