@@ -151,6 +151,64 @@ export async function generateXlsx({ large }) {
         workbookNotice: "1 conditional formatting rule is not shown" },
       rules: SAFE_RULES, notes: "Rules applied to saved values: cell value, colour scale, data bar, icon set, text contains. The formula (expression) rule is counted in the notice and not shown." });
   }
+  // More conditional formatting rule kinds: between, bottom N, top percent, below average, blanks and errors, a
+  // three-colour scale, traffic lights, rating bars without the value, duplicates and unique values (written as Excel
+  // writes them; exceljs cannot), begins/ends with, and "stop if true".
+  {
+    const wb = workbook();
+    const ws = wb.addWorksheet("More");
+    ws.getRow(1).values = ["Hello: between", "Bottom 2", "Top 50%", "Below average", "Blanks, errors", "3 colours", "Lights", "Ratings", "Duplicates", "Unique", "Text", "Stop"];
+    const numbers = [5, 15, 25, 35, 45, 55], words = ["a", "b", "a", "c", "b", "d"], fruit = ["apple", "banana", "cherry", "date", "fig", "kiwi"];
+    for (let i = 0; i < 6; i++) {
+      const row = ws.getRow(i + 2);
+      row.values = [numbers[i], numbers[i], numbers[i], numbers[i], null, numbers[i], numbers[i], numbers[i], words[i], words[i], fruit[i], numbers[i]];
+    }
+    ws.getCell("E2").value = "x"; ws.getCell("E4").value = { error: "#DIV/0!" }; ws.getCell("E5").value = "y"; ws.getCell("E6").value = "z"; ws.getCell("E7").value = "w";
+    const fill = argb => ({ fill: { type: "pattern", pattern: "solid", bgColor: { argb } } });
+    let priority = 0;
+    const add = (ref, rule) => ws.addConditionalFormatting({ ref, rules: [{ priority: ++priority, ...rule }] });
+    add("A2:A7", { type: "cellIs", operator: "between", formulae: [20, 40], style: fill("FFFFC7CE") });              // dxf 0
+    add("B2:B7", { type: "top10", rank: 2, bottom: true, style: fill("FFC6EFCE") });                                 // dxf 1
+    add("C2:C7", { type: "top10", rank: 50, percent: true, style: fill("FFC6EFCE") });                               // dxf 2
+    add("D2:D7", { type: "aboveAverage", aboveAverage: false, style: fill("FFFFEB9C") });                            // dxf 3
+    add("E2:E7", { type: "containsText", operator: "containsBlanks", style: fill("FFD9D9D9") });                      // dxf 4
+    add("E2:E7", { type: "containsText", operator: "containsErrors", style: { font: { italic: true } } });           // dxf 5
+    add("F2:F7", { type: "colorScale", cfvo: [{ type: "min" }, { type: "percentile", value: 50 }, { type: "max" }], color: [{ argb: "FFF8696B" }, { argb: "FFFFEB84" }, { argb: "FF63BE7B" }] });
+    add("G2:G7", { type: "iconSet", iconSet: "3TrafficLights1", cfvo: [{ type: "percent", value: 0 }, { type: "percent", value: 33 }, { type: "percent", value: 67 }] });
+    add("H2:H7", { type: "iconSet", iconSet: "5Rating", cfvo: [0, 20, 40, 60, 80].map(value => ({ type: "percent", value })) });
+    add("L2:L7", { type: "cellIs", operator: "greaterThan", formulae: [10], stopIfTrue: true, style: fill("FFFF0000") });   // dxf 6
+    add("L2:L7", { type: "cellIs", operator: "greaterThan", formulae: [0], style: { font: { bold: true } } });             // dxf 7
+    const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+    let sheetXml = await zip.file("xl/worksheets/sheet1.xml").async("string");
+    const raw = (ref, rule) => `<conditionalFormatting sqref="${ref}">${rule}</conditionalFormatting>`;
+    const extra = raw("I2:I7", '<cfRule type="duplicateValues" dxfId="0" priority="20"/>') + raw("J2:J7", '<cfRule type="uniqueValues" dxfId="1" priority="21"/>') +
+      raw("K2:K7", '<cfRule type="beginsWith" dxfId="7" priority="22" operator="beginsWith" text="b"><formula>LEFT(K2,1)="b"</formula></cfRule>') +
+      raw("K2:K7", '<cfRule type="endsWith" dxfId="5" priority="23" operator="endsWith" text="y"><formula>RIGHT(K2,1)="y"</formula></cfRule>');
+    const first = sheetXml.indexOf("<conditionalFormatting");
+    if (first < 0) throw new Error("conditional-more.xlsx: no conditional formatting written");
+    sheetXml = sheetXml.slice(0, first) + extra + sheetXml.slice(first);
+    sheetXml = sheetXml.replace('<iconSet iconSet="5Rating">', '<iconSet iconSet="5Rating" showValue="0">');
+    // exceljs leaves out stopIfTrue; Excel writes it on the rule.
+    sheetXml = sheetXml.replace('<cfRule type="cellIs" dxfId="6" priority="10" operator="greaterThan">', '<cfRule type="cellIs" dxfId="6" priority="10" stopIfTrue="1" operator="greaterThan">');
+    if (!sheetXml.includes('stopIfTrue="1"')) throw new Error("conditional-more.xlsx: stop rule not found");
+    if (!sheetXml.includes('showValue="0"')) throw new Error("conditional-more.xlsx: 5Rating not found");
+    zip.file("xl/worksheets/sheet1.xml", sheetXml.replace(/\{[0-9A-Fa-f-]{36}\}/g, "{00000000-0000-4000-8000-000000000002}"));
+    write("xlsx/conditional-more.xlsx", await stable(await zip.generateAsync({ type: "nodebuffer" })));
+    record({ id: "xlsx-conditional-more", file: "xlsx/conditional-more.xlsx", format: "xlsx", category: "complex", producer: `${producer}, four rules added as XML with JSZip`, licence,
+      expect: { result: "open", sheets: ["More"], cells: [{ sheet: "More", ref: "A5", text: "35" }, { sheet: "More", ref: "H2", text: "" }],
+        styles: [
+          { ref: "A3", fill: null }, { ref: "A4", fill: "#ffc7ce" }, { ref: "A5", fill: "#ffc7ce" }, { ref: "A6", fill: null },
+          { ref: "B2", fill: "#c6efce" }, { ref: "B3", fill: "#c6efce" }, { ref: "B4", fill: null },
+          { ref: "C4", fill: null }, { ref: "C5", fill: "#c6efce" }, { ref: "C7", fill: "#c6efce" },
+          { ref: "D2", fill: "#ffeb9c" }, { ref: "D4", fill: "#ffeb9c" }, { ref: "D5", fill: null },
+          { ref: "E3", fill: "#d9d9d9" }, { ref: "E2", fill: null }, { ref: "E4", italic: true },
+          { ref: "F2", fill: "#f8696b" }, { ref: "F7", fill: "#63be7b" },
+          { ref: "G2", icon: "circle red" }, { ref: "G7", icon: "circle green" }, { ref: "H2", icon: "bar-0 blue" }, { ref: "H7", icon: "bar-4 blue" },
+          { ref: "I2", fill: "#ffc7ce" }, { ref: "I5", fill: null }, { ref: "J5", fill: "#c6efce" }, { ref: "J2", fill: null },
+          { ref: "K3", bold: true }, { ref: "K4", italic: true }, { ref: "K2", bold: null },
+          { ref: "L2", fill: null, bold: true }, { ref: "L3", fill: "#ff0000", bold: null }] },
+      rules: SAFE_RULES, notes: "Rule kinds not in conditional.xlsx. Between 20 and 40; bottom 2; top 50% of six values (three); below the average of 30; a blank and an error cell; a 3-colour scale with a 50th-percentile midpoint; 3 traffic lights and 5 rating bars with the value hidden; duplicates and unique values; begins with b, ends with y; L: > 10 fills red and stops, so only cells up to 10 are bold." });
+  }
   // Simple
   {
     const wb = workbook();

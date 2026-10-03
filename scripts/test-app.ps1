@@ -1,0 +1,10 @@
+﻿# App tests that run without opening a window, against the real app assembly (settings file and similar).
+param([switch]$Offline)
+. "$PSScriptRoot\env.ps1"
+$project = Join-Path $repoRoot 'tests\PlainViewer.App.Tests\PlainViewer.App.Tests.csproj'
+$restoreArgs = @('restore', $project, '--configfile', (Join-Path $repoRoot 'NuGet.Config'))
+if ($Offline) { $restoreArgs += @('--source', (Join-Path $repoRoot '.tools\feed')) }
+& $Dotnet @restoreArgs
+if ($LASTEXITCODE -ne 0) { throw 'App test restore failed.' }
+& $Dotnet run --project $project -c Release --no-restore
+if ($LASTEXITCODE -ne 0) { throw 'App tests failed.' }

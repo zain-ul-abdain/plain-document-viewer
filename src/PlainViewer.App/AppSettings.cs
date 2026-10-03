@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("PlainViewer.App.Tests")]
 namespace PlainViewer.App;
 
 // The viewer's own preferences: theme choice and the last window size, position and state. Stored in
@@ -17,9 +18,11 @@ public sealed class AppSettings
     public bool Thumbnails { get; set; }           // page thumbnails beside PDF and Word documents
 
     public static bool Enabled { get; set; }
-    private static readonly string FilePath =
+    // Settable, and Reload, for tests only (tests/PlainViewer.App.Tests).
+    internal static string FilePath { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PlainViewer", "settings.json");
     private static AppSettings? current;
+    internal static void Reload() => current = null;
 
     public static AppSettings Current => current ??= Load();
 

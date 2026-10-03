@@ -65,6 +65,17 @@ try
         Throws<DocumentException>(() => LocalFiles.OpenChecked(link).Dispose());
         Throws<DocumentException>(() => TextFiles.Load(link));
     });
+    Test("Opening reports a missing file, a missing folder, a folder and a locked file as such", () => {
+        Check(Throws<DocumentException>(() => LocalFiles.OpenRead(Path.Combine(root, "no-such-file.txt")).Dispose()).Message == LocalFiles.MovedMessage);
+        Check(Throws<DocumentException>(() => LocalFiles.OpenRead(Path.Combine(root, "no-such-folder", "file.txt")).Dispose()).Message == LocalFiles.MovedMessage);
+        string folder = Path.Combine(root, "a-folder.txt"); Directory.CreateDirectory(folder);
+        Check(Throws<Exception>(() => LocalFiles.OpenChecked(folder).Dispose()) is UnauthorizedAccessException or DocumentException);
+        Check(Throws<DocumentException>(() => LocalFiles.OpenRead(folder).Dispose()).Message == LocalFiles.DeniedMessage);
+        string locked = Path.Combine(root, "locked.txt"); File.WriteAllText(locked, "busy");
+        using (new FileStream(locked, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            Check(Throws<DocumentException>(() => LocalFiles.OpenRead(locked).Dispose()).Message == LocalFiles.LockedMessage);
+        Check(LocalFiles.OpenRead(locked).Length == 4);                         // readable again once released
+    });
     Test("A change made through another handle while open is detected", () => {
         string path = Path.Combine(root, "changing.txt"); File.WriteAllText(path, "first");
         using var stream = LocalFiles.OpenRead(path);

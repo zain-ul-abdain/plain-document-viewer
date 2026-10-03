@@ -34,6 +34,7 @@ if (-not $SkipTests -and $Stage -ne 'Installer') {
   & "$PSScriptRoot\test-markdown.ps1" -Offline
   & "$PSScriptRoot\test-office-safety.ps1" -Offline
   & "$PSScriptRoot\test-worker.ps1" -Offline
+  & "$PSScriptRoot\test-app.ps1" -Offline
   & "$PSScriptRoot\smoke-test.ps1"
   & "$PSScriptRoot\security-smoke.ps1"
 }

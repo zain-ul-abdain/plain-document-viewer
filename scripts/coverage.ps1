@@ -1,5 +1,5 @@
 # Measures how much of Plain Viewer's own code (the app, the core library and the worker) the automated tests run:
-# the core, Markdown, Office safety and worker test programs and the smoke test, each under Microsoft's dotnet-coverage
+# the core, Markdown, Office safety, worker and app test programs and the smoke test, each under Microsoft's dotnet-coverage
 # (a development tool in .tools\dotnet-coverage; licence and set-up in docs/RELEASING.md, "Code coverage"). Telemetry
 # is switched off. Writes artifacts\coverage\coverage.cobertura.xml and summary.txt (line coverage per part and file).
 # The page scripts (sheet.js, viewer.js and the other WebView2 pages) are JavaScript and are not measured.
@@ -27,6 +27,7 @@ $runs = [ordered]@{
   markdown = @($Dotnet, (Join-Path $repoRoot 'tests\PlainViewer.Markdown.Tests\bin\Release\net10.0-windows\PlainViewer.Markdown.Tests.dll'))
   officesafety = @($Dotnet, (Join-Path $repoRoot 'tests\PlainViewer.OfficeSafety.Tests\bin\Release\net10.0\PlainViewer.OfficeSafety.Tests.dll'))
   worker = @($Dotnet, (Join-Path $repoRoot 'tests\PlainViewer.Worker.Tests\bin\Release\net10.0\PlainViewer.Worker.Tests.dll'))
+  app = @($Dotnet, (Join-Path $repoRoot 'tests\PlainViewer.App.Tests\bin\Release\net10.0-windows\PlainViewer.App.Tests.dll'))
 }
 if (-not $SkipSmoke) { $runs.smoke = @('powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'smoke-test.ps1')) }
 $files = @()

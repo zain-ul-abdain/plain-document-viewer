@@ -17,10 +17,20 @@ public static class LocalFiles
     public const string ChangedMessage = "The file changed while it was being opened. Wait until it has finished saving, then open it again.";
     private const string NotLocal = "This file or folder is a link or is not available offline. Copy it to a regular local folder first.";
 
+    public const string MovedMessage = "The file was moved or deleted. Choose it again from its current location.";
+    public const string DeniedMessage = "The file cannot be read. Check its permissions or copy it to a local folder.";
+    public const string LockedMessage = "The file is open in another program that does not let others read it. Close it there, then open it again.";
+
+    // The same plain messages wherever a document is opened (by the worker or, for PDFs and pictures, by the app).
     public static FileStream OpenRead(string path)
     {
-        TextFiles.ValidateLocalPath(path);
-        return OpenChecked(path);
+        try
+        {
+            TextFiles.ValidateLocalPath(path);
+            return OpenChecked(path);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { throw new DocumentException(MovedMessage); }
+        catch (UnauthorizedAccessException) { throw new DocumentException(DeniedMessage); }
     }
 
     // The open and the handle checks alone (tests call this to show they work without the path check before them).
@@ -38,7 +48,7 @@ public static class LocalFiles
             {
                 2 or 3 => new FileNotFoundException("The file was not found.", path),
                 5 => new UnauthorizedAccessException(),
-                32 or 33 => new IOException("The file is locked."),
+                32 or 33 => new DocumentException(LockedMessage),
                 _ => new IOException(new Win32Exception(error).Message)
             };
         }
