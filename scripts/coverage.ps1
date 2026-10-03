@@ -3,7 +3,7 @@
 # (a development tool in .tools\dotnet-coverage; licence and set-up in docs/RELEASING.md, "Code coverage"). Telemetry
 # is switched off. Writes artifacts\coverage\coverage.cobertura.xml and summary.txt (line coverage per part and file).
 # The page scripts (sheet.js, viewer.js and the other WebView2 pages) are JavaScript and are not measured.
-param([switch]$SkipBuild, [switch]$SkipSmoke)
+param([switch]$SkipSmoke)
 . "$PSScriptRoot\env.ps1"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $tool = Join-Path $repoRoot '.tools\dotnet-coverage\dotnet-coverage.exe'
@@ -11,7 +11,16 @@ if (-not (Test-Path -LiteralPath $tool)) { throw 'dotnet-coverage is missing: se
 $out = Join-Path $repoRoot 'artifacts\coverage'
 if (Test-Path -LiteralPath $out) { Get-ChildItem -LiteralPath $out -File | ForEach-Object { $_.Delete() } }
 New-Item -ItemType Directory -Force $out | Out-Null
-if (-not $SkipBuild) { & "$PSScriptRoot\build.ps1" -Offline; if ($LASTEXITCODE -ne 0) { throw 'Build failed.' } }
+# Everything is built first, the test programs included: each carries its own copy of the app, core library and worker,
+# and a copy older than the others would report other line numbers for the same file (counted twice when merged).
+& "$PSScriptRoot\build.ps1" -Offline
+if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+foreach ($test in 'PlainViewer.Tests', 'PlainViewer.Markdown.Tests', 'PlainViewer.OfficeSafety.Tests', 'PlainViewer.Worker.Tests', 'PlainViewer.App.Tests') {
+  $project = Join-Path $repoRoot "tests\$test\$test.csproj"
+  & $Dotnet restore $project --configfile (Join-Path $repoRoot 'NuGet.Config') --source (Join-Path $repoRoot '.tools\feed') | Out-Null
+  & $Dotnet build $project -c Release --no-restore | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Building $test failed." }
+}
 
 # Only Plain Viewer's own programs and library, not the tests or third-party libraries.
 $settings = Join-Path $out 'settings.xml'

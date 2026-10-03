@@ -128,6 +128,7 @@ public partial class MainWindow : Window
                 { WebPane.ChangeSheet(1); await Task.Delay(500); await WebPane.Capture(Path.Combine(captures, $"{Path.GetFileName(path)}.sheet{sheet}.png")); }
             }
             if (document.Kind == "sheet" && WebPane.Pages > 1) { WebPane.ChangeSheet(1); WebPane.ChangeSheet(-1); }
+            await ExerciseControls();
             if (WebPane.BlockedRequests != 0) throw new InvalidOperationException($"The document view attempted {WebPane.BlockedRequests} blocked request(s).");
             return;
         }
@@ -161,6 +162,43 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("Rendered Markdown search selected the wrong text.");
         ChangeZoom(1.2);
         if (document.Kind == "markdown") { SourceToggle.IsChecked = true; if (TextView.Text != document.Text) throw new InvalidOperationException("Source view mismatch."); }
+        await ExerciseControls();
+    }
+
+    // Smoke test: the toolbar's actions on the open document, as its buttons call them (no keystrokes reach the
+    // desktop; full screen is left out because it would bring the off-screen window onto the screen).
+    private async Task ExerciseControls()
+    {
+        void Pick(ComboBox box, string item) => box.SelectedItem = box.Items.OfType<ComboBoxItem>().First(i => (string)i.Content == item);
+        if (FindBox.IsEnabled) { FindBox.Text = "Hello"; Find(false); Find(true); NextMatch(this, new RoutedEventArgs()); PreviousMatch(this, new RoutedEventArgs()); }
+        ZoomIn(this, new RoutedEventArgs()); ZoomOut(this, new RoutedEventArgs()); ResetZoom(this, new RoutedEventArgs());
+        foreach (string theme in new[] { "Dark", "Light", "System" }) Pick(ThemeChoice, theme);
+        CancelClicked(this, new RoutedEventArgs());
+        if (InWebPane && Paginated)
+        {
+            NextPage(this, new RoutedEventArgs()); PreviousPage(this, new RoutedEventArgs());
+            FitWidth(this, new RoutedEventArgs()); FitPage(this, new RoutedEventArgs());
+            // The page box: a page number and Enter go to that page; anything else explains the range.
+            if (PresentationSource.FromVisual(this) is { } source)
+                foreach (string entry in new[] { "1", "0" })
+                {
+                    PageBox.Text = entry;
+                    PageBoxKeyDown(PageBox, new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent });
+                }
+            if (!Status.Text.StartsWith("Enter a page number", StringComparison.Ordinal)) throw new InvalidOperationException("Page 0 was not explained.");
+            if (document?.Kind is "pdf" or "word") { ThumbnailsToggle.IsChecked = true; ThumbnailsToggle.IsChecked = false; }
+            await Task.Delay(300);
+        }
+        if (!InWebPane && document?.Kind == "markdown") { SourceToggle.IsChecked = false; if (MarkdownDisplay.Visibility != Visibility.Visible) throw new InvalidOperationException("Rendered view not shown again."); }
+        if (!InWebPane && document?.Kind == "csv")
+        {
+            // Options: a chosen encoding and delimiter are used when the file is opened again, then automatic detection.
+            Pick(EncodingChoice, "UTF-8"); Pick(DelimiterChoice, "Semicolon"); await LoadCurrent();
+            if (document is null || document.Delimiter != ';' || !document.Encoding.Contains("utf-8", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The chosen encoding and delimiter were not used.");
+            Pick(EncodingChoice, "Auto"); Pick(DelimiterChoice, "Auto"); await LoadCurrent();
+            if (document is null) throw new InvalidOperationException(Status.Text);
+        }
     }
     // Timing mode for scripts/measure.ps1: shows the window off-screen, opens the file, and reports milliseconds from
     // process start until the window is drawn, and from the start of opening until the first content is drawn
