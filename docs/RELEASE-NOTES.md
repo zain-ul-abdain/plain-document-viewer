@@ -4,6 +4,7 @@
 
 Install over any earlier beta; nothing needs uninstalling first.
 
+- Markdown zoom: spacing now zooms with the text, so tables, lists, quotations and code blocks keep their proportions from 50% to 300% (table rows used to stay tall when zoomed out, and code blocks stayed narrow when zoomed in). Code blocks sit at the left like the text, and table header rows are bold. Reported by Zain.
 - Safer links: a link is now shown and opened in its encoded form (spaces and quotes become %20 and %22), so a crafted link in a document cannot pass extra instructions to your browser or email program. Found by a security review of the code.
 - Clearer messages when a file has been moved or deleted, cannot be read because of its permissions, or is locked by another program, for every kind of file (PDFs and pictures used to show "an unexpected problem").
 - Spreadsheet shapes and text boxes (.xlsx, .xls and .ods): notes, callouts, arrows, lines and grouped shapes drawn over the cells now show, with their colours and text.

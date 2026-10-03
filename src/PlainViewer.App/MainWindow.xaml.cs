@@ -144,7 +144,8 @@ public partial class MainWindow : Window
         }
         if (Environment.GetEnvironmentVariable("PLAINVIEWER_CAPTURE_DIR") is { Length: > 0 } captureFolder)
         {
-            // Optional visual evidence for manual review, as for the web views.
+            // Optional visual evidence for manual review, as for the web views; PLAINVIEWER_CAPTURE_ZOOM (for example 0.5) zooms first.
+            if (double.TryParse(Environment.GetEnvironmentVariable("PLAINVIEWER_CAPTURE_ZOOM"), System.Globalization.CultureInfo.InvariantCulture, out double captureZoom)) ChangeZoom(captureZoom);
             UpdateLayout(); Directory.CreateDirectory(captureFolder);
             // Drawn over the theme's window colour: the Fluent window itself has a transparent backdrop.
             var layer = new DrawingVisual();
@@ -155,7 +156,9 @@ public partial class MainWindow : Window
             }
             var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(1100, 760, 96, 96, PixelFormats.Pbgra32); bitmap.Render(layer);
             var png = new System.Windows.Media.Imaging.PngBitmapEncoder(); png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
-            using var file = File.Create(Path.Combine(captureFolder, Path.GetFileName(path) + ".png")); png.Save(file);
+            using (var file = File.Create(Path.Combine(captureFolder, Path.GetFileName(path) + ".png"))) png.Save(file);
+            // Zooming redraws the document; return to 100% and search again for the checks below.
+            if (zoom != 1) { ChangeZoom(1); UpdateLayout(); Find(false); }
         }
         if (document.Kind == "markdown" && MarkdownDisplay.Selection.Text != "Hello"
             && !MarkdownSearch.CodeBlocks(MarkdownDisplay.Document.Blocks).Any(block => ((TextBox)block.Child).SelectedText == "Hello"))
