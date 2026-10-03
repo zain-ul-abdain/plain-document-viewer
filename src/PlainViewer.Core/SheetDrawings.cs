@@ -8,14 +8,15 @@ namespace PlainViewer.Core;
 // ImageFiles (format from the bytes, size limits) and written to the work folder for the grid page, which decodes them
 // in its sandbox; linked pictures (stored elsewhere) are never fetched. Charts become ChartData from the values saved
 // in the chart itself, never recalculated from the cells. Shapes and text boxes become ShapeData (outline, colours, text);
-// grouped shapes are counted and not shown.
+// the shapes and pictures of a group are placed by the group's mapping of their coordinates (rotated groups are drawn
+// unrotated).
 internal static class SheetDrawings
 {
     private const double Emu = 9525;                          // EMUs per pixel at 96 dpi
     public const int MaxPictures = 200, MaxSeries = 50, MaxPoints = 10_000;
     public const long MaxPictureBytes = 20L * 1024 * 1024, MaxTotalBytes = 64L * 1024 * 1024;
 
-    public sealed class Budget { public int Pictures = MaxPictures; public long Bytes = MaxTotalBytes; public int Skipped, Unsupported, Linked, Groups; }
+    public sealed class Budget { public int Pictures = MaxPictures; public long Bytes = MaxTotalBytes; public int Skipped, Unsupported, Linked; }
 
     public static List<SheetPicture> Read(string drawingPart, Func<string, Dictionary<string, (string Type, string Target)>> relationships,
         Func<string, XmlReader> open, Func<string, ZipArchiveEntry?> entry, string? folder, int sheet, Budget budget, IReadOnlyList<string> theme)
@@ -60,10 +61,54 @@ internal static class SheetDrawings
                 if (placed.Description.Length == 0) placed.Description = Attribute(content.Descendants().FirstOrDefault(e => e.Name.LocalName == "cNvPr"), "descr") ?? "";
                 result.Add(placed);
             }
-            else if (content?.Name.LocalName == "grpSp") budget.Groups++;
+            else if (content?.Name.LocalName == "grpSp") Group(content, placed, [0, 0, 1, 1], 0);
         }
         return result;
+
+        // A group's shapes and pictures, each with its box within the anchor (frame: the group's box as fractions of it).
+        void Group(XElement group, SheetPicture anchorAt, double[] frame, int depth)
+        {
+            var transform = Child(Child(group, "grpSpPr"), "xfrm");
+            var (offset, size) = (Point(Child(transform, "off"), "x", "y"), Point(Child(transform, "ext"), "cx", "cy"));
+            var (childOffset, childSize) = (Point(Child(transform, "chOff"), "x", "y"), Point(Child(transform, "chExt"), "cx", "cy"));
+            if (childSize.X <= 0 || childSize.Y <= 0) (childOffset, childSize) = (offset, size);
+            foreach (var child in group.Elements().Where(e => e.Name.LocalName is "sp" or "cxnSp" or "pic" or "grpSp").Take(500))
+            {
+                if (result.Count >= MaxPictures) return;
+                var box = Child(Child(child, child.Name.LocalName == "grpSp" ? "grpSpPr" : "spPr"), "xfrm");
+                var (at, extent) = (Point(Child(box, "off"), "x", "y"), Point(Child(box, "ext"), "cx", "cy"));
+                double[] part = childSize.X > 0 && childSize.Y > 0
+                    ? [frame[0] + (at.X - childOffset.X) / childSize.X * frame[2], frame[1] + (at.Y - childOffset.Y) / childSize.Y * frame[3],
+                       extent.X / childSize.X * frame[2], extent.Y / childSize.Y * frame[3]]
+                    : frame;
+                if (!part.All(double.IsFinite)) continue;
+                if (child.Name.LocalName == "grpSp") { if (depth < 8) Group(child, anchorAt, part, depth + 1); continue; }
+                var piece = new SheetPicture
+                {
+                    Row = anchorAt.Row, Column = anchorAt.Column, RowOffset = anchorAt.RowOffset, ColumnOffset = anchorAt.ColumnOffset,
+                    ToRow = anchorAt.ToRow, ToColumn = anchorAt.ToColumn, ToRowOffset = anchorAt.ToRowOffset, ToColumnOffset = anchorAt.ToColumnOffset,
+                    Width = anchorAt.Width, Height = anchorAt.Height, Part = part
+                };
+                if (child.Name.LocalName == "pic")
+                {
+                    var blip = child.Descendants().FirstOrDefault(e => e.Name.LocalName == "blip");
+                    piece.Description = Attribute(child.Descendants().FirstOrDefault(e => e.Name.LocalName == "cNvPr"), "descr") ?? "";
+                    string? embed = blip?.Attributes().FirstOrDefault(a => a.Name.LocalName == "embed")?.Value;
+                    if (embed is null) { if (blip?.Attributes().Any(a => a.Name.LocalName == "link") == true) budget.Linked++; continue; }
+                    if (!rels.TryGetValue(embed, out var rel) || entry(rel.Target) is not { } media || !Fits(media.Length, budget)) continue;
+                    byte[] bytes = new byte[media.Length];
+                    using (var stream = media.Open()) stream.ReadExactly(bytes);
+                    AddPicture(bytes, piece, folder, sheet, budget, result);
+                    continue;
+                }
+                piece.Shape = ReadShape(child, theme);
+                piece.Description = string.Join(" ", piece.Shape.Paragraphs.Select(p => p.Text)).Trim();
+                result.Add(piece);
+            }
+        }
     }
+
+    private static (double X, double Y) Point(XElement? element, string x, string y) => (Number(Attribute(element, x)), Number(Attribute(element, y)));
 
     // Whether a picture of this many bytes may still be read (counted as skipped if not).
     public static bool Fits(long length, Budget budget)
@@ -92,7 +137,6 @@ internal static class SheetDrawings
     {
         if (budget.Unsupported > 0) yield return $"{budget.Unsupported} picture{(budget.Unsupported == 1 ? " is" : "s are")} in a format this viewer cannot show (for example EMF or WMF) and {(budget.Unsupported == 1 ? "is" : "are")} left out.";
         if (budget.Skipped > 0) yield return $"{budget.Skipped} picture{(budget.Skipped == 1 ? " is" : "s are")} left out because the workbook's pictures are larger than this viewer shows at once.";
-        if (budget.Groups > 0) yield return $"{budget.Groups} group{(budget.Groups == 1 ? "" : "s")} of shapes {(budget.Groups == 1 ? "is" : "are")} not shown.";
         if (budget.Linked > 0) yield return $"{budget.Linked} linked picture{(budget.Linked == 1 ? " is" : "s are")} stored outside this file and {(budget.Linked == 1 ? "is" : "are")} not loaded.";
     }
 

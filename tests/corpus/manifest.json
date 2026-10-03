@@ -962,18 +962,23 @@
               "ellipse:-:#c00000:",
               "line:-:#000000:",
               "rightArrow:#70ad47:-:Next",
-              "rect:#ffc000:-:"
+              "rect:#ffc000:-:",
+              "rect:#5b9bd5:-:Step 1",
+              "ellipse:#ffc000:-:Step 2"
+            ],
+            "parts": [
+              "0,0,0.5,1",
+              "0.5,0,0.5,0.5"
             ]
           }
-        ],
-        "workbookNotice": "1 group of shapes is not shown"
+        ]
       },
       "rules": {
         "network": "none",
         "sourceUnchanged": true,
         "filesBesideSource": "none"
       },
-      "notes": "Theme colours from exceljs's Office theme (accent1 #4f81bd; the rounded rectangle's outline is accent1 at 50% shade). The star is drawn as a rectangle; the group is counted in the notice."
+      "notes": "Theme colours from exceljs's Office theme (accent1 #4f81bd; the rounded rectangle's outline is accent1 at 50% shade). The star is drawn as a rectangle. The group maps child coordinates (offset 1,000,000/500,000, size 2,000,000 x 1,000,000) onto its anchor: Step 1 fills its left half, Step 2 the top of its right half."
     },
     {
       "id": "attack-xlsx-linked-picture",

@@ -383,6 +383,12 @@ try
                                 .Select(p => $"{p.Shape!.Geometry}:{p.Shape.Fill ?? "-"}:{p.Shape.Line ?? "-"}:{string.Join("/", p.Shape.Paragraphs.Select(x => x.Text))}").ToArray();
                             var wanted = shapes.EnumerateArray().Select(s => s.GetString()!).ToArray();
                             if (!got.SequenceEqual(wanted)) throw new Exception($"{sheet.Name} shapes: got {string.Join(" | ", got)}");
+                            // Boxes of grouped shapes as fractions of their anchor ("x,y,width,height").
+                            if (item.TryGetProperty("parts", out var parts))
+                            {
+                                var gotParts = sheet.Pictures.Where(p => p.Part is not null).Select(p => string.Join(",", p.Part!.Select(v => Math.Round(v, 3).ToString(System.Globalization.CultureInfo.InvariantCulture)))).ToArray();
+                                if (!gotParts.SequenceEqual(parts.EnumerateArray().Select(s => s.GetString()!))) throw new Exception($"{sheet.Name} parts: got {string.Join(" | ", gotParts)}");
+                            }
                         }
                         // Series values and categories, as saved, of the first ("values") and second ("values2") chart.
                         foreach (var (suffix, n) in new[] { ("", 0), ("2", 1) })

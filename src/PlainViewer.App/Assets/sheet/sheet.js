@@ -354,9 +354,13 @@ function withDrawings(sheet, table, offsets) {
   };
   const y = (r, offset) => rowTop(sheet, r) + (hidden.has(r + 1) ? 0 : Math.min(rowPixels(sheet, r), offset * SCALE));
   for (const p of sheet.pictures) {
-    const left = x(p.column, p.columnOffset), top = y(p.row, p.rowOffset);
+    let left = x(p.column, p.columnOffset), top = y(p.row, p.rowOffset);
     let width = p.toColumn >= 0 ? x(p.toColumn, p.toColumnOffset) - left : p.width;
     let height = p.toRow >= 0 ? y(p.toRow, p.toRowOffset) - top : p.height * SCALE;
+    // A shape or picture inside a group: its own box within the anchor's box.
+    if (Array.isArray(p.part) && p.part.length === 4 && p.part.every(finite)) {
+      left += p.part[0] * width; top += p.part[1] * height; width *= p.part[2]; height *= p.part[3];
+    }
     // A line may be flat in one direction; everything else needs some width and height.
     if (p.shape?.geometry === "line" && (width > 1 || height > 1)) { width = Math.max(width, 2); height = Math.max(height, 2); }
     if (!(width > 1 && height > 1)) continue;

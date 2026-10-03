@@ -373,6 +373,10 @@ export async function generateXlsx({ large }) {
       `<xdr:spPr>${geometry(prst)}${look}</xdr:spPr>${extra}</xdr:sp>`;
     const paragraph = (text, size, attributes = "", align = "") => `<a:p>${align ? `<a:pPr algn="${align}"/>` : ""}<a:r><a:rPr lang="en-US" sz="${size}"${attributes}/><a:t>${text}</a:t></a:r></a:p>`;
     const body = (anchorAt, paragraphs) => `<xdr:txBody><a:bodyPr vertOverflow="clip" wrap="square" rtlCol="0" anchor="${anchorAt}"/><a:lstStyle/>${paragraphs}</xdr:txBody>`;
+    // A shape inside the group, at [x, y, cx, cy] in the group's child coordinates.
+    const groupChild = (id, text, prst, [x, y, cx, cy], colour) => `<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id}" name="${text}"/><xdr:cNvSpPr/></xdr:nvSpPr>` +
+      `<xdr:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="${prst}"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${colour}"/></a:solidFill></xdr:spPr>` +
+      `<xdr:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="1100"/><a:t>${text}</a:t></a:r></a:p></xdr:txBody></xdr:sp>`;
     const themed = `<xdr:style><a:lnRef idx="2"><a:schemeClr val="accent1"><a:shade val="50000"/></a:schemeClr></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent1"/></a:fillRef>` +
       `<a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></xdr:style>`;
     const shapes =
@@ -384,7 +388,9 @@ export async function generateXlsx({ large }) {
         '<a:ln w="19050"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:tailEnd type="triangle"/></a:ln></xdr:spPr></xdr:cxnSp>') +
       anchor([1, 11], [4, 14], sp(6, "Next", "rightArrow", '<a:solidFill><a:srgbClr val="70AD47"/></a:solidFill><a:ln><a:noFill/></a:ln>', body("ctr", paragraph("Next", 1100, "", "ctr")))) +
       anchor([6, 11], [8, 15], sp(7, "Star", "star5", '<a:solidFill><a:srgbClr val="FFC000"/></a:solidFill>')) +
-      anchor([10, 1], [12, 4], `<xdr:grpSp><xdr:nvGrpSpPr><xdr:cNvPr id="8" name="Group"/><xdr:cNvGrpSpPr/></xdr:nvGrpSpPr><xdr:grpSpPr/>${sp(9, "Inside", "rect", "")}</xdr:grpSp>`);
+      anchor([10, 1], [14, 6], `<xdr:grpSp><xdr:nvGrpSpPr><xdr:cNvPr id="8" name="Group"/><xdr:cNvGrpSpPr/></xdr:nvGrpSpPr>` +
+        `<xdr:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="1000000"/><a:chOff x="1000000" y="500000"/><a:chExt cx="2000000" cy="1000000"/></a:xfrm></xdr:grpSpPr>` +
+        groupChild(9, "Step 1", "rect", [1000000, 500000, 1000000, 1000000], "5B9BD5") + groupChild(10, "Step 2", "ellipse", [2000000, 500000, 1000000, 500000], "FFC000") + `</xdr:grpSp>`);
     zip.file("xl/drawings/drawing1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${shapes}</xdr:wsDr>`);
     zip.file("xl/worksheets/_rels/sheet1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdDrawing" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>`);
     const sheetXml = await zip.file("xl/worksheets/sheet1.xml").async("string");
@@ -396,9 +402,9 @@ export async function generateXlsx({ large }) {
     record({ id: "xlsx-shapes", file: "xlsx/shapes.xlsx", format: "xlsx", category: "complex", producer: `${producer}, shapes added as hand-written DrawingML with JSZip`, licence,
       expect: { result: "open", sheets: ["Notes"], text: ["Hello shapes"],
         drawings: [{ sheet: "Notes", pictures: 0, shapes: ["rect:#ffffff:#bcbcbc:Hello shapes/A read-only note", "roundRect:#4f81bd:#385d8a:Approved", "ellipse:-:#c00000:",
-          "line:-:#000000:", "rightArrow:#70ad47:-:Next", "rect:#ffc000:-:"] }],
-        workbookNotice: "1 group of shapes is not shown" },
-      rules: SAFE_RULES, notes: "Theme colours from exceljs's Office theme (accent1 #4f81bd; the rounded rectangle's outline is accent1 at 50% shade). The star is drawn as a rectangle; the group is counted in the notice." });
+          "line:-:#000000:", "rightArrow:#70ad47:-:Next", "rect:#ffc000:-:", "rect:#5b9bd5:-:Step 1", "ellipse:#ffc000:-:Step 2"],
+          parts: ["0,0,0.5,1", "0.5,0,0.5,0.5"] }] },
+      rules: SAFE_RULES, notes: "Theme colours from exceljs's Office theme (accent1 #4f81bd; the rounded rectangle's outline is accent1 at 50% shade). The star is drawn as a rectangle. The group maps child coordinates (offset 1,000,000/500,000, size 2,000,000 x 1,000,000) onto its anchor: Step 1 fills its left half, Step 2 the top of its right half." });
   }
 
   // Hostile: a linked picture (stored outside the file) pointing at the request listener and at a network share.

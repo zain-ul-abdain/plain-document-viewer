@@ -119,6 +119,8 @@ public sealed class SheetPicture
     public string Description { get; set; } = "";
     public ChartData? Chart { get; set; }
     public ShapeData? Shape { get; set; }
+    // A shape or picture inside a group: its box as fractions [x, y, width, height] of the anchor's box (null: all of it).
+    public double[]? Part { get; set; }
 }
 
 // A shape or text box drawn over the grid: its outline (Geometry, one of the names SheetDrawings.Geometries lists; other
